@@ -25,7 +25,7 @@
 | Wan | Something connected to Raava or the first lion turtle; maybe the key to the final Avatar State stage |
 | Kyoshi | Her golden war fans, her headdress |
 | Roku | His crown piece, his dragon connection |
-| Aang | His glider staff, his Air Nomad necklace |
+| Aang *(probably out, see [01](01-Lore-and-Universe.md))* | His glider staff, his Air Nomad necklace |
 | Others | Kuruk (water, spirit hunter) and Yangchen (air) are canon past Avatars with room for new artifacts |
 
 **Loot tier sketch:** Common → Crafted → Master's → Legendary → Avatar Relic.
