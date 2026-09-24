@@ -2,6 +2,11 @@
 
 Two-person hobby team building an Avatar: The Last Airbender–inspired souls-like action RPG. Both are **first-time game developers**, so explain the why behind game-dev practices, not just the what.
 
+- **David**: big Avatar fan, so the natural lead on lore, story, world and characters.
+- **Jeremy**: big Elden Ring fan, so the natural lead on combat, the gameplay loop, difficulty and boss design.
+
+**IP stance (undecided):** treat this as a private fan project for now. Keep code and systems IP-agnostic (e.g. generic element/stance systems, names kept in data rather than hard-coded) so the game could be reskinned into an original world later if the goal changes.
+
 ## Game in one paragraph
 
 The player wakes as the Avatar while the Spirit World and physical world collide. They start with no Avatar State access and unlock it in stages by levelling up, learning all four elements and progressing the story. Final boss: Vaatu. Gameplay loop modelled on Elden Ring: explore → rest at checkpoint → fight → die → recover lost currency → level up.
