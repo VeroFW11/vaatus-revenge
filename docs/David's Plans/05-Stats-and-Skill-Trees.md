@@ -18,6 +18,7 @@
 - [ ] **Does Bending cover all four elements, or does each element scale differently?** (e.g. Earth scales with Strength, Air with Dexterity.)
 - [ ] **What is Intelligence for?** Spirit abilities? Energybending? Status effects? Reading ancient texts?
 - [ ] **Skill tree shape.** One tree per element, plus an Avatar State tree? How do you earn skill points: by levelling, from masters, or from artifacts?
+- [ ] **Masters and sub-trees.** Each element has several masters to choose from. Does each master unlock a different sub-tree? (See [02 Storyline](02-Storyline.md).)
 - [ ] **Are sub-bending skills unlockable?** Lightning, combustion, lava, sand, seismic sense, plant, healing, flight. (Metal and blood are ruled out by the era; see the lore check below.)
 
 ## Claude's suggestions

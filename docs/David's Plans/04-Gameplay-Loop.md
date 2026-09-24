@@ -25,7 +25,7 @@ What makes the Elden Ring loop work, and what we want:
 - [ ] **"Nothing gets explained" vs. new players.** Elden Ring still teaches through level design (a safe first enemy, a hint message, a visible path). How do we teach without explaining?
 - [ ] **Open world or connected zones?** Elden Ring is open-world with dungeons. Dark Souls is one interconnected map. Which suits us, especially while we're building the first region?
 - [ ] **Travel.** On foot, by sky bison, air glider, fast-travel between campfires?
-- [ ] **What rewards exploration?** List reward types: artifacts, loot, masters, lore, secret bosses, shortcuts.
+- [ ] **What rewards exploration?** List reward types: artifacts, loot, masters, lore, secret bosses, shortcuts. (Decided: masters must be found, and lore is scattered across the map. See [02 Storyline](02-Storyline.md).)
 
 ## Claude's suggestions
 
