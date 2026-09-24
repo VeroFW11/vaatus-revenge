@@ -1,0 +1,64 @@
+# ---------------------------------------------------------------
+# Unity project lives in /game — Unity regenerates these folders,
+# so they must never be committed (they are huge and machine-specific).
+# ---------------------------------------------------------------
+/game/[Ll]ibrary/
+/game/[Tt]emp/
+/game/[Oo]bj/
+/game/[Bb]uild/
+/game/[Bb]uilds/
+/game/[Ll]ogs/
+/game/[Uu]ser[Ss]ettings/
+/game/[Mm]emoryCaptures/
+/game/[Rr]ecordings/
+
+# Unity-generated IDE / solution files
+/game/*.csproj
+/game/*.sln
+/game/*.slnx
+/game/*.unityproj
+/game/*.pidb
+/game/*.booproj
+/game/*.suo
+/game/*.user
+/game/*.userprefs
+/game/*.svd
+/game/*.pdb
+/game/*.mdb
+/game/*.opendb
+/game/*.VC.db
+/game/.vs/
+/game/.vscode/
+/game/.idea/
+/game/.gradle/
+/game/.consulo/
+
+# Unity crash reports and build artefacts
+/game/sysinfo.txt
+/game/crashlytics-build.properties
+/game/*.apk
+/game/*.aab
+/game/*.unitypackage
+/game/[Aa]ssets/[Ss]treamingAssets/aa.meta
+/game/[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# ---------------------------------------------------------------
+# Blender — autosave/backup copies (.blend1, .blend2 ...)
+# ---------------------------------------------------------------
+*.blend[0-9]
+*.blend[0-9][0-9]
+
+# ---------------------------------------------------------------
+# OS / editor junk
+# ---------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+*.swp
+
+# Personal Claude Code settings (shared settings in .claude/settings.json are fine)
+.claude/settings.local.json
+
+# Personal editor workspace files
+*.code-workspace

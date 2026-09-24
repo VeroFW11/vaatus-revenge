@@ -1,0 +1,64 @@
+# Normalise line endings for text files
+* text=auto
+
+# ---------------------------------------------------------------
+# Unity text assets — merge as YAML with Unity's Smart Merge tool
+# ---------------------------------------------------------------
+*.cs          text diff=csharp
+*.unity       text merge=unityyamlmerge eol=lf
+*.prefab      text merge=unityyamlmerge eol=lf
+*.asset       text merge=unityyamlmerge eol=lf
+*.mat         text merge=unityyamlmerge eol=lf
+*.anim        text merge=unityyamlmerge eol=lf
+*.controller  text merge=unityyamlmerge eol=lf
+*.meta        text merge=unityyamlmerge eol=lf
+*.physicMaterial text merge=unityyamlmerge eol=lf
+*.overrideController text merge=unityyamlmerge eol=lf
+*.shadergraph text eol=lf
+*.shadersubgraph text eol=lf
+
+# ---------------------------------------------------------------
+# Large binary files -> Git LFS
+# "lockable" = only one person can edit at a time (these can't be merged)
+# ---------------------------------------------------------------
+# 3D source + exports
+*.blend  filter=lfs diff=lfs merge=lfs -text lockable
+*.fbx    filter=lfs diff=lfs merge=lfs -text lockable
+*.obj    filter=lfs diff=lfs merge=lfs -text
+*.glb    filter=lfs diff=lfs merge=lfs -text
+*.gltf   filter=lfs diff=lfs merge=lfs -text
+*.dae    filter=lfs diff=lfs merge=lfs -text
+
+# Textures / images
+*.png    filter=lfs diff=lfs merge=lfs -text
+*.jpg    filter=lfs diff=lfs merge=lfs -text
+*.jpeg   filter=lfs diff=lfs merge=lfs -text
+*.tga    filter=lfs diff=lfs merge=lfs -text
+*.tif    filter=lfs diff=lfs merge=lfs -text
+*.tiff   filter=lfs diff=lfs merge=lfs -text
+*.psd    filter=lfs diff=lfs merge=lfs -text lockable
+*.exr    filter=lfs diff=lfs merge=lfs -text
+*.hdr    filter=lfs diff=lfs merge=lfs -text
+*.kra    filter=lfs diff=lfs merge=lfs -text lockable
+
+# Audio
+*.wav    filter=lfs diff=lfs merge=lfs -text
+*.mp3    filter=lfs diff=lfs merge=lfs -text
+*.ogg    filter=lfs diff=lfs merge=lfs -text
+*.flac   filter=lfs diff=lfs merge=lfs -text
+
+# Video
+*.mp4    filter=lfs diff=lfs merge=lfs -text
+*.mov    filter=lfs diff=lfs merge=lfs -text
+
+# Fonts
+*.ttf    filter=lfs diff=lfs merge=lfs -text
+*.otf    filter=lfs diff=lfs merge=lfs -text
+
+# Unity binary data
+*.cubemap filter=lfs diff=lfs merge=lfs -text
+*.unitypackage filter=lfs diff=lfs merge=lfs -text
+LightingData.asset filter=lfs diff=lfs merge=lfs -text
+
+# Documents
+*.pdf    filter=lfs diff=lfs merge=lfs -text
