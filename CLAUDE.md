@@ -1,4 +1,4 @@
-# The Missing Bison — project context for Claude
+# Vaatu's Revenge — project context for Claude
 
 Two-person hobby team building an Avatar: The Last Airbender–inspired souls-like action RPG. Both are **first-time game developers**, so explain the why behind game-dev practices, not just the what.
 

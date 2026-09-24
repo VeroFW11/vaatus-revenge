@@ -1,4 +1,4 @@
-# The Missing Bison
+# Vaatu's Revenge
 
 An Avatar: The Last Airbender–inspired action RPG with a souls-like (Elden Ring) gameplay loop.
 
