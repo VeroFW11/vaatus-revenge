@@ -11,3 +11,9 @@ Filled in as we plan, in this order (each depends on the ones above it):
 7. `07-asset-list.md` — every model, animation, sound and UI element we need
 
 Reference reading lives in [`knowledge/`](knowledge/README.md).
+
+## Personal planning folders
+
+Rough notes and ideas that feed into the docs above:
+
+- [David's Plans](David's%20Plans/README.md): lore, story, classes, stats, levelling, loot, bosses, combat
