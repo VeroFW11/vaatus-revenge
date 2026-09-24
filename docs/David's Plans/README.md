@@ -12,7 +12,7 @@ My planning notes. Each file starts with **my notes** (what I've decided or writ
 | [06 Leveling System](06-Leveling-System.md) | Campfires, runes, levelling up, what you lose on death |
 | [07 Weapons and Armour](07-Weapons-and-Armour.md) | Weapon types, armour, how weapons sit alongside bending |
 | [08 Artifacts and Loot](08-Artifacts-and-Loot.md) | Past-life Avatar artifacts, loot tiers, status-effect combos |
-| [09 Boss System](09-Boss-System.md) | Corrupted Spirits, boss design, the Vaatu fight |
+| [09 Boss System](09-Boss-System.md) | Corrupted spirits, human enemies of every martial art type, boss design, the Vaatu fight |
 | [10 Combat and Martial Arts](10-Combat-and-Martial-Arts.md) | Real martial arts styles behind each element |
 
 ## Where my original notes went

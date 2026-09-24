@@ -8,7 +8,17 @@ Curated articles, talks and tutorials that shape how we build. Each entry has a 
 https://avatar.fandom.com/wiki/Martial_arts_in_the_World_of_Avatar
 
 Which real martial art each bending style is based on: Tai Chi (water), Hung Gar (earth), Southern Praying Mantis (Toph), Northern Shaolin (fire), Baguazhang (air). It also covers fa jin in Aang's staff movement and the acrobatics/MMA influence on pro-bending.
-**Why it matters:** combat is built on these real styles (see [10 Combat and Martial Arts](../David's%20Plans/10-Combat-and-Martial-Arts.md)).
+
+It also sorts all fighting in the world into **armed** (bending, technology, weaponry), **unarmed** (chi-blocking, tai chi, kickboxing) and **hybrid** styles.
+
+Useful for our ancient era:
+- Wan learned the **Dancing Dragon** from a spirit dragon.
+- Earth and air forms came from badgermoles and sky bison.
+- **Chi-blocking was rare and closely guarded** before Roku's era.
+- The Air Nomads hid documents describing powerful fighting techniques.
+- **Bending without martial training is much weaker**, which backs up our martial arts pillar.
+
+**Why it matters:** combat is built on these real styles (see [10 Combat and Martial Arts](../David's%20Plans/10-Combat-and-Martial-Arts.md)), and enemies use every martial art type (see [09 Boss System](../David's%20Plans/09-Boss-System.md)).
 
 ### Baguazhang (Martial Arts Wiki)
 https://martialarts.fandom.com/wiki/Baguazhang
