@@ -5,11 +5,21 @@ Two-person hobby team building an Avatar: The Last Airbender–inspired souls-li
 - **David**: big Avatar fan, so the natural lead on lore, story, world and characters.
 - **Jeremy**: big Elden Ring fan, so the natural lead on combat, the gameplay loop, difficulty and boss design.
 
-**IP stance (undecided):** treat this as a private fan project for now. Keep code and systems IP-agnostic (e.g. generic element/stance systems, names kept in data rather than hard-coded) so the game could be reskinned into an original world later if the goal changes.
+**IP stance (undecided):** treat this as a private fan project for now. Keep code and systems IP-agnostic (e.g. generic element/stance systems, names kept in data rather than hard-coded) so that if the goal ever changes, the world could be swapped out without rebuilding the systems.
 
 ## Game in one paragraph
 
 The player wakes as the Avatar while the Spirit World and physical world collide. They start with no Avatar State access and unlock it in stages by levelling up, learning all four elements and progressing the story. Final boss: Vaatu. Gameplay loop modelled on Elden Ring: explore → rest at checkpoint → fight → die → recover lost currency → level up.
+
+## Core pillar: lore fidelity
+
+Stay true to Avatar canon. David is a big lore fan and breaking canon would tarnish the game. The player is an original, unnamed Avatar from the unrecorded era between Wan and the earliest known Avatars (Szeto, Yangchen), deliberately never placed exactly in the cycle. Consequences:
+- Past lives that can appear: Wan plus original ancient Avatars. **Not** Kyoshi, Roku, Aang, Korra or anyone later.
+- Vaatu stays sealed in the Tree of Time (Wan to Korra era). He can't roam the physical world.
+- Nothing invented later in canon: no metalbending, no pro-bending, no Korra-era technology.
+- Past Avatars appear the way they do in the show: visions and the Avatar State.
+
+Check every new idea against canon and flag conflicts. See `docs/David's Plans/01-Lore-and-Universe.md`.
 
 ## Core pillar: real martial arts
 

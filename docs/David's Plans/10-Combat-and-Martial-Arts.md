@@ -21,7 +21,8 @@
 
 - [ ] **Is Toph's style its own path?** E.g. an earthbending sub-tree or a separate "blind bandit" stance with seismic sense.
 - [ ] **Where does fa jin fit?** A charged power strike, a perfect-timing bonus, or an Avatar State move?
-- [ ] **Does pro-bending appear?** It's from the Korra era, so it depends on when the game is set (see [01](01-Lore-and-Universe.md)). It could be an arena side activity or how human enemies fight.
+- [x] ~~Does pro-bending appear?~~ **No.** Pro-bending is from Korra's era, thousands of years after ours (see [01](01-Lore-and-Universe.md)). Its acrobatic/MMA influence could still shape how some human fighters move, without the sport itself.
+- [ ] **Toph's style without Toph.** Toph isn't born yet, but in canon the first earthbenders learned from badgermoles, who "see" through vibration. So a seismic-sense, Southern Praying Mantis style can exist as an ancient badgermole technique.
 - [ ] **How do we get authentic animation?** See the pipeline options below.
 - [ ] **Combat basics.** Light attack, heavy attack, dodge, block/parry, lock-on, like Elden Ring?
 - [ ] **Switching elements mid-fight.** A stance button, element wheel, or combos that mix elements?
@@ -37,11 +38,11 @@ The aim is that the martial art changes **how each element plays**, not just how
 |---|---|---|---|
 | Water | Tai Chi | Yield, redirect the opponent's force, circular flow | **Parry-and-redirect** is the core: catching an attack sends it back. Moves chain smoothly into each other, and it's strongest on defence. |
 | Earth | Hung Gar | Rooted horse stance, strong blocks, powerful direct strikes | **Rooted stance**: planting your feet gives poise (you're not staggered) and heavier hits, but you're slow to move. The best blocking in the game. |
-| Earth (Toph) | Southern Praying Mantis | Close range, reactive, sensing through contact | **Seismic sense**: see enemies through walls or in darkness while standing on earth. Fast close-range counters. |
+| Earth (badgermole style, Toph's in the show) | Southern Praying Mantis | Close range, reactive, sensing through contact | **Seismic sense**: see enemies through walls or in darkness while standing on earth. Fast close-range counters. |
 | Fire | Northern Shaolin | Long extended strikes, kicks, aggressive forward pressure | **Momentum**: consecutive hits build power, and backing off loses it. Kicks and long-reach strikes. In the show firebending comes from the breath, which could tie into stamina. |
 | Air | Baguazhang | Circle walking, constant direction changes, evasion | **Circling**: moving in an arc around a locked-on enemy builds power, and dodges curve. Air is weak standing still and strong while it keeps moving. |
 | Special | Fa jin | Explosive whole-body power released over a short distance | **Burst strike**: a short charge, then a huge release. Could be a perfect-timing reward or an Avatar State technique. |
-| Korra era | Pro-bending | Acrobatics plus MMA | Light, bouncing footwork, quick jabs and combos, rings and knockback. |
+| Human fighters (inspired by, not the sport) | Pro-bending's influences | Acrobatics plus MMA | Some human enemies use light, bouncing footwork and quick jab combos. |
 
 ### Getting animation that matches the real styles
 

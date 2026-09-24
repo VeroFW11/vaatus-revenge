@@ -18,15 +18,14 @@
 
 ## Claude's suggestions
 
-**Past-life artifact ideas:**
+**Past-life artifact ideas.** Lore check: the game is set before Kyoshi, Roku, Aang, Kuruk and Yangchen were born, so their items can't exist yet (see [01](01-Lore-and-Universe.md)).
 
-| Avatar | Artifact ideas |
+| Past life | Artifact ideas |
 |---|---|
-| Wan | Something connected to Raava or the first lion turtle; maybe the key to the final Avatar State stage |
-| Kyoshi | Her golden war fans, her headdress |
-| Roku | His crown piece, his dragon connection |
-| Aang *(probably out, see [01](01-Lore-and-Universe.md))* | His glider staff, his Air Nomad necklace |
-| Others | Kuruk (water, spirit hunter) and Yangchen (air) are canon past Avatars with room for new artifacts |
+| Wan | Something linked to Raava, the lion turtles or the first Harmonic Convergence; maybe the key to the final Avatar State stage |
+| Original ancient Avatars | One signature item per past life we invent. We write each one's story and let the item hint at it. |
+| Lion turtles | In canon they granted people bending before the Avatar existed; relics from them could be among the oldest, most powerful items |
+| Ancient benders | Items from the first benders who learned from the original sources: the Moon (water), badgermoles (earth), dragons (fire) and sky bison (air) |
 
 **Loot tier sketch:** Common → Crafted → Master's → Legendary → Avatar Relic.
 
