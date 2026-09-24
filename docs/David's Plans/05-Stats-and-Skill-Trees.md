@@ -11,10 +11,11 @@
 - Intelligence
 - Bending
 
-**Bending styles I want:**
+**Bending styles I want: all of them.**
 - Lots of bending styles, not just the four basics
-- **Bloodbending** *(lore conflict, see below)*
-- **Metalbending** *(lore conflict, see below)*
+- **Bloodbending**
+- **Metalbending**
+- **Decision (option C):** metal and blood are **lost Avatar-only techniques** that die with our Avatar. That's why nobody knows them again until Hama and Toph. It's a deliberate, small canon exception, because fans will love metalbending in gameplay.
 - **Energybending**
 - **Flight**
 - Possibly **brand-new bending styles** of our own
@@ -27,7 +28,8 @@
 - [ ] **What is Intelligence for?** Spirit abilities? Energybending? Status effects? Reading ancient texts?
 - [ ] **Skill tree shape.** One tree per element, plus an Avatar State tree? How do you earn skill points: by levelling, from masters, or from artifacts?
 - [ ] **Masters and sub-trees.** Each element has several masters to choose from. Does each master unlock a different sub-tree? (See [02 Storyline](02-Storyline.md).)
-- [ ] **How do metalbending and bloodbending fit the lore?** Pick an option from the lore check below.
+- [x] **How do metalbending and bloodbending fit the lore?** Option C: lost Avatar-only techniques.
+- [ ] **How does the Avatar learn metal and blood?** With no masters for them, where do they come from? (Ideas below.)
 - [ ] **Which new bending styles do we invent?** They need to fit the "lost ancient art" rule below.
 - [ ] **Full list of sub-bending styles.** Canon so far: lightning, combustion, lava, sand, seismic sense, plant, healing, flight, energybending. Plus metal and blood if we find a lore-safe way.
 
@@ -53,7 +55,7 @@ Fire tree          Air tree           Water tree         Earth tree
  └ Sub-bending:     └ Sub-bending:     └ Sub-bending:     └ Sub-bending:
    Lightning,         Flight,            Healing,           Lava,
    Combustion         Spiritual          Plant,             Sand, Seismic,
-                                         Blood (forbidden?) Metal? (see lore check)
+                                         Blood (Avatar-only) Metal (Avatar-only)
 
                  Avatar State tree
          (unlocked in story stages, see 02 Storyline)
@@ -74,8 +76,20 @@ Fire tree          Air tree           Water tree         Earth tree
 
 - **A. Leave them out.** 100% canon.
 - **B. Include bloodbending as a lost forbidden art, and leave metalbending out.** Only the soft conflict remains. *(Claude's recommendation.)* Using bloodbending could also push you towards a darker ending, which fits your several-endings plan.
-- **C. Include both as lost Avatar-only techniques.** Metal would be something only the Avatar could do, which then died with them. This bends the "Toph was first" fact, and big fans would notice.
+- **✅ C. Include both as lost Avatar-only techniques (chosen).** Metal would be something only the Avatar could do, which then died with them. This bends the "Toph was first" fact, and big fans would notice.
 - **D. Lore-safe substitute for metal:** a new earth sub-style built on real canon material, e.g. **crystal bending**, which does appear in canon, or bending **meteorite ore**, the material Sokka's space sword was made from.
+
+### Making option C hold together
+
+For the exception to stay believable, a few rules should hold everywhere in the game:
+- **Only the player can metalbend or bloodbend.** No enemies, masters or NPCs can, otherwise it wouldn't be lost after your Avatar dies.
+- **Nobody teaches it.** You work it out yourself, e.g. from a vision, an artifact or a hidden place. That also rewards exploring.
+- **Canon limits still apply.** Bloodbending only works under a full moon, unless it's in the Avatar State. Metalbending needs impurities in the metal, as with Toph (pure metals like platinum can't be bent).
+- **Optional darker path:** heavy use of bloodbending could push the story towards a darker ending.
+
+Ideas for how you discover each one:
+- **Metal:** an ancient badgermole cavern where you "see" the earth inside metal ore through seismic sense
+- **Blood:** a forbidden vision, or a place touched by Vaatu, on a full-moon night
 
 ### Rule for brand-new bending styles
 
