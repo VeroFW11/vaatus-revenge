@@ -30,6 +30,7 @@ Combat is built on the real martial arts behind each bending style: Tai Chi (wat
 - **Engine:** Unity 6 + URP (recommended, not yet locked in). The Unity project lives in `game/`.
 - **3D:** Blender. Source files go in `art/`, exported FBX files go into `game/Assets/`.
 - **Budget:** free tools preferred.
+- **Hardware:** David has an RTX 4070. Jeremy's PC is still unknown, and both must be able to run the chosen engine.
 
 ## Conventions
 
