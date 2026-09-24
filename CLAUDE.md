@@ -11,6 +11,10 @@ Two-person hobby team building an Avatar: The Last Airbender–inspired souls-li
 
 The player wakes as the Avatar while the Spirit World and physical world collide. They start with no Avatar State access and unlock it in stages by levelling up, learning all four elements and progressing the story. Final boss: Vaatu. Gameplay loop modelled on Elden Ring: explore → rest at checkpoint → fight → die → recover lost currency → level up.
 
+## Core pillar: real martial arts
+
+Combat is built on the real martial arts behind each bending style: Tai Chi (water), Hung Gar (earth), Southern Praying Mantis (Toph), Northern Shaolin (fire), Baguazhang (air), fa jin (bursts). Each style's principle should change how the element *plays*, not just how it looks. See `docs/David's Plans/10-Combat-and-Martial-Arts.md`.
+
 ## Tools
 
 - **Engine:** Unity 6 + URP (recommended, not yet locked in). The Unity project lives in `game/`.

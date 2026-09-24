@@ -25,6 +25,7 @@ Starting class = **choose your region**:
 | | Fire | Air | Water | Earth |
 |---|---|---|---|---|
 | Start region | Fire Nation | Air Temples | Water Tribes | Earth Kingdom |
+| Martial art | Northern Shaolin | Baguazhang | Tai Chi | Hung Gar |
 | Play style | Aggressive, high damage | Evasive, fast, mobile | Flowing, counters, healing | Tanky, guarding, heavy hits |
 | Main stats | | | | |
 | Starting gear | | | | |
