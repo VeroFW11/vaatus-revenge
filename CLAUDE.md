@@ -16,7 +16,7 @@ The player wakes as the Avatar while the Spirit World and physical world collide
 Stay true to Avatar canon. David is a big lore fan and breaking canon would tarnish the game. The player is an original, unnamed Avatar from the unrecorded era between Wan and the earliest known Avatars (Szeto, Yangchen), deliberately never placed exactly in the cycle. Consequences:
 - Past lives that can appear: Wan plus original ancient Avatars. **Not** Kyoshi, Roku, Aang, Korra or anyone later.
 - Vaatu stays sealed in the Tree of Time (Wan to Korra era). He can't roam the physical world.
-- Nothing invented later in canon: no pro-bending, no Korra-era technology.
+- Nothing invented later in canon: no pro-bending, no lightning redirection (Iroh invented it). **Ancient technology only**: traps, nets, bolas, chains, repeating crossbows, siege engines, alchemical smoke. No electrified gear, gas devices, mecha or tanks.
 - **The one deliberate exception:** metalbending and bloodbending exist as **lost Avatar-only techniques**. Only the player can use them; no enemy, master or NPC can. Canon limits still apply (full moon for blood, impure metal for metal).
 - Past Avatars appear the way they do in the show: visions and the Avatar State.
 

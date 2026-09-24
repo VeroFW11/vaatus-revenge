@@ -13,7 +13,7 @@
 **How the story is structured:**
 - **The player chooses the order of the elements.** They choose which region to go to, and learn that element from a master there.
 - **Masters have to be found.** They aren't handed to you.
-- **Several masters per element to choose from.**
+- **Three or four masters per element to choose from**, so the choice is broad.
 - **Several endings, based on the player's choices.**
 - **There is direct storytelling**, but players are **rewarded for exploring and learning from the environment**.
 - **Information and lore are scattered around the map.**
@@ -22,7 +22,9 @@
 
 - [ ] **Opening scene.** Where do you wake up, and what's the first thing you see?
 - [ ] **How do you find a master?** Rumours from NPCs, clues in the environment, hidden locations, a test to prove yourself?
-- [ ] **How many masters per element?** Two or three? What makes each one different? (See Claude's suggestions.)
+- [x] **How many masters per element?** Three or four.
+- [ ] **Who are the masters?** Names, personalities, where they live, what their trial is. (Draft roster in Claude's suggestions.)
+- [ ] **Can you learn from more than one master per element?** Just one (a real choice), or several on a second playthrough / late in the game?
 - [ ] **Does your choice of master affect the ending?**
 - [ ] **What are the endings?** What choices lead to each one? (Lore check: every ending must leave Vaatu sealed; see below.)
 - [ ] **How many Avatar State stages are there?**
@@ -63,14 +65,43 @@ Elden Ring solves this by making some areas simply harder than others and lettin
 
 ### Masters as a meaningful choice
 
-Each element has 2–3 masters, and **each master teaches a different skill sub-tree**. That makes the choice matter to your build, not just the story. For example:
+Each element has 3–4 masters, and **each master teaches a different skill sub-tree**. That makes the choice matter to your build, not just the story. Draft roster (all lore-checked for our ancient era):
 
-| Element | Master A teaches | Master B teaches |
-|---|---|---|
-| Fire | Lightning (precise, disciplined) | Combustion (raw power) |
-| Water | Healing (support, spirit) | Plant/swamp bending (terrain control) |
-| Earth | Hung Gar rooted style | Badgermole seismic style |
-| Air | Evasion and flight | Spiritual airbending |
+**🔥 Fire**
+| Master | Teaches | Plays like | Lore anchor |
+|---|---|---|---|
+| Dragon lineage (Sun Warriors) | The **Dancing Dragon**: fire as life and breath | Balanced, sustained pressure, breath-powered | Wan learned it from a spirit dragon; the Sun Warriors are an ancient civilisation |
+| Lightning master | **Lightning generation** | Precise, slow charge, huge single hits | Origin never given, so safe. ⚠️ *Redirecting* lightning was invented by Iroh much later, so it's off-limits |
+| Combustion master | **Combustion** (explosive blasts) | Long-range artillery, big wind-ups | Origin never given, so safe |
+| Fire sage / monk | **Fire jets and heat control** | Mobility: dashes, jet-boosted leaps | Fire propulsion appears in ATLA with no stated inventor |
+
+**🌊 Water**
+| Master | Teaches | Plays like | Lore anchor |
+|---|---|---|---|
+| Northern healer | **Healing** | Support: heal mid-fight, strengthen spirit water | The Water Tribes' healing tradition; the Spirit Oasis |
+| Ice warrior | **Ice combat** | Tai Chi counters, ice spikes, freezing enemies | Classic waterbending |
+| Swamp hermit | **Plantbending** | Terrain control, roots, traps | The Foggy Swamp style, origin never given |
+| Spirit calmer | **Spirit purification** | Calm or purify corrupted spirits instead of killing them | Canon waterbenders calm spirits. It also answers the "purify vs kill" question for bosses (see [09](09-Boss-System.md)) |
+
+**🪨 Earth**
+| Master | Teaches | Plays like | Lore anchor |
+|---|---|---|---|
+| Rooted master | **Hung Gar** classic earthbending | Tanky, heavy blocks, big strikes | Classic earthbending |
+| Badgermole hermit | **Seismic sense** (Southern Praying Mantis) | Close-range counters, sensing hidden enemies | The first earthbenders learned from badgermoles. *Also a path towards discovering Avatar-only metalbending* |
+| Desert nomad | **Sandbending** | Area denial, sandstorms, blinding | The Si Wong desert tribes |
+| Volcano master | **Lavabending** | Slow, devastating, terrain-melting | Canon calls it extremely rare, with no origin given |
+
+**🌪️ Air**
+| Master | Teaches | Plays like | Lore anchor |
+|---|---|---|---|
+| Temple monk | **Baguazhang** classic airbending | Evasion, circling, redirection | Classic airbending |
+| Bison keeper | **The original bison forms** | Wind currents, knockback, a sky bison companion or mount? | Airbending was learned from the sky bison |
+| Spirit monk | **Spiritual airbending** (spirit projection) | Scouting, spirit sight, entering the Spirit World | Air Nomads' deep spiritual tradition |
+| Wandering guru | **Flight** | Late-game freedom of movement | Guru Laghima's teaching of detaching from earthly ties (his exact date is unknown) |
+
+**Hidden masters (optional):** a 5th secret master per element could teach one of our **brand-new lost styles**, e.g. mist or spirit-light bending (see [05](05-Stats-and-Skill-Trees.md)). Only the most thorough explorers would find them.
+
+**Scope note:** 16 masters means 16 characters, each with a location, a trial and a skill sub-tree, which is a lot of content. For the first playable slice, build **one element with two masters**. Once that works, add the rest.
 
 Masters could also have their own **questlines and allegiances** that feed into which ending you reach, like the NPC questlines in Elden Ring.
 

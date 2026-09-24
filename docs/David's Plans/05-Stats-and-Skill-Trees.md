@@ -27,7 +27,7 @@
 - [ ] **Does Bending cover all four elements, or does each element scale differently?** (e.g. Earth scales with Strength, Air with Dexterity.)
 - [ ] **What is Intelligence for?** Spirit abilities? Energybending? Status effects? Reading ancient texts?
 - [ ] **Skill tree shape.** One tree per element, plus an Avatar State tree? How do you earn skill points: by levelling, from masters, or from artifacts?
-- [ ] **Masters and sub-trees.** Each element has several masters to choose from. Does each master unlock a different sub-tree? (See [02 Storyline](02-Storyline.md).)
+- [ ] **Masters and sub-trees.** Each element has 3–4 masters to choose from, each unlocking a different sub-tree. The draft roster is in [02 Storyline](02-Storyline.md).
 - [x] **How do metalbending and bloodbending fit the lore?** Option C: lost Avatar-only techniques.
 - [ ] **How does the Avatar learn metal and blood?** With no masters for them, where do they come from? (Ideas below.)
 - [ ] **Which new bending styles do we invent?** They need to fit the "lost ancient art" rule below.
