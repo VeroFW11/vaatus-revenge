@@ -4,6 +4,7 @@
 
 - **Corrupted spirits are the bosses and the enemies.**
 - **Vaatu is the final boss.** He's insanely strong, and you need all four elements plus a mastered Avatar State to fight him.
+- **Decision: the Vaatu fight happens in the Spirit World at the Tree of Time**, while he tries to break out early. You **reseal** him rather than destroy him, which keeps canon intact (see [01](01-Lore-and-Universe.md)).
 
 ## Things to decide
 
@@ -24,7 +25,6 @@
 | Koh the Face Stealer | ATLA S1 | Showing any emotion lets him steal your face; a boss where you must stay calm |
 | Wan Shi Tong | ATLA S2 | Guardian of the spirit library; a knowledge boss |
 | Dark spirits | LOK S2 (also in Wan's era) | Common enemies in Vaatu's army |
-| Vaatu's vessel | Our invention | A great spirit or person possessed by Vaatu's leaking darkness; a lore-safe pre-final boss (see [01](01-Lore-and-Universe.md)) |
 
 **Lore check:** Unalaq and the Dark Avatar come from Korra's era, thousands of years after ours, so they can't appear. Vaatu himself stays sealed in the Tree of Time until the final fight (see [01](01-Lore-and-Universe.md)).
 

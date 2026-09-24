@@ -8,7 +8,7 @@
 - At the start you **can't access the Avatar State**.
 - As you level up, learn moves and progress through the story, you unlock more parts of the Avatar State and grow more powerful.
 - You must **learn all four elements** and **master the Avatar State** before you can fight Vaatu. He's insanely strong.
-- **Vaatu is the final boss.**
+- **Vaatu is the final boss.** The fight happens at the **Tree of Time** in the Spirit World while he tries to break out, and you **reseal** him (see [01](01-Lore-and-Universe.md)).
 
 **How the story is structured:**
 - **The player chooses the order of the elements.** They choose which region to go to, and learn that element from a master there.

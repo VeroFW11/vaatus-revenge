@@ -30,13 +30,13 @@
 
 ### Options for Vaatu without breaking canon
 
-- **A. The fight happens at his prison.** The final battle is in the Spirit World at the Tree of Time, where Vaatu is trying to break out early. You don't destroy him, you **reseal him**. Canon says he can never truly be destroyed anyway. *(Claude's recommendation)*
-- **B. Vaatu fights through a vessel.** His darkness leaks from the Tree and possesses a great spirit or a person. You fight that vessel, and Vaatu himself stays sealed.
-- **C. Both.** Mid-game bosses are Vaatu's vessels, and the final battle is at the Tree against Vaatu himself.
+- **✅ A. The fight happens at his prison (chosen).** The final battle is in the Spirit World at the Tree of Time, where Vaatu is trying to break out early. You don't destroy him, you **reseal him**. Canon says he can never truly be destroyed anyway.
+- ~~B.~~ Not chosen. **B. Vaatu fights through a vessel.** His darkness leaks from the Tree and possesses a great spirit or a person. You fight that vessel, and Vaatu himself stays sealed.
+- ~~C.~~ Not chosen. **C. Both.** Mid-game bosses are Vaatu's vessels, and the final battle is at the Tree against Vaatu himself.
 
 ## Things to decide
 
-- [ ] **How is Vaatu fought?** Pick from the options above.
+- [x] **How is Vaatu fought?** Option A: at the Tree of Time, where you reseal him.
 - [ ] **Who are our past lives?** Wan plus original ancient Avatars. How many, which nations, what personalities?
 - [ ] **Why has the clash happened now?** What is weakening the barrier between the worlds in this era?
 - [ ] **Who is the player character?** A fixed Avatar with their own name and backstory, or a custom character?
