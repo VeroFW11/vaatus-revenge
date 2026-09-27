@@ -36,6 +36,7 @@ Combat is built on the real martial arts behind each bending style: Tai Chi (wat
 ## Conventions
 
 - Design docs live in `docs/` as Markdown. Update the relevant doc when a design decision is made.
+- Open planning questions are answered on the **Quest Board** artifact (https://claude.ai/artifact/KY7uUinoK91mDWE5hzTAa1). When asked to "sync the quest board", follow `docs/Quest Board/README.md`.
 - Reference material goes in `docs/knowledge/` with a short summary and the link.
 - Binary assets use Git LFS. Remind the user to `git lfs lock` before editing `.blend`/`.fbx`/`.psd`.
 - Work on branches and merge to `main` via pull requests (see CONTRIBUTING.md).

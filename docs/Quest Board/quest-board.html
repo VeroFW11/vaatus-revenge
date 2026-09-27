@@ -1,0 +1,665 @@
+<title>Vaatu's Revenge Quest Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --ground: #0e1320;
+    --surface: #161d2d;
+    --surface-2: #1d2639;
+    --line: #2b3650;
+    --text: #ebe6d8;
+    --muted: #9ba4b7;
+    --faint: #6d7890;
+    --glow: #8fd3ff;
+    --gold: #f0c35a;
+    --air: #e9a23b;
+    --water: #4aa3de;
+    --earth: #72ad5c;
+    --fire: #e0513f;
+    --forge: #a98ee0;
+    --ok: #72ad5c;
+    --wait: #f0c35a;
+    --radius: 10px;
+    --display: "Shippori Mincho B1", "Songti SC", Georgia, serif;
+    --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground);
+    background-image: radial-gradient(ellipse 80% 40% at 50% -10%, rgba(143, 211, 255, 0.10), transparent 70%);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 15px;
+    line-height: 1.5;
+    padding-inline: 16px;
+    padding-block: 20px 64px;
+    min-height: 100%;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+  h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* ---------- header / HUD ---------- */
+  .hud { display: flex; flex-direction: column; gap: 14px; }
+  .hud-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .hud h1 { font-size: clamp(26px, 6vw, 36px); font-weight: 800; letter-spacing: 0.01em; line-height: 1.1; }
+  .hud h1 span { color: var(--glow); }
+  .rank { text-align: right; }
+  .rank-title { font-family: var(--display); font-size: 20px; font-weight: 800; color: var(--gold); }
+  .xpbar { position: relative; height: 12px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
+  .xpbar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--gold), #ffe29a); border-radius: 999px; transition: width .6s ease; }
+  .xpmeta { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+  .people { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 13px; color: var(--muted); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--text); }
+  .chip img { width: 20px; height: 20px; border-radius: 50%; }
+  .chip b { font-family: var(--mono); font-weight: 600; color: var(--gold); }
+
+  /* ---------- realms ---------- */
+  .realms { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+  @media (max-width: 560px) { .realms { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .realm {
+    --c: var(--muted);
+    display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 6px 10px;
+    border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); cursor: pointer; text-align: center;
+  }
+  .realm[aria-pressed="true"] { border-color: var(--c); background: color-mix(in srgb, var(--c) 12%, var(--surface)); }
+  .realm.mastered { box-shadow: 0 0 0 1px var(--c), 0 0 18px color-mix(in srgb, var(--c) 45%, transparent); }
+  .ring { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center;
+    background: conic-gradient(var(--c) calc(var(--p) * 1%), var(--surface-2) 0); }
+  .ring > span { width: 38px; height: 38px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; color: var(--c); }
+  .ring svg { width: 22px; height: 22px; }
+  .realm-name { font-weight: 700; font-size: 13px; }
+  .realm-sub { font-size: 11px; color: var(--muted); line-height: 1.25; }
+  .realm-count { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .r-air { --c: var(--air); } .r-water { --c: var(--water); } .r-earth { --c: var(--earth); } .r-fire { --c: var(--fire); } .r-forge { --c: var(--forge); }
+
+  .avatar-state { display: none; padding: 14px 16px; border-radius: var(--radius); text-align: center; font-family: var(--display); font-size: 18px; font-weight: 800;
+    color: var(--ground); background: linear-gradient(90deg, var(--air), var(--water), var(--earth), var(--fire)); }
+  .avatar-state.on { display: block; }
+
+  /* ---------- tabs ---------- */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .tab { background: none; border: 0; padding: 10px 14px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; font-weight: 700; }
+  .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--glow); }
+  .tab .count { font-family: var(--mono); font-size: 11px; color: var(--faint); margin-left: 4px; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 13px; color: var(--muted); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+  .seg button { background: none; border: 0; padding: 5px 12px; cursor: pointer; color: var(--muted); }
+  .seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); }
+
+  /* ---------- trial card ---------- */
+  .trial { --c: var(--glow); border: 1px solid var(--line); border-radius: 14px; background: var(--surface); overflow: hidden; }
+  .trial-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--c) 10%, var(--surface)); flex-wrap: wrap; }
+  .trial-head .where { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .trial-head .where svg { width: 18px; height: 18px; color: var(--c); }
+  .xp-badge { font-family: var(--mono); font-weight: 600; font-size: 13px; color: var(--gold); border: 1px solid color-mix(in srgb, var(--gold) 50%, transparent); border-radius: 999px; padding: 2px 10px; }
+  .trial-body { padding: 18px 16px 16px; display: flex; flex-direction: column; gap: 14px; }
+  .trial-body h2 { font-size: clamp(20px, 4.6vw, 26px); font-weight: 800; }
+  .context { color: var(--muted); margin: 0; max-width: 62ch; }
+  .lead { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--text); }
+  .options { display: grid; gap: 8px; }
+  .opt { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; text-align: left; padding: 12px; border-radius: var(--radius);
+    background: var(--surface-2); border: 1px solid var(--line); cursor: pointer; }
+  .opt:hover { border-color: color-mix(in srgb, var(--c) 60%, var(--line)); }
+  .opt[aria-checked="true"] { border-color: var(--c); background: color-mix(in srgb, var(--c) 14%, var(--surface-2)); }
+  .opt .key { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; font-family: var(--mono); font-weight: 600; font-size: 13px;
+    border: 1px solid var(--line); color: var(--muted); }
+  .opt[aria-checked="true"] .key { background: var(--c); color: var(--ground); border-color: var(--c); }
+  .opt .lbl { font-weight: 700; }
+  .opt .det { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .pick { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 700; color: var(--glow); letter-spacing: 0.04em; }
+  label.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+  textarea, select, input[type="text"] { font: inherit; color: var(--text); background: var(--ground); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; width: 100%; }
+  textarea { min-height: 84px; resize: vertical; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn { border: 1px solid var(--line); background: var(--surface-2); padding: 10px 16px; border-radius: 999px; cursor: pointer; font-weight: 700; }
+  .btn.primary { background: var(--gold); color: #231a05; border-color: var(--gold); }
+  .btn.primary:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.ghost { background: none; }
+  .hint { font-size: 12px; color: var(--faint); }
+  .answered-note { font-size: 13px; color: var(--muted); padding: 10px 12px; border-radius: var(--radius); border: 1px dashed var(--line); }
+
+  .empty { text-align: center; padding: 36px 16px; border: 1px dashed var(--line); border-radius: 14px; color: var(--muted); display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  .empty h2 { color: var(--text); font-size: 22px; }
+
+  /* ---------- board ---------- */
+  .group { display: flex; flex-direction: column; gap: 6px; }
+  .group h3 { font-size: 16px; display: flex; align-items: center; gap: 8px; color: var(--c); padding-top: 6px; }
+  .group h3 svg { width: 18px; height: 18px; }
+  .row { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 10px 12px; border-radius: var(--radius);
+    background: var(--surface); border: 1px solid var(--line); cursor: pointer; text-align: left; width: 100%; }
+  .row:hover { border-color: color-mix(in srgb, var(--c) 50%, var(--line)); }
+  .row .t { font-weight: 700; }
+  .row .s { display: block; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+  .pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .pill.open { color: var(--muted); border: 1px solid var(--line); }
+  .pill.answered { color: #231a05; background: var(--wait); }
+  .pill.recorded { color: #0d1a09; background: var(--ok); }
+  .row .x { font-family: var(--mono); font-size: 12px; color: var(--gold); }
+
+  /* ---------- side quests ---------- */
+  .quest { display: grid; grid-template-columns: 28px 1fr auto; gap: 12px; align-items: start; padding: 12px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
+  .quest.done { opacity: .7; }
+  .quest.done .qt { text-decoration: line-through; text-decoration-color: var(--faint); }
+  .check { width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--line); background: var(--ground); cursor: pointer; display: grid; place-items: center; color: var(--ground); }
+  .check[aria-checked="true"] { background: var(--ok); border-color: var(--ok); }
+  .qt { font-weight: 700; }
+  .qd { font-size: 13px; color: var(--muted); }
+
+  /* ---------- scroll ---------- */
+  .scroll-form { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+  .scroll-form .row2 { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .scroll-form select { width: auto; }
+  .idea { padding: 12px 14px; border-left: 3px solid var(--c, var(--line)); background: var(--surface); border-radius: 0 var(--radius) var(--radius) 0; }
+  .idea p { margin: 0 0 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .idea .meta { font-size: 12px; color: var(--faint); display: flex; gap: 10px; flex-wrap: wrap; }
+
+  .sync { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 14px 16px; border-radius: 14px;
+    background: color-mix(in srgb, var(--glow) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--glow) 30%, var(--line)); font-size: 14px; }
+  .sync code { font-family: var(--mono); color: var(--glow); }
+
+  /* ---------- toast ---------- */
+  .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%) translateY(20px); opacity: 0;
+    background: var(--surface-2); border: 1px solid var(--gold); color: var(--text); padding: 10px 16px; border-radius: 999px; font-weight: 700;
+    transition: opacity .25s, transform .25s; pointer-events: none; max-width: calc(100% - 32px); text-align: center; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.level { border-color: var(--glow); box-shadow: 0 0 24px rgba(143, 211, 255, .35); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="hud">
+    <div class="hud-top">
+      <div>
+        <div class="eyebrow">Planning quest board</div>
+        <h1>Vaatu's <span>Revenge</span></h1>
+      </div>
+      <div class="rank">
+        <div class="eyebrow">Team rank</div>
+        <div class="rank-title" id="rank-title">Unawakened</div>
+      </div>
+    </div>
+    <div class="xpbar" role="progressbar" aria-label="Team XP towards next rank" id="xpbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="xpfill" style="width:0%"></i></div>
+    <div class="xpmeta"><span class="mono" id="xp-text">0 XP</span><span id="xp-next"></span></div>
+    <div class="people" id="people"></div>
+  </header>
+
+  <div class="avatar-state" id="avatar-state">All four elements mastered. Avatar State unlocked.</div>
+
+  <nav class="realms" id="realms" aria-label="Filter by area"></nav>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-trial" aria-selected="true" data-tab="trial">Next trial</button>
+    <button class="tab" role="tab" id="tab-board" aria-selected="false" data-tab="board">Quest board<span class="count" id="count-board"></span></button>
+    <button class="tab" role="tab" id="tab-side" aria-selected="false" data-tab="side">Side quests<span class="count" id="count-side"></span></button>
+    <button class="tab" role="tab" id="tab-scroll" aria-selected="false" data-tab="scroll">Idea scroll<span class="count" id="count-scroll"></span></button>
+  </div>
+
+  <div class="filters">
+    <span>Playing as</span>
+    <div class="seg" id="persona">
+      <button data-p="David" aria-pressed="false">David</button>
+      <button data-p="Jeremy" aria-pressed="false">Jeremy</button>
+      <button data-p="" aria-pressed="true">Either</button>
+    </div>
+    <span id="persona-hint" class="hint"></span>
+  </div>
+
+  <main id="view" aria-live="polite">
+    <div class="empty"><h2>Summoning the quest board…</h2><p>Loading your planning questions.</p></div>
+  </main>
+
+  <section class="sync" id="sync" hidden>
+    <span id="sync-text"></span>
+    <span>Then tell Claude: <code>sync the quest board</code></span>
+  </section>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  const REALMS = {
+    air:   { name: "Air",   sub: "Spirit & story" },
+    water: { name: "Water", sub: "Loop & rewards" },
+    earth: { name: "Earth", sub: "Builds & gear" },
+    fire:  { name: "Fire",  sub: "Combat & bosses" },
+    forge: { name: "Forge", sub: "Tools & team" },
+  };
+  const ELEMENTS = ["air", "water", "earth", "fire"];
+  const GLYPH = {
+    air: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 12a1.5 1.5 0 0 1 3 0a3 3 0 0 1-6 0a4.5 4.5 0 0 1 9 0a6 6 0 0 1-12 0"/></svg>',
+    water: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9c3-3 6 3 9 0s6-3 9 0M3 15c3-3 6 3 9 0s6-3 9 0"/></svg>',
+    earth: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 19l6-10 4 6 3-4 5 8z"/></svg>',
+    fire: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3c1 4 5 5.5 5 10.5a5 5 0 0 1-10 0c0-2.8 1.8-3.8 2-6 1.2 1 2 2.3 2 4 1-2 1.3-5 1-8.5z"/></svg>',
+    forge: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h11l5-3v4l-5 3H10v3h3v4H6v-4h3v-3H4z"/></svg>',
+  };
+  const IDEA_XP = 5;
+
+  const $ = (s, el = document) => el.querySelector(s);
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+
+  const state = {
+    db: null, user: null, me: null, canWrite: true, ready: false, offline: false,
+    bank: null, bankMissing: false, answers: new Map(), ideas: [],
+    tab: "trial", realm: null, persona: "", currentId: null, skipped: new Set(),
+    drafts: new Map(), lastLevel: null,
+  };
+  try { state.persona = localStorage.getItem("vr-persona") || ""; } catch (e) {}
+
+  // ---------- derived ----------
+  const questions = () => (state.bank && state.bank.questions) || [];
+  const sidequests = () => (state.bank && state.bank.sidequests) || [];
+  const levels = () => (state.bank && state.bank.levels) || [{ xp: 0, title: "Unawakened" }];
+  function status(q) {
+    if (q.status === "recorded") return "recorded";
+    return state.answers.has(q.id) ? "answered" : "open";
+  }
+  function matchesPersona(q) { return !state.persona || q.lead === state.persona || q.lead === "Both"; }
+  function inView(q) { return (!state.realm || q.realm === state.realm) && matchesPersona(q); }
+  function totals() {
+    let xp = 0; const byPerson = new Map();
+    const credit = (id, n) => { if (!id) return; byPerson.set(id, (byPerson.get(id) || 0) + n); };
+    for (const q of questions()) {
+      if (status(q) !== "open") { xp += q.xp; credit(state.answers.get(q.id)?.by, q.xp); }
+    }
+    for (const s of sidequests()) {
+      const a = state.answers.get(s.id);
+      if (a && a.done) { xp += s.xp; credit(a.by, s.xp); }
+    }
+    for (const i of state.ideas) { xp += IDEA_XP; credit(i.by, IDEA_XP); }
+    return { xp, byPerson };
+  }
+  function levelFor(xp) {
+    const ls = levels(); let cur = ls[0], next = null;
+    for (let i = 0; i < ls.length; i++) { if (xp >= ls[i].xp) { cur = ls[i]; next = ls[i + 1] || null; } }
+    return { cur, next };
+  }
+  function realmProgress(r) {
+    const qs = questions().filter(q => q.realm === r);
+    const done = qs.filter(q => status(q) !== "open").length;
+    return { done, total: qs.length };
+  }
+
+  // ---------- HUD ----------
+  function renderHud() {
+    const { xp, byPerson } = totals();
+    const { cur, next } = levelFor(xp);
+    $("#rank-title").textContent = cur.title;
+    const pct = next ? Math.round(((xp - cur.xp) / (next.xp - cur.xp)) * 100) : 100;
+    $("#xpfill").style.width = pct + "%";
+    $("#xpbar").setAttribute("aria-valuenow", String(pct));
+    $("#xp-text").textContent = xp + " XP";
+    $("#xp-next").textContent = next ? (next.xp - xp) + " XP to " + next.title : "Highest rank reached";
+    if (state.ready) {
+      if (state.lastLevel && state.lastLevel !== cur.title) { const t = cur.title; setTimeout(() => toast("Rank up: " + t, true), 1200); }
+      state.lastLevel = cur.title;
+    }
+
+    const people = $("#people"); people.textContent = "";
+    const ids = [...byPerson.keys()];
+    if (!ids.length) { people.append(el("span", null, "No answers yet. Lock in a trial to earn XP.")); }
+    else {
+      people.append(el("span", null, "Earned by"));
+      for (const id of ids) {
+        const c = el("span", "chip");
+        const img = el("img"); img.alt = ""; img.dataset.avatar = id;
+        img.src = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+        const nm = el("span", null, "…"); nm.dataset.uid = id;
+        const b = el("b", null, String(byPerson.get(id)));
+        c.append(img, nm, b); people.append(c);
+      }
+      resolvePeople();
+    }
+
+    const realms = $("#realms"); realms.textContent = "";
+    let mastered = 0;
+    for (const [key, r] of Object.entries(REALMS)) {
+      const { done, total } = realmProgress(key);
+      const isMastered = total > 0 && done === total;
+      if (isMastered && ELEMENTS.includes(key)) mastered++;
+      const b = el("button", "realm r-" + key + (isMastered ? " mastered" : ""));
+      b.setAttribute("aria-pressed", String(state.realm === key));
+      b.setAttribute("aria-label", r.name + ": " + r.sub + ", " + done + " of " + total + " answered");
+      const ring = el("span", "ring"); ring.style.setProperty("--p", total ? Math.round(done / total * 100) : 0);
+      const inner = el("span"); inner.innerHTML = GLYPH[key]; ring.append(inner);
+      b.append(ring, el("span", "realm-name", r.name), el("span", "realm-sub", r.sub), el("span", "realm-count", isMastered ? "Mastered" : done + "/" + total));
+      b.addEventListener("click", () => { state.realm = state.realm === key ? null : key; state.currentId = null; render(); });
+      realms.append(b);
+    }
+    $("#avatar-state").classList.toggle("on", mastered === ELEMENTS.length && questions().length > 0);
+
+    const openCount = questions().filter(q => status(q) === "open").length;
+    $("#count-board").textContent = openCount + " open";
+    const sideDone = sidequests().filter(s => state.answers.get(s.id)?.done).length;
+    $("#count-side").textContent = sideDone + "/" + sidequests().length;
+    $("#count-scroll").textContent = String(state.ideas.length);
+
+    const waiting = questions().filter(q => status(q) === "answered").length + state.ideas.filter(i => !i.filed).length;
+    $("#sync").hidden = waiting === 0;
+    $("#sync-text").textContent = waiting + (waiting === 1 ? " answer or idea is" : " answers and ideas are") + " waiting to go into the plan docs.";
+
+    for (const b of document.querySelectorAll("#persona button")) b.setAttribute("aria-pressed", String(b.dataset.p === state.persona));
+    $("#persona-hint").textContent = state.persona ? "Showing " + state.persona + "'s calls and shared ones" : "Showing every question";
+  }
+
+  async function resolvePeople() {
+    if (!state.user) return;
+    const ids = [...new Set([...document.querySelectorAll("[data-uid]")].map(n => n.dataset.uid))];
+    if (!ids.length) return;
+    const ps = await state.user.profiles(ids);
+    for (const n of document.querySelectorAll("[data-uid]")) { const p = ps[n.dataset.uid]; n.textContent = (p && p.name) || "Someone"; }
+    for (const n of document.querySelectorAll("[data-avatar]")) { const p = ps[n.dataset.avatar]; if (p) n.src = p.avatarUrl; }
+  }
+
+  // ---------- views ----------
+  function render() {
+    renderHud();
+    for (const t of document.querySelectorAll(".tab")) t.setAttribute("aria-selected", String(t.dataset.tab === state.tab));
+    const view = $("#view"); view.textContent = "";
+    if (state.offline) {
+      view.append(emptyState("Open this page in Claude to play", "The quest board saves answers to a shared database, which only works when the page is opened from claude.ai or the Claude app."));
+      return;
+    }
+    if (!state.ready) { view.append(emptyState("Summoning the quest board…", "Loading your planning questions.")); return; }
+    if (state.bankMissing) { view.append(emptyState("No quests yet", "Ask Claude to seed the quest board with the planning questions.")); return; }
+    if (state.tab === "trial") view.append(renderTrial());
+    else if (state.tab === "board") view.append(renderBoard());
+    else if (state.tab === "side") view.append(renderSide());
+    else view.append(renderScroll());
+    resolvePeople();
+  }
+
+  function emptyState(title, text) {
+    const d = el("div", "empty"); d.append(el("h2", null, title), el("p", null, text)); return d;
+  }
+
+  function pickNext() {
+    const pool = questions().filter(q => inView(q) && status(q) === "open");
+    const fresh = pool.filter(q => !state.skipped.has(q.id));
+    return fresh[0] || pool[0] || null;
+  }
+
+  function renderTrial() {
+    let q = state.currentId ? questions().find(x => x.id === state.currentId) : null;
+    if (!q) q = pickNext();
+    if (!q) {
+      const any = questions().some(q => inView(q));
+      return emptyState(any ? "Every trial here is complete" : "Nothing matches this filter",
+        any ? "Pick another area, check the side quests, or add ideas to the scroll." : "Clear the area filter or switch who you're playing as.");
+    }
+    state.currentId = q.id;
+    const st = status(q);
+    const prior = state.answers.get(q.id);
+    let draft = state.drafts.get(q.id);
+    if (!draft) { draft = { picks: new Set(prior?.picks || []), notes: prior?.notes || "" }; state.drafts.set(q.id, draft); }
+
+    const card = el("article", "trial r-" + q.realm);
+    const head = el("div", "trial-head");
+    const where = el("div", "where"); where.innerHTML = GLYPH[q.realm];
+    where.append(el("span", null, REALMS[q.realm].name + " · " + q.doc));
+    const right = el("div", "where");
+    right.append(el("span", "lead", q.lead === "Both" ? "Decide together" : q.lead + "'s call"), el("span", "xp-badge", "+" + q.xp + " XP"));
+    head.append(where, right);
+
+    const body = el("div", "trial-body");
+    body.append(el("span", "eyebrow", q.title), el("h2", null, q.prompt));
+    if (q.context) body.append(el("p", "context", q.context));
+
+    if (q.options && q.options.length) {
+      const opts = el("div", "options");
+      opts.setAttribute("role", q.type === "multi" ? "group" : "radiogroup");
+      opts.setAttribute("aria-label", q.type === "multi" ? "Pick any that apply" : "Pick one");
+      for (const o of q.options) {
+        const b = el("button", "opt");
+        b.type = "button";
+        b.setAttribute("role", q.type === "multi" ? "checkbox" : "radio");
+        b.setAttribute("aria-checked", String(draft.picks.has(o.k)));
+        const txt = el("span");
+        const lbl = el("span", "lbl", o.label);
+        txt.append(lbl);
+        if (o.rec) txt.append(el("span", "pick", "Claude's pick"));
+        if (o.detail) txt.append(el("span", "det", o.detail));
+        b.append(el("span", "key", o.k), txt);
+        b.addEventListener("click", () => {
+          if (q.type === "multi") { draft.picks.has(o.k) ? draft.picks.delete(o.k) : draft.picks.add(o.k); }
+          else { draft.picks = new Set([o.k]); }
+          render();
+        });
+        opts.append(b);
+      }
+      body.append(opts);
+      if (q.type === "multi") body.append(el("span", "hint", "Pick any that apply."));
+    }
+
+    const field = el("label", "field");
+    field.htmlFor = "notes-" + q.id;
+    field.append(el("span", null, q.type === "open" ? "Your answer" : "Notes or your own answer (optional)"));
+    const ta = el("textarea"); ta.id = "notes-" + q.id; ta.value = draft.notes;
+    ta.placeholder = q.type === "open" ? "Write it however it comes to you. Claude will tidy it into the docs." : "Extra context, a different idea, or why you chose this.";
+    ta.addEventListener("input", () => { draft.notes = ta.value; lock.disabled = !canSubmit(); });
+    field.append(ta);
+    body.append(field);
+
+    if (st === "recorded") body.append(el("div", "answered-note", "This one is already written into the plan docs. Changes here will be picked up at the next sync."));
+    else if (st === "answered" && prior) {
+      const n = el("div", "answered-note"); n.append("Answered by ");
+      const who = el("span", null, "…"); who.dataset.uid = prior.by || ""; n.append(who, ". You can change it until Claude syncs it.");
+      body.append(n);
+    }
+
+    const canSubmit = () => draft.picks.size > 0 || draft.notes.trim().length > 0;
+    const actions = el("div", "actions");
+    const lock = el("button", "btn primary", st === "open" ? "Lock it in  +" + q.xp + " XP" : "Update answer");
+    lock.disabled = !canSubmit() || !state.canWrite;
+    lock.addEventListener("click", () => submit(q, draft, lock));
+    actions.append(lock);
+    if (st === "open") {
+      const skip = el("button", "btn ghost", "Skip for now");
+      skip.addEventListener("click", () => { state.skipped.add(q.id); state.currentId = null; const nx = pickNext(); state.currentId = nx && nx.id !== q.id ? nx.id : null; render(); });
+      actions.append(skip);
+    } else {
+      const next = el("button", "btn ghost", "Next open trial");
+      next.addEventListener("click", () => { state.currentId = null; render(); });
+      actions.append(next);
+    }
+    if (!state.canWrite) actions.append(el("span", "hint", "You can view this board but not answer. Ask David for Contributor or Editor access."));
+    body.append(actions);
+
+    card.append(head, body);
+    return card;
+  }
+
+  async function submit(q, draft, btn) {
+    if (!state.db) return;
+    const wasOpen = status(q) === "open";
+    btn.disabled = true;
+    const picks = [...draft.picks].sort();
+    const labels = (q.options || []).filter(o => draft.picks.has(o.k)).map(o => o.label);
+    try {
+      await state.db.collection("answers").doc(q.id).set({
+        qid: q.id, type: q.type, picks, pickLabels: labels, notes: draft.notes.trim(),
+        by: state.me?.id || null, at: new Date().toISOString(),
+      });
+      state.drafts.delete(q.id);
+      state.skipped.delete(q.id);
+      toast(wasOpen ? "+" + q.xp + " XP · " + q.title + " locked in" : "Answer updated");
+      state.currentId = null;
+      render();
+    } catch (e) {
+      btn.disabled = false;
+      if (e && e.code === "invalid_argument") { state.canWrite = false; toast("You don't have permission to answer on this board."); render(); }
+      else toast("Couldn't save that answer. Try again in a moment.");
+    }
+  }
+
+  function renderBoard() {
+    const wrap = el("div"); wrap.style.cssText = "display:flex;flex-direction:column;gap:14px";
+    const order = { open: 0, answered: 1, recorded: 2 };
+    for (const key of Object.keys(REALMS)) {
+      if (state.realm && state.realm !== key) continue;
+      const qs = questions().filter(q => q.realm === key && matchesPersona(q)).sort((a, b) => order[status(a)] - order[status(b)]);
+      if (!qs.length) continue;
+      const g = el("section", "group r-" + key);
+      const h = el("h3"); h.innerHTML = GLYPH[key]; h.append(REALMS[key].name + " · " + REALMS[key].sub);
+      g.append(h);
+      for (const q of qs) {
+        const st = status(q);
+        const row = el("button", "row"); row.type = "button";
+        const pill = el("span", "pill " + st, st === "open" ? "Open" : st === "answered" ? "Answered" : "In the docs");
+        const mid = el("span");
+        mid.append(el("span", "t", q.title));
+        const a = state.answers.get(q.id);
+        const sub = el("span", "s");
+        if (a) {
+          const bits = [];
+          if (a.pickLabels && a.pickLabels.length) bits.push(a.pickLabels.join(", "));
+          if (a.notes) bits.push("“" + (a.notes.length > 90 ? a.notes.slice(0, 90) + "…" : a.notes) + "”");
+          sub.append((bits.join(" · ") || "Answered") + " · ");
+          const who = el("span", null, "…"); who.dataset.uid = a.by || ""; sub.append(who);
+        } else {
+          sub.textContent = q.prompt + " · " + (q.lead === "Both" ? "Together" : q.lead);
+        }
+        mid.append(sub);
+        row.append(pill, mid, el("span", "x", q.xp + " XP"));
+        row.addEventListener("click", () => { state.currentId = q.id; state.tab = "trial"; render(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+        g.append(row);
+      }
+      wrap.append(g);
+    }
+    if (!wrap.children.length) return emptyState("Nothing matches this filter", "Clear the area filter or switch who you're playing as.");
+    return wrap;
+  }
+
+  function renderSide() {
+    const wrap = el("div"); wrap.style.cssText = "display:flex;flex-direction:column;gap:8px";
+    wrap.append(el("p", "context", "Learning and setup tasks. They don't go into the design docs, but they level you up for real."));
+    for (const s of sidequests()) {
+      if (state.persona && s.lead !== state.persona && s.lead !== "Both") continue;
+      const a = state.answers.get(s.id); const done = !!(a && a.done);
+      const row = el("div", "quest" + (done ? " done" : ""));
+      const cb = el("button", "check"); cb.type = "button"; cb.setAttribute("role", "checkbox"); cb.setAttribute("aria-checked", String(done));
+      cb.setAttribute("aria-label", (done ? "Mark not done: " : "Mark done: ") + s.title);
+      cb.innerHTML = done ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg>' : "";
+      cb.disabled = !state.canWrite;
+      cb.addEventListener("click", () => toggleSide(s, done, cb));
+      const mid = el("div");
+      mid.append(el("div", "qt", s.title), el("div", "qd", s.detail));
+      const tag = el("div", "qd", (s.lead === "Both" ? "Both of you" : s.lead));
+      if (done && a.by) { tag.textContent = "Done by "; const w = el("span", null, "…"); w.dataset.uid = a.by; tag.append(w); }
+      mid.append(tag);
+      row.append(cb, mid, el("span", "x mono", "+" + s.xp));
+      wrap.append(row);
+    }
+    return wrap;
+  }
+
+  async function toggleSide(s, done, btn) {
+    if (!state.db) return;
+    btn.disabled = true;
+    try {
+      const ref = state.db.collection("answers").doc(s.id);
+      if (done) { await ref.delete(); toast("Unmarked " + s.title); }
+      else { await ref.set({ qid: s.id, done: true, by: state.me?.id || null, at: new Date().toISOString() }); toast("+" + s.xp + " XP · " + s.title); }
+    } catch (e) { btn.disabled = false; toast("Couldn't save that. Try again in a moment."); }
+  }
+
+  function renderScroll() {
+    const wrap = el("div"); wrap.style.cssText = "display:flex;flex-direction:column;gap:12px";
+    const form = el("form", "scroll-form");
+    const lab = el("label", "field"); lab.htmlFor = "idea-text";
+    lab.append(el("span", null, "Drop an idea, note or question (+" + IDEA_XP + " XP)"));
+    const ta = el("textarea"); ta.id = "idea-text"; ta.placeholder = "e.g. What if the Fire Nation region has a volcano master who only teaches at night?";
+    try { ta.value = sessionStorage.getItem("vr-idea-draft") || ""; } catch (e) {}
+    ta.addEventListener("input", () => { try { sessionStorage.setItem("vr-idea-draft", ta.value); } catch (e) {} });
+    lab.append(ta);
+    const r2 = el("div", "row2");
+    const sel = el("select"); sel.id = "idea-realm"; sel.setAttribute("aria-label", "Which area it belongs to");
+    sel.append(new Option("Any area", ""));
+    for (const [k, r] of Object.entries(REALMS)) sel.append(new Option(r.name + " · " + r.sub, k));
+    const add = el("button", "btn primary", "Add to the scroll"); add.type = "submit"; add.disabled = !state.canWrite;
+    r2.append(sel, add);
+    form.append(lab, r2);
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const text = ta.value.trim(); if (!text || !state.db) return;
+      add.disabled = true;
+      try {
+        await state.db.collection("ideas").add({ text, realm: sel.value || null, by: state.me?.id || null, at: new Date().toISOString(), filed: false });
+        ta.value = ""; try { sessionStorage.removeItem("vr-idea-draft"); } catch (e) {}
+        toast("+" + IDEA_XP + " XP · idea added to the scroll");
+      } catch (e) {
+        toast(e && e.code === "quota_exceeded" ? "The scroll is full. Ask Claude to file and clear old ideas." : "Couldn't add that idea. Try again in a moment.");
+      }
+      add.disabled = !state.canWrite;
+    });
+    wrap.append(form);
+
+    if (!state.ideas.length) wrap.append(el("p", "hint", "No ideas yet. Anything you add here, Claude files into the right plan doc at the next sync."));
+    for (const i of state.ideas) {
+      const d = el("div", "idea" + (i.realm ? " r-" + i.realm : ""));
+      if (i.realm) d.style.setProperty("--c", "var(--" + i.realm + ")");
+      d.append(el("p", null, i.text));
+      const m = el("div", "meta");
+      const who = el("span", null, "…"); who.dataset.uid = i.by || "";
+      m.append(who, el("span", null, i.realm ? REALMS[i.realm]?.name || "" : "Any area"), el("span", null, fmtDate(i.at)), el("span", null, i.filed ? "Filed in the docs" : "Waiting for sync"));
+      d.append(m);
+      wrap.append(d);
+    }
+    return wrap;
+  }
+
+  function fmtDate(iso) {
+    try { return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" }); } catch (e) { return ""; }
+  }
+
+  let toastTimer = null;
+  function toast(msg, level) {
+    const t = $("#toast"); t.textContent = msg; t.classList.toggle("level", !!level); t.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+  }
+
+  // ---------- events ----------
+  for (const t of document.querySelectorAll(".tab")) t.addEventListener("click", () => { state.tab = t.dataset.tab; render(); });
+  for (const b of document.querySelectorAll("#persona button")) b.addEventListener("click", () => {
+    state.persona = b.dataset.p; state.currentId = null;
+    try { localStorage.setItem("vr-persona", state.persona); } catch (e) {}
+    render();
+  });
+
+  // ---------- boot ----------
+  render();
+  (async () => {
+    const use = window.claude && window.claude.use;
+    const db = use ? await window.claude.use("db") : null;
+    if (!db) { state.offline = true; render(); return; }
+    state.db = db;
+    state.user = await window.claude.use("user");
+    if (state.user) {
+      state.me = await state.user.me();
+      const w = await state.user.can("data.write");
+      if (w === false) state.canWrite = false;
+    }
+    let got = { bank: false, answers: false, ideas: false };
+    const settle = (k) => { got[k] = true; if (got.bank && got.answers && got.ideas) state.ready = true; render(); };
+    db.doc("bank/questions").onSnapshot(
+      (snap) => { state.bank = snap.exists ? snap.data() : null; state.bankMissing = !snap.exists; settle("bank"); },
+      () => { state.offline = true; render(); }
+    );
+    db.collection("answers").onSnapshot(
+      (snap) => { state.answers = new Map(snap.docs.map(d => [d.id, d.data()])); settle("answers"); },
+      () => {}
+    );
+    db.collection("ideas").orderBy("at", "desc").limit(200).onSnapshot(
+      (snap) => { state.ideas = snap.docs.map(d => ({ id: d.id, ...d.data() })); settle("ideas"); },
+      () => {}
+    );
+  })();
+})();
+</script>

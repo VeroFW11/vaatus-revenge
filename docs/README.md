@@ -18,3 +18,4 @@ Rough notes and ideas that feed into the docs above:
 
 - [David's Plans](David's%20Plans/README.md): lore, story, classes, stats, levelling, loot, bosses, combat
 - [Transcribed Notes](Transcribed%20Notes/): transcripts and summaries of planning conversations
+- [Quest Board](Quest%20Board/README.md): the gamified planning board where we answer open questions, plus how Claude syncs answers back into these docs

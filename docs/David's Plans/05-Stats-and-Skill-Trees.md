@@ -41,7 +41,7 @@
 - [ ] **Which new bending styles do we invent?** They need to fit the "lost ancient art" rule below.
 - [x] **Full list of sub-bending styles.** Confirmed in the planning session: Fire: dragon lineage, lightning, combustion, fire jets/heat control. Water: healing, ice, plant, spirit purification, blood. Earth: seismic sense, metal (plus sand and lava from the master roster in [02](02-Storyline.md)). Air: see the roster in [02](02-Storyline.md). Avatar-only: spirit bending, energybending, metal, blood.
 - [x] **How does seismic sense work?** A toggle that reveals enemies through walls, like Batman's detective mode.
-- [ ] **Bloodbending is listed under water, but it's Avatar-only.** It stays in the water tree but is **discovered, never taught by a master**, so it stays consistent with the option C rule. Confirm?
+- [x] **Bloodbending is listed under water, but it's Avatar-only.** Confirmed: it sits in the water tree but is **discovered, never taught by a master**.
 - [ ] **Air sub-bending wasn't covered in the session.** Confirm the air masters in [02](02-Storyline.md): classic, bison forms, spiritual, flight.
 
 ## Claude's suggestions
