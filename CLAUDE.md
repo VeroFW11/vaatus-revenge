@@ -41,3 +41,4 @@ Combat is built on the real martial arts behind each bending style: Tai Chi (wat
 - Binary assets use Git LFS. Remind the user to `git lfs lock` before editing `.blend`/`.fbx`/`.psd`.
 - Work on branches and merge to `main` via pull requests (see CONTRIBUTING.md).
 - Build order: grey-box prototype of core combat first, then a vertical slice, and only then broader content.
+- **All gameplay numbers are data-driven**: health, damage, stamina/chi costs, scaling, XP curves and difficulty go in tuning assets (Unity ScriptableObjects), never hard-coded, so balancing is editing values and doesn't need code.

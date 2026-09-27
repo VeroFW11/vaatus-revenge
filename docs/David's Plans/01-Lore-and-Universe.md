@@ -15,6 +15,12 @@
   - Vaatu
   - ~~Aang~~, ~~Kyoshi~~, ~~Roku~~ *(not born yet in this era; see Lore check below)*
 
+**From the Quest Board (27 Sep):**
+- **The player:** a **fixed backstory with a custom look**. The story stays strong, and players still make the Avatar their own.
+- **Past lives:** **Wan plus four original ancient Avatars**, one from each nation.
+- **Why the worlds are clashing now:** **Vaatu is pushing from inside the Tree of Time.** His presence leaks out and **infects a human**, who becomes insanely powerful and starts dragging the two realms together.
+  - *My question:* would it break canon too much to make this person an **evil Avatar lost to history**? See the lore check below.
+
 ## Lore check: what this decision rules in and out
 
 **Why it works:** Wan was the first Avatar, roughly 10,000 years before Korra. The earliest Avatars named after him (Szeto, Yangchen) are much later. That leaves thousands of years of Avatars nobody in canon has named. Our Avatar is one of them, so the show's history stays untouched.
@@ -34,12 +40,25 @@
 - ~~B.~~ Not chosen. **B. Vaatu fights through a vessel.** His darkness leaks from the Tree and possesses a great spirit or a person. You fight that vessel, and Vaatu himself stays sealed.
 - ~~C.~~ Not chosen. **C. Both.** Mid-game bosses are Vaatu's vessels, and the final battle is at the Tree against Vaatu himself.
 
+### Lore check: the Vaatu-infected human as an "evil Avatar"
+
+Two canon facts get in the way of a *living* evil Avatar:
+1. **There is only ever one Avatar alive at a time**, and in our game that's the player.
+2. **A human fused with Vaatu is a "Dark Avatar"**, and canon only lets that happen when Vaatu is free (Unalaq in Korra's era). Vaatu is sealed in our era.
+
+Lore-safe ways to keep the idea:
+- **A. Vaatu's champion is a mortal bender.** They're touched by his leaking darkness and hugely powerful, but not an Avatar. *(Claude's recommendation.)*
+- **B. The "evil Avatar lost to history" is a past life.** One of your four original past Avatars fell to Vaatu's influence and was erased from history. They appear in dark visions, and Vaatu uses their memory against you.
+- **C. Both.** The infected human is guided by visions of that fallen past Avatar. That makes a strong story twist: the villain knows secrets about *your* past lives.
+
 ## Things to decide
 
 - [x] **How is Vaatu fought?** Option A: at the Tree of Time, where you reseal him.
-- [ ] **Who are our past lives?** Wan plus original ancient Avatars. How many, which nations, what personalities?
-- [ ] **Why has the clash happened now?** What is weakening the barrier between the worlds in this era?
-- [ ] **Who is the player character?** A fixed Avatar with their own name and backstory, or a custom character?
+- [x] **How many past lives?** Wan plus four original Avatars, one per nation.
+- [ ] **Who are the four original past lives?** Names, nations, personalities. Is one of them the fallen "lost evil Avatar"?
+- [x] **Why has the clash happened now?** Vaatu's presence leaks from the Tree and infects a powerful human.
+- [ ] **Who is the Vaatu-infected human?** Pick from options A–C in the lore check above.
+- [x] **Who is the player character?** Fixed backstory, custom look.
 
 ## Claude's suggestions
 

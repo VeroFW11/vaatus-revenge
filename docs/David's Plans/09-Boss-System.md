@@ -8,6 +8,7 @@
   - **Unarmed combat:** chi-blocking, hand-to-hand
   - (and the page's **hybrid styles**: bending combined with weapons)
 - **Vaatu is the final boss.** He's insanely strong, and you need all four elements plus a mastered Avatar State to fight him.
+- **Main antagonist before Vaatu: the Vaatu-infected human.** Vaatu's presence leaks from the Tree and infects a hugely powerful human who drags the realms together (see [01](01-Lore-and-Universe.md) for the lore options on who they are).
 - **Decision: the Vaatu fight happens in the Spirit World at the Tree of Time**, while he tries to break out early. You **reseal** him rather than destroy him, which keeps canon intact (see [01](01-Lore-and-Universe.md)).
 
 ## Things to decide

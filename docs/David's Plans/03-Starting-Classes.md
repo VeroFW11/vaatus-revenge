@@ -9,14 +9,21 @@ Starting class = **choose your region**:
 - Water Bender
 - Earth Bender
 
+**From the Quest Board (27 Sep):**
+- **You start in your element's nation** (firebenders in the Fire Nation, and so on).
+- **Your birth element keeps a permanent bonus** for the whole game.
+- **The story differs only in the first few hours**, depending on your starting region.
+- **No 5th "wanderer" class.** Four classes only.
+
 ## Things to decide
 
-- [ ] Does your starting element decide **where you start** on the map (the Fire Nation for firebenders, and so on)?
+- [x] Does your starting element decide **where you start** on the map? **Yes.**
 - [ ] Starting stats for each class: which of the six stats does each element favour? (See [05](05-Stats-and-Skill-Trees.md).)
 - [ ] Starting gear for each class.
-- [ ] Does the starting element stay your strongest, or can any build become anything later? (In Elden Ring your class only sets your starting point.)
-- [ ] Does the story change depending on your starting region, or just the first few hours?
-- [ ] Should there be a 5th "wanderer" class with no element at the start, for players who want the hardest start?
+- [x] Does the starting element stay your strongest? **It keeps a permanent bonus.**
+- [ ] **What is the birth-element bonus?** Extra damage with that element, cheaper skills in its tree, or a unique technique only natives learn?
+- [x] Does the story change depending on your starting region? **Only the first few hours.**
+- [x] Should there be a 5th "wanderer" class? **No.**
 
 ## Claude's suggestions
 

@@ -143,6 +143,7 @@
   .pill.answered { color: #231a05; background: var(--wait); }
   .pill.recorded { color: #0d1a09; background: var(--ok); }
   .row .x { font-family: var(--mono); font-size: 12px; color: var(--gold); }
+  .mvp-tag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; color: var(--glow); border: 1px solid color-mix(in srgb, var(--glow) 45%, transparent); white-space: nowrap; }
 
   /* ---------- side quests ---------- */
   .quest { display: grid; grid-template-columns: 28px 1fr auto; gap: 12px; align-items: start; padding: 12px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
@@ -211,6 +212,15 @@
     </div>
     <span id="persona-hint" class="hint"></span>
   </div>
+  <div class="filters">
+    <span>Show</span>
+    <div class="seg" id="mvp">
+      <button data-m="0" aria-pressed="true">Everything</button>
+      <button data-m="1" aria-pressed="false">Combat prototype</button>
+      <button data-m="2" aria-pressed="false">First playable</button>
+    </div>
+    <span id="mvp-hint" class="hint mono"></span>
+  </div>
 
   <main id="view" aria-live="polite">
     <div class="empty"><h2>Summoning the quest board…</h2><p>Loading your planning questions.</p></div>
@@ -251,7 +261,9 @@
     tab: "trial", realm: null, persona: "", currentId: null, skipped: new Set(),
     drafts: new Map(), lastLevel: null,
   };
-  try { state.persona = localStorage.getItem("vr-persona") || ""; } catch (e) {}
+  state.mvp = 0;
+  try { state.persona = localStorage.getItem("vr-persona") || ""; state.mvp = Number(localStorage.getItem("vr-mvp") || 0); } catch (e) {}
+  const MVP_NAME = { 1: "Combat prototype", 2: "First playable" };
 
   // ---------- derived ----------
   const questions = () => (state.bank && state.bank.questions) || [];
@@ -262,7 +274,8 @@
     return state.answers.has(q.id) ? "answered" : "open";
   }
   function matchesPersona(q) { return !state.persona || q.lead === state.persona || q.lead === "Both"; }
-  function inView(q) { return (!state.realm || q.realm === state.realm) && matchesPersona(q); }
+  function matchesMvp(q) { return !state.mvp || (q.mvp && q.mvp <= state.mvp); }
+  function inView(q) { return (!state.realm || q.realm === state.realm) && matchesPersona(q) && matchesMvp(q); }
   function totals() {
     let xp = 0; const byPerson = new Map();
     const credit = (id, n) => { if (!id) return; byPerson.set(id, (byPerson.get(id) || 0) + n); };
@@ -347,6 +360,9 @@
 
     for (const b of document.querySelectorAll("#persona button")) b.setAttribute("aria-pressed", String(b.dataset.p === state.persona));
     $("#persona-hint").textContent = state.persona ? "Showing " + state.persona + "'s calls and shared ones" : "Showing every question";
+    for (const b of document.querySelectorAll("#mvp button")) b.setAttribute("aria-pressed", String(Number(b.dataset.m) === state.mvp));
+    const mvpCount = (lvl) => { const qs = questions().filter(q => q.mvp && q.mvp <= lvl); return qs.filter(q => status(q) !== "open").length + "/" + qs.length; };
+    $("#mvp-hint").textContent = "Prototype " + mvpCount(1) + " decided · Playable " + mvpCount(2);
   }
 
   async function resolvePeople() {
@@ -405,6 +421,7 @@
     const where = el("div", "where"); where.innerHTML = GLYPH[q.realm];
     where.append(el("span", null, REALMS[q.realm].name + " · " + q.doc));
     const right = el("div", "where");
+    if (q.mvp) right.append(el("span", "mvp-tag", MVP_NAME[q.mvp]));
     right.append(el("span", "lead", q.lead === "Both" ? "Decide together" : q.lead + "'s call"), el("span", "xp-badge", "+" + q.xp + " XP"));
     head.append(where, right);
 
@@ -504,7 +521,7 @@
     const order = { open: 0, answered: 1, recorded: 2 };
     for (const key of Object.keys(REALMS)) {
       if (state.realm && state.realm !== key) continue;
-      const qs = questions().filter(q => q.realm === key && matchesPersona(q)).sort((a, b) => order[status(a)] - order[status(b)]);
+      const qs = questions().filter(q => q.realm === key && matchesPersona(q) && matchesMvp(q)).sort((a, b) => (order[status(a)] - order[status(b)]) || ((a.mvp || 9) - (b.mvp || 9)));
       if (!qs.length) continue;
       const g = el("section", "group r-" + key);
       const h = el("h3"); h.innerHTML = GLYPH[key]; h.append(REALMS[key].name + " · " + REALMS[key].sub);
@@ -515,6 +532,7 @@
         const pill = el("span", "pill " + st, st === "open" ? "Open" : st === "answered" ? "Answered" : "In the docs");
         const mid = el("span");
         mid.append(el("span", "t", q.title));
+        if (q.mvp && st === "open") { mid.append(" "); mid.append(el("span", "mvp-tag", MVP_NAME[q.mvp])); }
         const a = state.answers.get(q.id);
         const sub = el("span", "s");
         if (a) {
@@ -630,6 +648,12 @@
   for (const b of document.querySelectorAll("#persona button")) b.addEventListener("click", () => {
     state.persona = b.dataset.p; state.currentId = null;
     try { localStorage.setItem("vr-persona", state.persona); } catch (e) {}
+    render();
+  });
+
+  for (const b of document.querySelectorAll("#mvp button")) b.addEventListener("click", () => {
+    state.mvp = Number(b.dataset.m); state.currentId = null;
+    try { localStorage.setItem("vr-mvp", String(state.mvp)); } catch (e) {}
     render();
   });
 

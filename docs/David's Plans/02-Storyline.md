@@ -18,19 +18,35 @@
 - **There is direct storytelling**, but players are **rewarded for exploring and learning from the environment**.
 - **Information and lore are scattered around the map.**
 
+**From the Quest Board (27 Sep):**
+- **Opening:** near the start, **a close friend you grew up with** explains the chaos the world has fallen into and sets you on your mission.
+- **Finding masters:** all four ways: **rumours from people, clues in the world, hidden locations, and a trial to prove yourself.**
+- **Hidden masters:** the **seismic sense** master, the **combustion** master, the **flight** master and **one of the water masters** are hidden. Players have to find them or stumble on them.
+- **Masters:** you train with **one master per element first, and can train with others later** in the game.
+- **Master questlines affect which ending you get.**
+- **5–6 endings**, like Elden Ring.
+- **5 Avatar State stages:** one for each element learned (in any order), plus **final mastery at the Tree of Time**.
+- **Difficulty:** a **mix**. Regions have fixed difficulty, and each master's trial scales to you.
+  - *My note:* make sure the tuning values are **easy to set and change**.
+- **Vaatu before the end:** **visions and taunts**, speaking through corrupted spirits and dreams.
+- **Scattered lore:** **carvings and murals**, **past-Avatar statues** that trigger visions, and **item descriptions**.
+
 ## Things to decide
 
-- [ ] **Opening scene.** Where do you wake up, and what's the first thing you see?
-- [ ] **How do you find a master?** Rumours from NPCs, clues in the environment, hidden locations, a test to prove yourself?
+- [x] **Opening scene.** A childhood friend explains the chaos and gives you your mission. *(Still open: where you wake up and what you first see.)*
+- [ ] **Who is the childhood friend?** Name, nation, and what happens to them over the story.
+- [x] **How do you find a master?** Rumours, world clues, hidden locations and trials.
 - [x] **How many masters per element?** Three or four.
+- [x] **Which masters are hidden?** Seismic sense, combustion, flight, and one water master.
+- [ ] **Which water master is hidden?** Healer, ice warrior, swamp hermit or spirit calmer?
 - [ ] **Who are the masters?** Names, personalities, where they live, what their trial is. (Draft roster in Claude's suggestions.)
-- [ ] **Can you learn from more than one master per element?** Just one (a real choice), or several on a second playthrough / late in the game?
-- [ ] **Does your choice of master affect the ending?**
-- [ ] **What are the endings?** What choices lead to each one? (Lore check: every ending must leave Vaatu sealed; see below.) *Reference from the planning session: Elden Ring has around 5–6 endings (Jeremy counted 5; the usual count is 6), which is a sensible target for us.*
-- [ ] **How many Avatar State stages are there?**
-- [ ] **How do we balance difficulty when players can go anywhere?** (See Claude's suggestions.)
-- [ ] **Does Vaatu appear or taunt you before the final fight?** Through visions, corrupted spirits speaking for him?
-- [ ] **Types of scattered lore.** Which ones do we use? (List below.)
+- [x] **Can you learn from more than one master per element?** One first, more later.
+- [x] **Does your choice of master affect the ending?** Yes, through their questlines.
+- [ ] **What are the endings?** What choices lead to each one? (Lore check: every ending must leave Vaatu sealed; see below.) **Target: 5–6 endings.**
+- [x] **How many Avatar State stages are there?** Five: one per element learned, plus final mastery at the Tree of Time.
+- [x] **How do we balance difficulty when players can go anywhere?** A mix: fixed regions, scaling master trials.
+- [x] **Does Vaatu appear or taunt you before the final fight?** Yes, through visions and taunts.
+- [x] **Types of scattered lore.** Carvings and murals, past-Avatar statues, item descriptions.
 
 ## Claude's suggestions
 
@@ -54,7 +70,11 @@
                   Tree of Time: Vaatu → one of several endings
 ```
 
-**Tie Avatar State stages to *how many* elements you've learned, not *which* ones.** Because the order is free, stages should unlock at 2 elements, 3 elements and 4 elements (plus story moments). Every route then gets the same power curve.
+**Avatar State stages unlock by *how many* elements you've learned, not *which* ones.** Decided: stage 1 at your 1st element, stages 2–4 at your 2nd, 3rd and 4th, and stage 5 as final mastery at the Tree of Time. Because the order is free, every route gets the same power curve.
+
+### Is the difficulty mix harder to balance?
+
+Your question from the Quest Board. A little: you balance fixed regions *and* scaling trials, instead of just one. It stays manageable if **every number lives in data, not code**: enemy health, damage, trial scaling and XP costs all go in one set of tuning files (in Unity these are called ScriptableObjects). Changing difficulty is then editing values in the editor, with no programming. This is now a project rule in `CLAUDE.md`.
 
 ### Balancing an open order
 
