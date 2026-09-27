@@ -26,7 +26,7 @@
 - [ ] **Who are the masters?** Names, personalities, where they live, what their trial is. (Draft roster in Claude's suggestions.)
 - [ ] **Can you learn from more than one master per element?** Just one (a real choice), or several on a second playthrough / late in the game?
 - [ ] **Does your choice of master affect the ending?**
-- [ ] **What are the endings?** What choices lead to each one? (Lore check: every ending must leave Vaatu sealed; see below.)
+- [ ] **What are the endings?** What choices lead to each one? (Lore check: every ending must leave Vaatu sealed; see below.) *Reference from the planning session: Elden Ring has around 5–6 endings (Jeremy counted 5; the usual count is 6), which is a sensible target for us.*
 - [ ] **How many Avatar State stages are there?**
 - [ ] **How do we balance difficulty when players can go anywhere?** (See Claude's suggestions.)
 - [ ] **Does Vaatu appear or taunt you before the final fight?** Through visions, corrupted spirits speaking for him?

@@ -17,3 +17,4 @@ Reference reading lives in [`knowledge/`](knowledge/README.md).
 Rough notes and ideas that feed into the docs above:
 
 - [David's Plans](David's%20Plans/README.md): lore, story, classes, stats, levelling, loot, bosses, combat
+- [Transcribed Notes](Transcribed%20Notes/): transcripts and summaries of planning conversations

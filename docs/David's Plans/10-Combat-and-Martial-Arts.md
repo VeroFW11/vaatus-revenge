@@ -17,15 +17,25 @@
 - When Aang unlocked [Sonam's staff](https://avatar.fandom.com/wiki/Sonam%27s_staff) on the [lion turtle islands](https://avatar.fandom.com/wiki/Lion_turtle_islands), his movement was based on a **fa jin** technique.
 - **[Pro-bending](https://avatar.fandom.com/wiki/Pro-bending)** draws heavily on aerial acrobatic martial arts, alongside MMA/UFC-style fighting.
 
+**From the planning session with Jeremy (27 Sep, [transcript](../Transcribed%20Notes/2026-09-27-Planning-Session-Bending-and-Elden-Ring.md)):**
+- **Not Elden Ring's spell system.** Elden Ring casts spells through equipped seals and wands, which doesn't suit Avatar's martial-arts feel. Look at **Black Myth: Wukong** and the **Batman** games for inspiration instead.
+- **Element switching on the D-pad:** each direction is an element, and the **same buttons and combos do that element's moves**.
+- **Each element has its own dodge.** Airbending ties into movement and dodging.
+- Combat should feel **grounded and martial, like a real fight (a UFC-like feel)**.
+- **Concern:** modifier-heavy inputs (hold a bumper + press a button) and directional dodge combos could be near-impossible to perform while switching elements quickly.
+- **Plan: prototype and playtest the controls.** Changing controls and movesets should be quick to try in the engine.
+
 ## Things to decide
 
-- [ ] **Is Toph's style its own path?** E.g. an earthbending sub-tree or a separate "blind bandit" stance with seismic sense.
+- [x] **Is Toph's style its own path?** Yes: seismic sense is taught by its own earth master (the badgermole hermit, see [02](02-Storyline.md)), and it works as a see-through-walls toggle.
 - [ ] **Where does fa jin fit?** A charged power strike, a perfect-timing bonus, or an Avatar State move?
 - [x] ~~Does pro-bending appear?~~ **No.** Pro-bending is from Korra's era, thousands of years after ours (see [01](01-Lore-and-Universe.md)). Its acrobatic/MMA influence could still shape how some human fighters move, without the sport itself.
-- [ ] **Toph's style without Toph.** Toph isn't born yet, but in canon the first earthbenders learned from badgermoles, who "see" through vibration. So a seismic-sense, Southern Praying Mantis style can exist as an ancient badgermole technique.
+- [x] **Toph's style without Toph.** Solved: it's an ancient badgermole technique. The first earthbenders learned from badgermoles, who "see" through vibration.
 - [ ] **How do we get authentic animation?** See the pipeline options below.
 - [ ] **Combat basics.** Light attack, heavy attack, dodge, block/parry, lock-on, like Elden Ring?
-- [ ] **Switching elements mid-fight.** A stance button, element wheel, or combos that mix elements?
+- [x] **Switching elements mid-fight.** **D-pad:** one direction per element, and the same buttons do the chosen element's moves. *(To be confirmed by playtesting.)*
+- [x] **Dodging.** **Each element has its own dodge.** Airbending blends into movement.
+- [ ] **Dodge inputs.** A simple dodge button (the dodge changes with your element), or direction + button for different dodges? Prototype both and playtest.
 - [ ] **Avatar State in combat.** A temporary power mode with a meter?
 
 ## Claude's suggestions

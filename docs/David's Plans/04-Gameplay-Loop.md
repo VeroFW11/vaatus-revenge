@@ -19,11 +19,18 @@ What makes the Elden Ring loop work, and what we want:
 - **Campfires** make enemy aggro disappear, replenish you, and let you level up with runes.
 - **Attention to detail** in the map and the fighting mechanics.
 
+**From the planning session with Jeremy (27 Sep, [transcript](../Transcribed%20Notes/2026-09-27-Planning-Session-Bending-and-Elden-Ring.md)):**
+- The loop in Jeremy's words: the game puts a big thing in front of you, and your job is to go into a huge world and find the things to beat it with.
+- There's a main story, but **most of the game is optional challenges along the way**.
+- Exploration nearly always gives a reward, **but the reward doesn't always suit your build** (e.g. a strength weapon when you're running dexterity).
+- **Elden Ring's opening as a model:** Limgrave has lots of optional dungeons to explore before the main path (Margit → Stormveil Castle → Godrick → Liurnia → Raya Lucaria → Red Wolf → Rennala). Players who explore first are stronger for the main bosses.
+
 ## Things to decide
 
 - [ ] **The loop in one line.** Draft: *explore → find a campfire → fight → die → recover what you lost → level up → go further.*
 - [ ] **"Nothing gets explained" vs. new players.** Elden Ring still teaches through level design (a safe first enemy, a hint message, a visible path). How do we teach without explaining?
-- [ ] **Open world or connected zones?** Elden Ring is open-world with dungeons. Dark Souls is one interconnected map. Which suits us, especially while we're building the first region?
+- [x] **Open world or connected zones?** **Open world with optional dungeons, like Elden Ring**: the free element order and hidden masters need it, and the Limgrave model was discussed as the one to follow.
+- [ ] **Should exploration rewards always suit your build?** Elden Ring's don't. Do we accept that, or weight rewards towards the player's elements?
 - [ ] **Travel.** On foot, by sky bison, air glider, fast-travel between campfires?
 - [ ] **What rewards exploration?** List reward types: artifacts, loot, masters, lore, secret bosses, shortcuts. (Decided: masters must be found, and lore is scattered across the map. See [02 Storyline](02-Storyline.md).)
 

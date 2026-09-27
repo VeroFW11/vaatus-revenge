@@ -30,6 +30,14 @@ An overview of the style behind airbending: circle walking, evasive footwork, co
 - [ ] Reference videos of each style: basic forms, stances, key strikes (Tai Chi, Hung Gar, Southern Praying Mantis, Northern Shaolin, Baguazhang, fa jin)
 - [ ] Behind-the-scenes material on the show's martial arts consultant, Sifu Kisu
 
+## Reference games
+
+Games that came up as inspiration (see the [27 Sep planning session](../Transcribed%20Notes/2026-09-27-Planning-Session-Bending-and-Elden-Ring.md)):
+
+- **Elden Ring.** The core loop, runes and death penalty, open world with optional dungeons, and multiple endings. Its seals/wands spell system is **not** the model for bending.
+- **Batman: Arkham series.** "Detective mode": a toggle that shows enemies through walls. The model for **seismic sense**.
+- **Black Myth: Wukong.** A souls-like with martial-arts-style combat and abilities on buttons. Closer to how bending should feel than Elden Ring's spells.
+
 ## Other sections (to fill)
 
 Game-dev workflow · souls-like combat design · level/open-world design · Unity · Blender → Unity pipeline · animation · UI/UX

@@ -20,6 +20,14 @@
 - **Flight**
 - Possibly **brand-new bending styles** of our own
 
+**From the planning session with Jeremy (27 Sep, [transcript](../Transcribed%20Notes/2026-09-27-Planning-Session-Bending-and-Elden-Ring.md)):**
+- Sub-bending is learned from **masters**, grouped by lineage:
+  - **Fire:** dragon lineage, lightning, combustion, fire jets and heat control
+  - **Water:** healing, ice combat, bloodbending, plantbending, spirit purification
+  - **Earth:** metalbending, seismic sense
+- **Seismic sense lets you see people through walls**, like the "detective mode" toggle in the Batman games.
+- **Avatar-only abilities you have to learn and master:** **spirit bending**, and **energybending**, the ability to take someone's bending away (as Aang did to Ozai).
+
 ## Things to decide
 
 - [ ] **What does each stat do?** Fill in the table below.
@@ -31,7 +39,10 @@
 - [x] **How do metalbending and bloodbending fit the lore?** Option C: lost Avatar-only techniques.
 - [ ] **How does the Avatar learn metal and blood?** With no masters for them, where do they come from? (Ideas below.)
 - [ ] **Which new bending styles do we invent?** They need to fit the "lost ancient art" rule below.
-- [ ] **Full list of sub-bending styles.** Canon so far: lightning, combustion, lava, sand, seismic sense, plant, healing, flight, energybending. Plus metal and blood if we find a lore-safe way.
+- [x] **Full list of sub-bending styles.** Confirmed in the planning session: Fire: dragon lineage, lightning, combustion, fire jets/heat control. Water: healing, ice, plant, spirit purification, blood. Earth: seismic sense, metal (plus sand and lava from the master roster in [02](02-Storyline.md)). Air: see the roster in [02](02-Storyline.md). Avatar-only: spirit bending, energybending, metal, blood.
+- [x] **How does seismic sense work?** A toggle that reveals enemies through walls, like Batman's detective mode.
+- [ ] **Bloodbending is listed under water, but it's Avatar-only.** It stays in the water tree but is **discovered, never taught by a master**, so it stays consistent with the option C rule. Confirm?
+- [ ] **Air sub-bending wasn't covered in the session.** Confirm the air masters in [02](02-Storyline.md): classic, bison forms, spiritual, flight.
 
 ## Claude's suggestions
 
@@ -59,7 +70,8 @@ Fire tree          Air tree           Water tree         Earth tree
 
                  Avatar State tree
          (unlocked in story stages, see 02 Storyline)
-         └ Energybending (the lion turtles' original art)
+         ├ Spirit bending (Avatar-only)
+         └ Energybending: take away an enemy's bending (Avatar-only; the lion turtles' original art)
 ```
 
 ### Lore check on the bending styles I want
