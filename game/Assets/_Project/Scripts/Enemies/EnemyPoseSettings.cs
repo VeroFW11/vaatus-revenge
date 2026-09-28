@@ -30,13 +30,14 @@ namespace VaatusRevenge
 
         [Header("Sword hand (fighter space from the feet: x right, y up, z forward)")]
         public Vector3 SlashWindUp = new Vector3(0.42f, 1.62f, -0.05f);
-        public Vector3 SlashStrike = new Vector3(-0.3f, 1.2f, 0.62f);
+        [Tooltip("Strikes end fully extended so the blade shows the attack's reach (keep them in step with the moves' Range).")]
+        public Vector3 SlashStrike = new Vector3(-0.25f, 1.22f, 0.72f);
         [Tooltip("Every second strike of a combo swings back the other way.")]
-        public Vector3 BackhandStrike = new Vector3(0.55f, 1.3f, 0.55f);
+        public Vector3 BackhandStrike = new Vector3(0.52f, 1.3f, 0.68f);
         public Vector3 OverheadWindUp = new Vector3(0.12f, 2.0f, -0.15f);
-        public Vector3 OverheadStrike = new Vector3(0.08f, 0.85f, 0.72f);
+        public Vector3 OverheadStrike = new Vector3(0.08f, 0.88f, 0.8f);
         public Vector3 ThrustWindUp = new Vector3(0.22f, 1.42f, 0.12f);
-        public Vector3 ThrustStrike = new Vector3(0.12f, 1.38f, 0.95f);
+        public Vector3 ThrustStrike = new Vector3(0.12f, 1.38f, 1.0f);
 
         [Header("Body lean in degrees (+ forward, - back)")]
         public float SlashWindUpLean = -5f;
