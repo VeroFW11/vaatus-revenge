@@ -172,8 +172,9 @@ namespace VaatusRevenge.Core
             insideTick = true;
             try
             {
-                // Events raised between frames (ReceiveHit, OnParried...) are delivered first.
-                events.AddRange(pendingEvents);
+                // Events raised between frames (ReceiveHit, OnParried...) are delivered first. (A plain loop:
+                // List.AddRange allocates a temporary array in Unity's class library.)
+                for (int i = 0; i < pendingEvents.Count; i++) events.Add(pendingEvents[i]);
                 pendingEvents.Clear();
 
                 if (!(dt > 0f) || float.IsInfinity(dt))
@@ -223,7 +224,8 @@ namespace VaatusRevenge.Core
             bool jumpPressed = Pressed(input.Jump, ref jumpHeld);
             bool skillPressed = Pressed(input.Skill, ref skillHeld);
             bool healPressed = Pressed(input.Heal, ref healHeld);
-            if (Pressed(input.Guard, ref guardHeld)) guardPressPending = true;
+            bool guardPressed = Pressed(input.Guard, ref guardHeld);
+            if (guardPressed) guardPressPending = true;
 
             bool dodgePressed = input.Dodge.Pressed || (input.Dodge.Held && !dodgeButton.IsHeld);
             bool dodgeTap = dodgeButton.Update(dodgePressed, input.Dodge.Released, input.Dodge.Held, dt,
@@ -238,6 +240,9 @@ namespace VaatusRevenge.Core
             if (lightPressed) buffer.Push(PlayerCommand.Light, clock);
             if (jumpPressed) buffer.Push(PlayerCommand.Jump, clock);
             if (dodgeTap) buffer.Push(PlayerCommand.Dodge, clock);
+            // Guard isn't buffered (it's held), but pressing it is still the latest intention: an attack pressed
+            // earlier must not fire the moment the guard goes up and knock it straight back down.
+            if (guardPressed && !dodgeTap) buffer.Clear();
         }
 
         // A press is the Pressed flag, or "held now but not last frame" (covers a skipped frame).

@@ -70,7 +70,7 @@ namespace VaatusRevenge.Core
 
             Vector3 stick = Directions.CameraRelative(moveStick, world.CameraYaw);
             float stickLength = stick.Length();
-            dodgeIsBackstep = stickLength <= tuning.StickDeadzone;
+            dodgeIsBackstep = stickLength <= Math.Max(tuning.StickDeadzone, Epsilon);
             dodgeDirection = dodgeIsBackstep ? -Forward : stick / stickLength;
             dodgeDistance = Math.Max(0f, dodgeIsBackstep ? dodge.BackstepDistance : dodge.Distance);
             // Not locked on: face where you dash. Locked on: keep facing the target (a strafe dodge).

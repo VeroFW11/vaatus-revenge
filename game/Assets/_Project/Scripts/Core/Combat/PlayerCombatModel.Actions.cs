@@ -211,10 +211,11 @@ namespace VaatusRevenge.Core
                 // If the combo window reaches past the end of the move (e.g. its recovery was tuned shorter),
                 // a light press shortly after it ends, or one already queued, still continues the chain.
                 bool wasLight = attackKind == PlayerAttackKind.Light;
+                bool queued = buffer.Locked && buffer.Command == PlayerCommand.Light;
                 int next = (chainIndex + 1) % Math.Max(1, ChainLength);
                 float grace = Math.Max(0f, move.ComboWindowEnd - move.TotalDuration);
                 FinishAction();
-                if (wasLight)
+                if (wasLight && (grace > 0f || queued))
                 {
                     chainGraceUntil = clock + grace;
                     chainGraceNext = next;
@@ -426,8 +427,12 @@ namespace VaatusRevenge.Core
 
         void AdvanceAction(float dt, in PlayerWorldState world)
         {
+            actionStep = Vector3.Zero;
             if (!action.IsRunning) return;
             action.Advance(dt);
+            // Worked out before the action gets a chance to end this frame, so its last slice of movement
+            // (the end of a dash or lunge) is never lost, whatever the frame rate.
+            actionStep = ActionStep(world);
             switch (state)
             {
                 case PlayerState.Attacking: UpdateAttack(world); break;

@@ -49,6 +49,7 @@ namespace VaatusRevenge.Core
         float sinceHit;
         float staggerDuration;
         PushMotion knockback;
+        Vector3 actionStep;           // this frame's lunge movement, worked out before the attack can end
 
         EnemyAttackData currentAttack;
         int currentAttackId;
@@ -131,7 +132,7 @@ namespace VaatusRevenge.Core
             insideTick = true;
             try
             {
-                events.AddRange(pendingEvents);
+                for (int i = 0; i < pendingEvents.Count; i++) events.Add(pendingEvents[i]);   // no AddRange: it allocates in Unity
                 pendingEvents.Clear();
                 if (!(dt > 0f) || float.IsInfinity(dt)) return MakeResult();   // paused / frozen: nothing advances
 
@@ -224,7 +225,7 @@ namespace VaatusRevenge.Core
             }
             float range = RangeTo(world);
             if (!aggro && range <= tuning.AggroRange && !world.TargetHidden) BecomeAggro();
-            else if (aggro && range > tuning.LoseAggroRange) LoseAggro();
+            else if (aggro && range > Math.Max(tuning.LoseAggroRange, tuning.AggroRange)) LoseAggro();
         }
 
         void BecomeAggro()
@@ -473,9 +474,11 @@ namespace VaatusRevenge.Core
 
         void AdvanceAction(float dt, in EnemyWorldState world)
         {
+            actionStep = Vector3.Zero;
             if (state == EnemyState.Attacking && currentAttack != null)
             {
                 action.Advance(dt);
+                actionStep = LungeStep(world);
                 UpdateAttack(world);
             }
             else if (state == EnemyState.Staggered)
@@ -504,7 +507,6 @@ namespace VaatusRevenge.Core
                     // Tracking during the telegraph only.
                     if (!committed && world.HasTarget)
                         facingYaw = LocomotionRules.Turn(facingYaw, yawToTarget, currentAttack.Move.TrackingTurnRate, dt);
-                    displacement = LungeStep(world);
                     break;
                 case EnemyState.Staggered:
                 case EnemyState.Dead:
@@ -517,7 +519,8 @@ namespace VaatusRevenge.Core
                         facingYaw = LocomotionRules.Turn(facingYaw, Directions.YawOf(desiredVelocity, facingYaw), tuning.TurnRate, dt);
                     break;
             }
-            displacement += knockback.Step(dt);
+            displacement += actionStep + knockback.Step(dt);
+            actionStep = Vector3.Zero;
             if (world.Grounded) verticalVelocity = -tuning.GroundStickSpeed;
             else verticalVelocity = LocomotionRules.ApplyGravity(verticalVelocity, tuning.Gravity, 0f, dt);
             lastVelocity = moveVelocity + displacement / dt + new Vector3(0f, verticalVelocity, 0f);
@@ -664,6 +667,7 @@ namespace VaatusRevenge.Core
         public void Reset(float newFacingYaw)
         {
             if (state == EnemyState.Attacking) ExitAttack();
+            if (state == EnemyState.Staggered) Emit(EnemyEventType.StaggerEnded);
             spawnYaw = Angles.Wrap180(newFacingYaw);
             ResetState();
             Emit(EnemyEventType.Reset);
@@ -687,6 +691,7 @@ namespace VaatusRevenge.Core
             verticalVelocity = 0f;
             lastVelocity = Vector3.Zero;
             knockback.Stop();
+            actionStep = Vector3.Zero;
             sinceHit = 0f;
             AttackTimer = 0f;
             Array.Clear(cooldowns, 0, cooldowns.Length);

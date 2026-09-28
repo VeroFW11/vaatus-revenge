@@ -264,6 +264,26 @@ namespace VaatusRevenge.Tests
         }
 
         [Test]
+        public void GuardPressedAfterABufferedAttackWins()
+        {
+            // Light, a queued follow-up light, then guard pressed at the defensive cancel point: the guard is the
+            // latest intention, so the queued attack must not fire and knock the guard down.
+            var d = new PlayerDriver();
+            MoveData jab = d.Model.MoveSet.LightChain[0];
+            d.Step(Pad.Light);
+            d.Run(3);
+            d.Step(Pad.Light);
+            int cancelFrame = d.FramesToReach(jab.DodgeCancelAt);
+            d.Run(cancelFrame - d.Frame - 1);
+            Assert.IsTrue(d.Model.BufferedCommandQueued, "the follow-up was queued in the combo window");
+            d.Step(Pad.Guard);
+            Assert.AreEqual(PlayerState.Guarding, d.Model.State);
+            d.Run(30, Pad.Guard);
+            Assert.AreEqual(1, d.Count(PlayerEventType.AttackStarted));
+            Assert.AreEqual(PlayerState.Guarding, d.Model.State);
+        }
+
+        [Test]
         public void HealIsCommittedAndTheChargeIsUsedOnlyAtTheApplyTime()
         {
             var d = new PlayerDriver();

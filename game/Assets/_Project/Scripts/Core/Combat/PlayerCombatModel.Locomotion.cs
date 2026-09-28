@@ -26,6 +26,7 @@ namespace VaatusRevenge.Core
         float sprintTime;
         bool sprintExhausted;         // ran dry while sprinting: sprint returns at SprintResumeStamina
         PushMotion knockback;
+        Vector3 actionStep;           // this frame's dash or lunge movement, in metres (see AdvanceAction)
 
         void ResetLocomotion(float newFacingYaw)
         {
@@ -41,6 +42,7 @@ namespace VaatusRevenge.Core
             sprintTime = 0f;
             sprintExhausted = false;
             knockback.Stop();
+            actionStep = Vector3.Zero;
         }
 
         // The direction the player is aiming right now: the stick (camera-relative) if pushed, else the
@@ -48,7 +50,7 @@ namespace VaatusRevenge.Core
         public float GetAimYaw(Vector2 move, float cameraYaw)
         {
             Vector3 stick = Directions.CameraRelative(move, cameraYaw);
-            return stick.Length() > tuning.StickDeadzone ? Directions.YawOf(stick, facingYaw) : facingYaw;
+            return stick.Length() > Math.Max(tuning.StickDeadzone, Epsilon) ? Directions.YawOf(stick, facingYaw) : facingYaw;
         }
 
         // ---------------------------------------------------------------- ground, jump, fall
@@ -166,7 +168,7 @@ namespace VaatusRevenge.Core
         {
             Vector3 stick = Directions.CameraRelative(moveStick, world.CameraYaw);
             float stickLength = stick.Length();
-            bool hasStick = stickLength > tuning.StickDeadzone;
+            bool hasStick = stickLength > Math.Max(tuning.StickDeadzone, Epsilon);   // never divide by a zero stick
             Vector3 stickDir = hasStick ? stick / stickLength : Vector3.Zero;
             bool locked = world.HasLockTarget;
             float lockYaw = locked ? YawTowards(world.Position, world.LockTargetPosition) : facingYaw;
@@ -212,24 +214,17 @@ namespace VaatusRevenge.Core
                         float aimYaw = AttackAimYaw(world, hasStick, stickDir, lockYaw);
                         facingYaw = LocomotionRules.Turn(facingYaw, aimYaw, currentMove.TrackingTurnRate, dt);
                     }
-                    if (state == PlayerState.Attacking) displacement = LungeStep(world);
                     break;
                 }
                 case PlayerState.Dodging:
-                {
                     moveVelocity = Vector3.Zero;
-                    DodgeProfile dodge = Dodge;
-                    float before = MotionCurves.WindowProgress(action.PreviousTime, 0f, dodge.Duration, dodge.DashEaseOut);
-                    float after = MotionCurves.WindowProgress(action.Time, 0f, dodge.Duration, dodge.DashEaseOut);
-                    displacement = dodgeDirection * (dodgeDistance * (after - before));
                     if (locked) facingYaw = LocomotionRules.Turn(facingYaw, lockYaw, tuning.TurnRate, dt);
                     break;
-                }
                 default:   // Plunging, Staggered, Dead: no control
                     moveVelocity = Vector3.Zero;
                     break;
             }
-            displacement += knockback.Step(dt);
+            displacement += actionStep + knockback.Step(dt);
 
             if (state == PlayerState.Plunging && !plungeLanded) verticalVelocity = plungeFalling ? -Plunge.FallSpeed : 0f;
             else if (grounded) verticalVelocity = -tuning.GroundStickSpeed;   // hug the ground (slopes, steps)
@@ -258,6 +253,19 @@ namespace VaatusRevenge.Core
         float YawTowards(Vector3 from, Vector3 to)
         {
             return Directions.YawOf(Directions.Flatten(to - from), facingYaw);   // on top of it: keep facing
+        }
+
+        // Movement the running action itself causes this frame: the dash of a dodge or an attack's lunge.
+        Vector3 ActionStep(in PlayerWorldState world)
+        {
+            if (state == PlayerState.Dodging)
+            {
+                DodgeProfile dodge = Dodge;
+                float before = MotionCurves.WindowProgress(action.PreviousTime, 0f, dodge.Duration, dodge.DashEaseOut);
+                float after = MotionCurves.WindowProgress(action.Time, 0f, dodge.Duration, dodge.DashEaseOut);
+                return dodgeDirection * (dodgeDistance * (after - before));
+            }
+            return state == PlayerState.Attacking ? LungeStep(world) : Vector3.Zero;
         }
 
         // The attack's forward step for this frame (linear over the lunge window), stopping short of the target.
