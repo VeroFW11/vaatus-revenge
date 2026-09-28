@@ -238,6 +238,7 @@ Builds against the factory and HUD APIs above while they're being written, then 
 - URP materials: shader `"Universal Render Pipeline/Lit"` (colour `_BaseColor`, emission `_EmissionColor` + keyword `_EMISSION`) or `"Universal Render Pipeline/Unlit"` (`_BaseColor`). Cache materials; don't create one per frame. Use `MaterialPropertyBlock` or shared materials for flashes.
 - Use `Time.deltaTime` for gameplay, `Time.unscaledDeltaTime` for camera input, UI and time-scale timers. Guard `dt <= 0` (paused) everywhere.
 - Every `Gamepad.SetMotorSpeeds` must have a matching reset (`ResetHaptics`) on stop, disable and quit.
+- **Domain reload is off** in this project (Project Settings > Editor > Enter Play Mode Options: domain and scene reload disabled, for fast Play). Static fields keep their values from the previous Play session, so every static field (registries, `Instance`, caches, static events) must be reset in a `[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]` method, and `Instance` must be cleared in `OnDisable`/`OnDestroy`.
 - **All gameplay numbers in tuning data.** The only numbers allowed in code are defaults inside tuning classes and seed factories, maths constants and tiny epsilons.
 
 **Style**

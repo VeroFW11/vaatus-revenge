@@ -79,6 +79,15 @@ namespace VaatusRevenge
             if (wasActive) OnEnable();
         }
 
+        // This project turns off domain reload (Enter Play Mode Options), so static fields survive from one
+        // Play session to the next. Clear the registry at the start of every session.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics()
+        {
+            All.Clear();
+            Player = null;
+        }
+
         void OnEnable()
         {
             if (!All.Contains(this)) All.Add(this);
