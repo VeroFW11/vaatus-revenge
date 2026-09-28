@@ -374,7 +374,7 @@ namespace VaatusRevenge.CombatSim
                 int swaps = 0, backs = 0;
                 bool was = false;
                 for (int f = 0; f < 60; f++) s.Step(new Pad());
-                for (int f = 0; f < 240; f++)
+                for (int f = 0; f < 360; f++)
                 {
                     Vector2 stick = f < 150 ? new Vector2(0f, 1f) : new Vector2(-1f, 0f);
                     s.Step(new Pad { Move = stick });
@@ -386,7 +386,7 @@ namespace VaatusRevenge.CombatSim
                 }
                 float step = 0f;
                 for (int i = 1; i < offs.Count; i++) step = Math.Max(step, Math.Abs(offs[i] - offs[i - 1]));
-                t.Row("along the wall (" + gap + " m from the player's centre), then away from it", swaps, backs, Out.N(offs.Min(), 2) + " .. " + Out.N(offs.Max(), 2) + " m", Out.N(step, 3) + " m");
+                t.Row("along the wall (" + gap + " m from the player's centre) for 2.5 s, then 3.5 s away from it", swaps, backs, Out.N(offs.Min(), 2) + " .. " + Out.N(offs.Max(), 2) + " m", Out.N(step, 3) + " m");
             }
             {
                 var s = CamSession(o, new CameraTuning(), SimLevel.SandboxArena(), new Vector3(14.5f, 0f, -27f), 0f);
