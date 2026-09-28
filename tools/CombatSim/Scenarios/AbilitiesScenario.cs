@@ -143,7 +143,6 @@ namespace VaatusRevenge.CombatSim
             return pad;
         }
 
-        static int faJinHold;
         static Pad FaJinLoop(Session s, int f)
         {
             PlayerCombatModel m = s.Model;
@@ -169,6 +168,7 @@ namespace VaatusRevenge.CombatSim
                         var s = new Session(Preset.Fluid, o.Fps, SimLevel.Empty());
                         EnemyTuning cb = EnemyTuning.CreateCrossbowman();
                         cb.AttackIntervalMin = cb.AttackIntervalMax = 1000f;   // never shoots back
+                        cb.AggroRange = 40f;                                  // aware at every distance tested
                         cb.KeepAwayMin = d - 3f;
                         cb.KeepAwayMax = d + 3f;
                         if (!strafing) cb.StrafeSpeed = 0f;
@@ -208,14 +208,18 @@ namespace VaatusRevenge.CombatSim
                 var s = DummySession(o, out SimEnemy d);
                 if (locked) s.World.LockOn.ForceLock(d);
                 for (int f = 0; f < (int)(6 * o.Fps); f++) s.Step(new Pad { Light = f % 6 < 2 });
+                int settle = 0;
+                while (s.Model.State != PlayerState.Locomotion && settle < 120) { s.Step(new Pad()); settle++; }
                 float peak = s.Model.Momentum;
                 for (int f = 0; f < (int)(1.0 * o.Fps); f++) s.Step(new Pad { Move = s.StickToward(-Directions.Flatten(d.Feet - s.Player.Feet)) });
-                t.Row("6 s mashing, then walk away 1.0 s (" + (locked ? "locked on" : "not locked on") + ")", Out.N(s.Model.Momentum, 0) + " (from " + Out.N(peak, 0) + ")", "x" + Out.N(s.Model.MomentumMultiplier, 2));
+                t.Row("6 s mashing, wait for the move to end (" + settle + " f), then walk away 1.0 s (" + (locked ? "locked on" : "not locked on") + ")", Out.N(s.Model.Momentum, 0) + " (from " + Out.N(peak, 0) + ")", "x" + Out.N(s.Model.MomentumMultiplier, 2));
             }
             {
                 var s = DummySession(o, out SimEnemy d);
                 s.World.LockOn.ForceLock(d);
                 for (int f = 0; f < (int)(6 * o.Fps); f++) s.Step(new Pad { Light = f % 6 < 2 });
+                int settle = 0;
+                while (s.Model.State != PlayerState.Locomotion && settle < 120) { s.Step(new Pad()); settle++; }
                 float peak = s.Model.Momentum;
                 for (int f = 0; f < 20; f++) s.Step(new Pad { Dodge = f < 2 });
                 t.Row("6 s mashing, then one backstep while locked on", Out.N(s.Model.Momentum, 0) + " (from " + Out.N(peak, 0) + ")", "x" + Out.N(s.Model.MomentumMultiplier, 2));
@@ -308,7 +312,7 @@ namespace VaatusRevenge.CombatSim
                 if (expectedActive >= 0 && f > expectedActive - leadFrames && f < expectedActive - leadFrames + 12) pad.Move = Vector2.Zero;
                 s.Step(pad);
                 Metrics m = s.World.Metrics;
-                if (m.PerfectDodges > 0) result = "P";
+                if (m.PerfectEvadeOutcomes > 0) result = "P";
                 else if (m.HitsTaken > 0) result = "H";
                 else if (m.Evades > 0) result = "e";
                 else if (activeFrame >= 0 && f > activeFrame + 40) result = ".";

@@ -57,7 +57,7 @@ namespace VaatusRevenge.CombatSim
             SimPlayer p = world.Player;
             if (p == null) return;
             Orbit.Snap(p.Feet, p.Yaw, CameraTuning.DefaultPitch);
-            Orbit.UpdateDistance(ProbeWalls(), 0f);
+            ApplyCollision(0f);
             Apply();
             snapPending = false;
         }
@@ -166,44 +166,85 @@ namespace VaatusRevenge.CombatSim
         }
 
         // ---------------------------------------------------------------- ThirdPersonCameraRig.LateUpdate
+        const float ProbeSkin = 0.02f;   // ThirdPersonCameraRig.ProbeSkin
+
         public void LateUpdate(in PlayerInputFrame input, float realDt, float gameDt)
         {
             SimPlayer p = world.Player;
             if (p == null) return;
             if (snapPending) SnapBehindPlayer();
-            var camInput = new OrbitCameraInput { Look = input.Look, LookIsMouse = input.LookIsMouse };
+            var camInput = new OrbitCameraInput { Look = input.Look, LookIsMouse = input.LookIsMouse, SwapShoulder = input.SwapShoulder.Pressed };
             if (Target != null)
             {
                 camInput.HasLockTarget = true;
                 camInput.LockTargetPoint = Target.AimPoint;
             }
+            if (CameraTuning.CombatPullback > 0f || CameraTuning.CombatPullbackHeight > 0f)
+            {
+                camInput.HasFoe = FindNearestFoe(p, out float foeDistance);
+                camInput.NearestFoeDistance = foeDistance;
+            }
             Orbit.UpdatePivot(p.Feet, gameDt);
             Orbit.UpdateOrientation(in camInput, realDt);
-            LastProbe = ProbeWalls();
-            Orbit.UpdateDistance(LastProbe, realDt);
+            ApplyCollision(realDt);
             Apply();
+        }
+
+        // Mirror of ThirdPersonCameraRig.ApplyCollision: up from the pivot, out to the shoulder, back from it.
+        void ApplyCollision(float realDt)
+        {
+            float radius = Math.Max(0f, CameraTuning.CollisionRadius);
+            Orbit.UpdateLift(Probe(Orbit.Pivot, new Vector3(0f, 1f, 0f), Orbit.DesiredLift, radius), realDt);
+            Vector3 lifted = Orbit.LiftedPivot;
+            Vector3 right = Orbit.Right;
+            float reach = Orbit.ShoulderReach;
+            LastFreeRight = Probe(lifted, right, reach, radius);
+            LastFreeLeft = Probe(lifted, -right, reach, radius);
+            Orbit.UpdateShoulder(LastFreeRight, LastFreeLeft, realDt);
+            LastProbe = Probe(Orbit.ShoulderPoint, -Orbit.Forward, Orbit.DesiredDistance, radius);
+            Orbit.UpdateDistance(LastProbe, realDt);
+        }
+
+        public float LastFreeRight { get; private set; }
+        public float LastFreeLeft { get; private set; }
+
+        float Probe(Vector3 origin, Vector3 direction, float length, float radius)
+        {
+            if (!(length > 0f)) return 0f;
+            if (radius <= 0.001f)
+            {
+                float d = RayDistance(origin, direction, length);
+                return d < length ? Math.Max(0f, d - ProbeSkin) : length;
+            }
+            if (world.Level.IsOverlapping(origin, radius))
+            {
+                float d = RayDistance(origin, direction, length);
+                return d < length ? Math.Max(0f, d - radius - ProbeSkin) : length;
+            }
+            return world.Level.SphereCast(origin, radius, direction, length, out float hit) ? Math.Max(0f, hit - ProbeSkin) : length;
+        }
+
+        bool FindNearestFoe(SimPlayer p, out float distance)
+        {
+            distance = float.PositiveInfinity;
+            float best = float.PositiveInfinity;
+            IReadOnlyList<SimFighter> all = world.Fighters;
+            for (int i = 0; i < all.Count; i++)
+            {
+                SimFighter f = all[i];
+                if (f == p || f.Team == p.Team || !f.IsAlive || !f.Active) continue;
+                float sq = Vector3.DistanceSquared(f.Feet, p.Feet);
+                if (sq < best) best = sq;
+            }
+            if (float.IsPositiveInfinity(best)) return false;
+            distance = (float)Math.Sqrt(best);
+            return true;
         }
 
         void Apply()
         {
             CameraPosition = Orbit.CameraPosition;
             CameraForward = Orbit.Forward;
-        }
-
-        float ProbeWalls()
-        {
-            float length = Orbit.DesiredDistance;
-            if (!(length > 0f)) return 0f;
-            Vector3 pivot = Orbit.Pivot;
-            Vector3 back = -Orbit.Forward;
-            float radius = Math.Max(0f, CameraTuning.CollisionRadius);
-            if (radius <= 0.001f) return RayDistance(pivot, back, length);
-            if (world.Level.IsOverlapping(pivot, radius))
-            {
-                float d = RayDistance(pivot, back, length);
-                return d < length ? Math.Max(0f, d - radius) : length;
-            }
-            return world.Level.SphereCast(pivot, radius, back, length, out float hit) ? hit : length;
         }
 
         float RayDistance(Vector3 from, Vector3 dir, float length)

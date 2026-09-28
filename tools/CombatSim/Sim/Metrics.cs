@@ -12,7 +12,7 @@ namespace VaatusRevenge.CombatSim
         public double GameSeconds, RealSeconds;
         public float DamageTaken, DamageDealt;
         public int HitsTaken, HitsLanded, Kills, PlayerDeaths;
-        public int Dodges, PerfectDodges, Evades, Deflects, Blocks, GuardBreaks, DeflectWhiffs;
+        public int Dodges, PerfectDodges, Evades, PerfectEvadeOutcomes, Deflects, Blocks, GuardBreaks, DeflectWhiffs;
         public int PlayerStaggers, EnemyStaggers, EnemyStaggerImmuneHits;
         public int AttacksStarted, FaJins, Counters, Heals, HealsInterrupted, Plunges, SprintAttacks, Skills;
         public double StaminaEmptySeconds, InvulnerableSeconds, HitstopRealSeconds, SlowMoRealSeconds;
@@ -114,7 +114,11 @@ namespace VaatusRevenge.CombatSim
                     HitsTakenBy.TryGetValue(key, out int n);
                     HitsTakenBy[key] = n + 1;
                 }
-                else if (result.Outcome == HitOutcome.Evaded || result.Outcome == HitOutcome.PerfectEvade) Evades++;
+                else if (result.Outcome == HitOutcome.Evaded || result.Outcome == HitOutcome.PerfectEvade)
+                {
+                    Evades++;
+                    if (result.Outcome == HitOutcome.PerfectEvade) PerfectEvadeOutcomes++;
+                }
             }
             else if (hit.SourceTeam == Team.Player && result.Outcome == HitOutcome.Hit)
             {
@@ -146,6 +150,7 @@ namespace VaatusRevenge.CombatSim
         public double MaxBufferedAge;
         public string MaxBufferedAgeCommand = "";
         public int Checks;
+        int windowOpenFrames;
 
         void Fail(SimWorld w, string rule, string detail)
         {
@@ -266,10 +271,16 @@ namespace VaatusRevenge.CombatSim
                 }
                 if (!m.IsAttackActive && openPlayerWindows.Count > 0 && m.State != PlayerState.Attacking)
                 {
-                    // A window can only be open while attacking; closed ones report AttackActiveEnd in the same Tick.
-                    Fail(w, "player-window-left-open", "state " + m.State);
-                    openPlayerWindows.Clear();
+                    // A hit taken between ticks (stagger, death) closes the window with an event delivered on the next
+                    // Tick, so allow two frames before calling it a leak.
+                    windowOpenFrames++;
+                    if (windowOpenFrames > 2)
+                    {
+                        Fail(w, "player-window-left-open", "state " + m.State);
+                        openPlayerWindows.Clear();
+                    }
                 }
+                else windowOpenFrames = 0;
             }
             for (int i = 0; i < w.Enemies.Count; i++)
             {

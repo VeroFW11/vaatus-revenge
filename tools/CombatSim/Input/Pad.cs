@@ -9,7 +9,7 @@ namespace VaatusRevenge.CombatSim
     // into PlayerInputFrames with Pressed/Released edges, exactly like PlayerInputReader.ReadButton does.
     public struct Pad
     {
-        public bool Light, Heavy, Dodge, Jump, Guard, Skill, Heal, LockOn;
+        public bool Light, Heavy, Dodge, Jump, Guard, Skill, Heal, LockOn, SwapShoulder;
         public Vector2 Move;
         public Vector2 Look;
         public bool LookIsMouse;
@@ -36,6 +36,7 @@ namespace VaatusRevenge.CombatSim
                 Skill = ButtonState.From(now.Skill, last.Skill),
                 Heal = ButtonState.From(now.Heal, last.Heal),
                 LockOn = ButtonState.From(now.LockOn, last.LockOn),
+                SwapShoulder = ButtonState.From(now.SwapShoulder, last.SwapShoulder),
                 SwitchTargetDelta = now.SwitchTarget,
                 ElementSelect = now.Element
             };
