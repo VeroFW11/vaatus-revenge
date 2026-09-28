@@ -48,6 +48,7 @@ namespace VaatusRevenge.Core
         Vector3 desiredVelocity;
         float sinceHit;
         float staggerDuration;
+        float staggerImmunityRemaining;  // counts down after a stagger ends; poise can't break meanwhile
         PushMotion knockback;
         Vector3 actionStep;           // this frame's lunge movement, worked out before the attack can end
 
@@ -104,6 +105,8 @@ namespace VaatusRevenge.Core
         public bool HoldsToken => tokens != null && tokens.IsHolding(OwnerId);
         public float AttackCooldownRemaining => Math.Max(0f, AttackTimer);
         public float StaggerRemaining => state == EnemyState.Staggered ? Math.Max(0f, staggerDuration - action.Time) : 0f;
+        // True while staggered and for StaggerImmunity seconds afterwards: hits still hurt but can't re-stagger.
+        public bool IsStaggerImmune => state == EnemyState.Staggered || staggerImmunityRemaining > 0f;
 
         public AttackPhase Phase
         {
@@ -199,6 +202,7 @@ namespace VaatusRevenge.Core
         void UpdateTimers(float dt)
         {
             poise.Tick(dt, tuning.MaxPoise, tuning.PoiseRegenDelay, tuning.PoiseRegenRate);
+            if (state != EnemyState.Staggered) staggerImmunityRemaining = Math.Max(0f, staggerImmunityRemaining - dt);
             EnsureCooldowns();
             for (int i = 0; i < cooldowns.Length; i++) cooldowns[i] = Math.Max(0f, cooldowns[i] - dt);
             if (state != EnemyState.Attacking) AttackTimer = Math.Max(0f, AttackTimer - dt);
@@ -487,6 +491,7 @@ namespace VaatusRevenge.Core
                 action.MarkChecked();
                 if (action.Time < staggerDuration) return;
                 action.Stop();
+                staggerImmunityRemaining = Math.Max(0f, tuning.StaggerImmunity);
                 Emit(EnemyEventType.StaggerEnded);
                 SetState(aggro ? EnemyState.Circle : EnemyState.Idle);
             }
@@ -583,7 +588,9 @@ namespace VaatusRevenge.Core
                 Die();
                 return result;
             }
-            if (!HasHyperArmor && poise.Damage(hit.PoiseDamage, tuning.MaxPoise))
+            // During a stagger and its immunity window, poise takes no damage at all, so the next stagger
+            // needs a fresh build-up once the enemy is fighting back.
+            if (!HasHyperArmor && !IsStaggerImmune && poise.Damage(hit.PoiseDamage, tuning.MaxPoise))
             {
                 result.PoiseBroken = true;
                 Stagger(tuning.StaggerDuration);
@@ -685,6 +692,7 @@ namespace VaatusRevenge.Core
             aggro = false;
             health = MaxHealth;
             poise.Reset(tuning.MaxPoise);
+            staggerImmunityRemaining = 0f;
             facingYaw = spawnYaw;
             moveVelocity = Vector3.Zero;
             desiredVelocity = Vector3.Zero;

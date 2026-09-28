@@ -25,6 +25,10 @@ TEMPLATES = {
 
 
 def main():
+    unknown = [a for a in sys.argv[1:] if a.startswith("-") and a != "--dry-run"]
+    if unknown:
+        print(__doc__.strip())
+        return 0 if unknown[0] in ("-h", "--help") else 2
     dry = "--dry-run" in sys.argv
     only = [pathlib.Path(a).resolve() for a in sys.argv[1:] if not a.startswith("--")]
     created, skipped = [], []

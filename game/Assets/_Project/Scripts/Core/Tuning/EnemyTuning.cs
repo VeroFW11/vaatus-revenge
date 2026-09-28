@@ -22,6 +22,9 @@ namespace VaatusRevenge.Core
         public float PoiseRegenDelay = 2f;           // poise refills this long after the last poise damage...
         public float PoiseRegenRate = 60f;           // ...at this many points per second
         public float StaggerDuration = 1.0f;         // stunned time when poise breaks
+        public float StaggerImmunity = 1.5f;         // after a stagger ends, poise can't be broken again for this long,
+                                                     // so a combo earns one stagger and the enemy gets to swing back
+                                                     // (no stun-locking; decided 28 Sep). Deflects still stagger.
         public float ParriedStaggerDuration = 1.3f;  // stunned time when the player deflects this enemy's attack
         public float KnockbackTime = 0.15f;          // a clean hit's knockback distance is covered over this long
 
