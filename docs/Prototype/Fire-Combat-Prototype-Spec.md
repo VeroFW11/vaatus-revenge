@@ -27,7 +27,7 @@ The goal is a grey-box sandbox where you can **fight with firebending and judge 
 | Switch target | Flick right stick while locked | Mouse wheel, or Z / C |
 | Element select | D-pad (Up = Fire; others "not learned yet") | 1-4 |
 
-Sandbox keys (keyboard): **F1** controls overlay, **F3** debug panel (state, frame data, buffered input, i-frames), **F2** slow motion (0.25x) for studying moves, **F5** Fluid preset, **F6** Punishing preset, **R** respawn player, **T** reset enemies, **Esc** release the mouse / pause.
+Sandbox keys (keyboard): **F1** controls overlay, **F3** debug panel (state, frame data, buffered input, i-frames), **F2** slow motion (0.25x) for studying moves, **F5** Fluid preset, **F6** Punishing preset, **F4** respawn player, **T** reset enemies, **Esc** release the mouse / pause (R is Heal).
 
 ### Moves (Fire, based on Northern Shaolin)
 
