@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Runs the Unity EditMode tests for the pure-C# core (game/Assets/_Project/Tests/EditMode)
+    with plain NUnit, so they can run without Unity. The same files run in Unity's Test Runner.
+    NUnit is pinned to 3.x because Unity ships an NUnit 3 build (Assert.AreEqual etc.).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <AssemblyName>VaatusRevenge.Tests.EditMode</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(GameRoot)Tests/EditMode/**/*.cs" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="NUnit" Version="3.14.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
+    <ProjectReference Include="../UnityCompileCheck/Core.Check.csproj" />
+  </ItemGroup>
+</Project>

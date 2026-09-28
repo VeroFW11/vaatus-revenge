@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Headless playtest harness: drives the game's real combat core (Scripts/Core) with scripted
+    and bot inputs at 60 fps, without Unity, and reports timings, exploits and bugs.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>CombatSim</AssemblyName>
+    <RootNamespace>VaatusRevenge.CombatSim</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="**/*.cs" />
+    <ProjectReference Include="../UnityCompileCheck/Core.Check.csproj" />
+  </ItemGroup>
+</Project>

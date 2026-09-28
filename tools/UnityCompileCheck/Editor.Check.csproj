@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Mirrors VaatusRevenge.Editor.asmdef: editor-only tools under _Project/Editor/. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>VaatusRevenge.Editor</AssemblyName>
+    <RootNamespace>VaatusRevenge.EditorTools</RootNamespace>
+    <DefineConstants>$(DefineConstants);UNITY_2021_3_OR_NEWER;UNITY_6000_0_OR_NEWER;ENABLE_INPUT_SYSTEM;UNITY_EDITOR</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(GameRoot)Editor/**/*.cs" />
+    <PackageReference Include="UnityEngine.Modules" Version="2021.3.33" />
+    <PackageDownload Include="Unity3D.SDK" Version="[2021.1.14.1]" />
+    <Reference Include="UnityEditor">
+      <HintPath>$(NuGetPackageRoot)unity3d.sdk/2021.1.14.1/lib/UnityEditor.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <ProjectReference Include="Core.Check.csproj" />
+    <ProjectReference Include="Game.Check.csproj" />
+    <ProjectReference Include="InputSystemStub/InputSystemStub.csproj" />
+  </ItemGroup>
+</Project>

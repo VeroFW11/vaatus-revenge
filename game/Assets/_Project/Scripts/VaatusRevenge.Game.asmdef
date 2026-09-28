@@ -1,0 +1,17 @@
+{
+    "name": "VaatusRevenge.Game",
+    "rootNamespace": "VaatusRevenge",
+    "references": [
+        "VaatusRevenge.Core",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
