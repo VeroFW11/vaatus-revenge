@@ -9,7 +9,7 @@ namespace VaatusRevenge
     // The rows are built once (and rebuilt only if a name shown in them changes), so drawing allocates nothing.
     public sealed class HudControlsOverlay
     {
-        const int GameplayRows = 12;
+        const int GameplayRows = 13;
         const int SandboxRows = 7;
 
         static readonly Color PanelColor = new Color(0.035f, 0.035f, 0.045f, 0.92f);
@@ -116,6 +116,7 @@ namespace VaatusRevenge
             int r = 0;
             Row(ref r, "Move", "Left stick", "W A S D");
             Row(ref r, "Camera", "Right stick", "Mouse");
+            Row(ref r, "Swap camera shoulder", "L3 (click left stick)", "V");
             Row(ref r, "Light attack (3-hit chain)", "RB / R1", "Left mouse");
             Row(ref r, "Heavy attack (hold, release on the flash)", "RT / R2", "Right mouse");
             Row(ref r, "Dodge (tap) / Sprint (hold)", "B / Circle", "Left Shift");

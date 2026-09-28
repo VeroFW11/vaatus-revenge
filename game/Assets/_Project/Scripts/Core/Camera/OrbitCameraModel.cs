@@ -6,25 +6,34 @@ namespace VaatusRevenge.Core
     // What the orbit camera needs from the outside world each frame, besides where the player is.
     public struct OrbitCameraInput
     {
-        public Vector2 Look;            // PlayerInputFrame.Look: stick -1..1, or mouse pixels this frame
-        public bool LookIsMouse;        // PlayerInputFrame.LookIsMouse
-        public bool HasLockTarget;      // locked on? Look is then ignored and the camera frames the target
-        public Vector3 LockTargetPoint; // the lock-on target's aim point, world space
+        public Vector2 Look;             // PlayerInputFrame.Look: stick -1..1, or mouse pixels this frame
+        public bool LookIsMouse;         // PlayerInputFrame.LookIsMouse
+        public bool HasLockTarget;       // locked on? Look is then ignored and the camera frames the target
+        public Vector3 LockTargetPoint;  // the lock-on target's aim point, world space
+        public bool SwapShoulder;        // PlayerInputFrame.SwapShoulder.Pressed: flip to the other shoulder
+        public bool HasFoe;              // is any living foe around? (for the combat pull-back)
+        public float NearestFoeDistance; // metres from the player to the nearest living foe, when HasFoe
     }
 
-    // The third-person camera's rules in plain C#: orbit angles, free look, lock-on framing, pivot follow and
-    // collision distance. The Unity rig (ThirdPersonCameraRig) feeds it and copies the result onto a Camera;
-    // keeping the maths here means it can be unit-tested and used by the headless harness.
+    // The third-person camera's rules in plain C#: orbit angles, free look, lock-on framing, pivot follow,
+    // over-the-shoulder offset, combat pull-back and collision. The Unity rig (ThirdPersonCameraRig) feeds it and
+    // copies the result onto a Camera; keeping the maths here means it can be unit-tested and used by the
+    // headless harness.
     //
-    // The camera orbits a pivot at the player's neck: it sits Distance metres behind the pivot along the look
-    // direction given by Yaw and Pitch, so the player always stays at the centre of the screen.
+    // The camera orbits a pivot at the player's neck. It looks past one shoulder (like Marvel's Spider-Man 2): the
+    // ShoulderPoint is the pivot moved ShoulderOffset metres to the camera's right (negative = left) and Lift metres
+    // up, and the camera sits Distance metres behind that point along the look direction given by Yaw and Pitch.
+    // So the fighter stays at a fixed spot to one side of the screen. With a zero offset and no lift the shoulder
+    // point IS the pivot: the classic centred framing.
     //
     // Call once per frame, in this order:
-    //   1. UpdatePivot(playerFeet, gameDeltaTime)    - follow the player
-    //   2. UpdateOrientation(input, realDeltaTime)   - free look or lock-on framing
-    //   3. probe for walls from Pivot along -Forward, up to DesiredDistance
-    //   4. UpdateDistance(freeDistance, realDeltaTime)
-    // then place the camera at CameraPosition looking along Forward.
+    //   1. UpdatePivot(playerFeet, gameDeltaTime)         - follow the player
+    //   2. UpdateOrientation(input, realDeltaTime)        - free look or lock-on framing, shoulder side, combat framing
+    //   3. UpdateLift(freeUp, realDeltaTime)              - optional: room above Pivot, up to DesiredLift
+    //   4. UpdateShoulder(freeRight, freeLeft, realDt)    - optional: room either side of LiftedPivot, up to ShoulderReach
+    //   5. UpdateDistance(freeDistance, realDeltaTime)    - room behind ShoulderPoint along -Forward, up to DesiredDistance
+    // then place the camera at CameraPosition looking along Forward. Steps 3 and 4 are optional: skip them (as the
+    // headless harness does) and the camera simply ignores walls at the side and above.
     public sealed class OrbitCameraModel
     {
         // A frame hitch (loading, a breakpoint) never turns the camera further than this much stick time,
@@ -36,6 +45,8 @@ namespace VaatusRevenge.Core
         const float RecenterDoneDegrees = 0.1f;
         // Hard pitch limit whatever the tuning says: looking exactly straight up or down is degenerate.
         const float PitchLimit = 89f;
+        // Offsets smaller than this count as "centred" (no shoulder, so nothing to swap).
+        const float CentredOffset = 1e-4f;
 
         CameraTuning tuning;
         bool hasPivot;
@@ -44,16 +55,35 @@ namespace VaatusRevenge.Core
         float recenterYaw;
         float yawVelocity;
         float pitchVelocity;
+        float baseDistance;          // the free/locked distance, smoothed (DesiredDistance adds the combat pull-back)
         float desiredDistanceVelocity;
         float distanceVelocity;
         Vector3 pivotVelocity;
+
+        // Shoulder: which side the player picked, whether a wall swapped it for now, and the offset itself.
+        int chosenSide = 1;          // +1 = the side the tuning's offset points to, -1 = the other one (swap button)
+        bool autoSwapped;
+        float swapBackTimer;
+        float wantedOffset;          // eased towards side x size; walls not considered yet
+        float wantedOffsetVelocity;
+        bool shoulderProbed;         // UpdateShoulder has been called at least once, so walls are known
+        float shoulderRoom;          // free space on the offset's side, eased like the distance (in fast, out slowly)
+        float shoulderRoomVelocity;
+        float probedOffset;          // the offset after walls
+
+        // Combat framing: 0 = normal, 1 = fully pulled back.
+        float combatBlend;
+        float combatVelocity;
+        float combatHold;            // seconds left before the view may narrow again
+        bool liftProbed;
+        float probedLift;
+        float liftVelocity;
 
         public OrbitCameraModel(CameraTuning tuning)
         {
             Tuning = tuning;
             Pitch = ClampPitch(this.tuning.DefaultPitch);
-            DesiredDistance = WantedDistance();
-            Distance = DesiredDistance;
+            ResetFraming();
         }
 
         // Swappable at any time (e.g. a different tuning asset); the camera keeps its current framing.
@@ -67,15 +97,46 @@ namespace VaatusRevenge.Core
         public float Pitch { get; private set; }           // degrees, positive looks down
         public Vector3 Pivot { get; private set; }         // the point the camera orbits (player's neck, smoothed)
         public float DesiredDistance { get; private set; } // where the camera would like to sit, before walls
-        public float Distance { get; private set; }        // where it actually sits after collision
+        public float Distance { get; private set; }        // where it actually sits after collision (from ShoulderPoint)
         public bool IsLockedOn => locked;
         public bool IsRecentering => recentering;
         public bool HasPivot => hasPivot;
 
         public Vector3 Forward => Directions.FromYawPitch(Yaw, Pitch);
-        public Vector3 CameraPosition => Pivot - Forward * Distance;
+        // Flat right-hand direction of the camera: the direction the shoulder offset is measured along.
+        public Vector3 Right => Directions.RightFromYaw(Yaw);
+
+        // Shoulder offset in metres along Right (+ = over the right shoulder, fighter left of centre), before walls...
+        public float DesiredShoulderOffset => wantedOffset;
+        // ...and after walls (the same as DesiredShoulderOffset if UpdateShoulder is never called).
+        public float ShoulderOffset => shoulderProbed ? probedOffset : wantedOffset;
+        // +1 = over the right shoulder, -1 = the left, 0 = centred. Includes a swap caused by a wall.
+        public int ShoulderSide
+        {
+            get
+            {
+                float target = TargetOffset();
+                return target > 0f ? 1 : (target < 0f ? -1 : 0);
+            }
+        }
+        public bool IsShoulderAutoSwapped => autoSwapped;
+        // How far to probe either side of LiftedPivot for UpdateShoulder: the largest offset the tuning can ask for,
+        // or the current one if that's bigger (the offset is still easing down after a tuning change).
+        public float ShoulderReach => Math.Max(Math.Abs(wantedOffset),
+            Math.Max(Math.Abs(Finite(tuning.ShoulderOffset)), Math.Abs(Finite(tuning.LockedShoulderOffset))));
+
+        // Combat framing, 0 (none) to 1 (fully pulled back), and the height it adds before/after ceilings.
+        public float CombatFraming => combatBlend;
+        public float DesiredLift => combatBlend * Math.Max(0f, Finite(tuning.CombatPullbackHeight));
+        public float Lift => liftProbed ? probedLift : DesiredLift;
+
+        public Vector3 LiftedPivot => Pivot + new Vector3(0f, Lift, 0f);
+        // The point the camera looks past: the centre of the screen always passes through it.
+        public Vector3 ShoulderPoint => LiftedPivot + Right * ShoulderOffset;
+        public Vector3 CameraPosition => ShoulderPoint - Forward * Distance;
 
         // Cuts straight to a framing with no smoothing: game start, respawn, a new follow target.
+        // Keeps the player's chosen shoulder.
         public void Snap(Vector3 followPosition, float yaw, float pitch)
         {
             if (CameraMath.IsFinite(yaw)) Yaw = Angles.Wrap180(yaw);
@@ -84,11 +145,7 @@ namespace VaatusRevenge.Core
             pitchVelocity = 0f;
             recentering = false;
             SnapPivot(followPosition);
-            DesiredDistance = WantedDistance();
-            desiredDistanceVelocity = 0f;
-            // Starts fully out; the next UpdateDistance pulls it in instantly if a wall is in the way.
-            Distance = DesiredDistance;
-            distanceVelocity = 0f;
+            ResetFraming();
         }
 
         // Moves the pivot onto the player without smoothing, keeping the camera angles (teleports).
@@ -117,6 +174,15 @@ namespace VaatusRevenge.Core
             recentering = false;
         }
 
+        // Moves the camera to the other shoulder (smoothly, over ShoulderSmoothTime). This becomes the player's
+        // choice, so it also cancels a temporary swap a wall caused.
+        public void SwapShoulder()
+        {
+            chosenSide = -chosenSide;
+            autoSwapped = false;
+            swapBackTimer = 0f;
+        }
+
         // Step 1. followPosition is the player's feet. Uses GAME time: the player moves in game time, so
         // following in game time means the pivot freezes with the player during hitstop instead of drifting,
         // and trails by the same distance in slow motion as at full speed.
@@ -135,7 +201,7 @@ namespace VaatusRevenge.Core
             float dt = CameraMath.SafeDeltaTime(gameDeltaTime);
             if (dt <= 0f) return;
 
-            // Horizontal and vertical are smoothed separately: tight horizontally so the player stays centred,
+            // Horizontal and vertical are smoothed separately: tight horizontally so the player stays put on screen,
             // looser vertically so jumps and steps don't bob the view.
             float vx = pivotVelocity.X, vy = pivotVelocity.Y, vz = pivotVelocity.Z;
             float x = Smooth.Damp(Pivot.X, target.X, ref vx, tuning.PivotHorizontalSmoothTime, dt);
@@ -165,6 +231,8 @@ namespace VaatusRevenge.Core
         public void UpdateOrientation(in OrbitCameraInput input, float realDeltaTime)
         {
             float dt = CameraMath.SafeDeltaTime(realDeltaTime);
+            if (input.SwapShoulder) SwapShoulder();
+
             bool lockNow = input.HasLockTarget && CameraMath.IsFinite(input.LockTargetPoint);
             if (lockNow != locked)
             {
@@ -188,30 +256,54 @@ namespace VaatusRevenge.Core
                 StepRecenter(dt);
             }
 
-            DesiredDistance = Smooth.Damp(DesiredDistance, WantedDistance(), ref desiredDistanceVelocity,
-                tuning.DistanceSmoothTime, dt);
+            // Slide towards the current shoulder and offset size (swaps and lock changes ease over; never a jump).
+            wantedOffset = Smooth.Damp(wantedOffset, TargetOffset(), ref wantedOffsetVelocity, tuning.ShoulderSmoothTime, dt);
+
+            UpdateCombatFraming(input, dt);
+            baseDistance = Smooth.Damp(baseDistance, WantedDistance(), ref desiredDistanceVelocity, tuning.DistanceSmoothTime, dt);
+            DesiredDistance = baseDistance + combatBlend * Math.Max(0f, Finite(tuning.CombatPullback));
         }
 
-        // Step 4. maxDistance is how far the camera can go back from the Pivot before touching a wall this
+        // Step 3 (optional). freeUp: how far the camera's collision sphere can rise from Pivot before touching a
+        // ceiling (probe up to DesiredLift; infinity = nothing there). A ceiling wins instantly, the room comes
+        // back gently.
+        public void UpdateLift(float freeUp, float realDeltaTime)
+        {
+            float dt = CameraMath.SafeDeltaTime(realDeltaTime);
+            float wanted = DesiredLift;
+            float limit = CameraMath.IsFinite(freeUp) ? Angles.Clamp(freeUp, 0f, wanted) : wanted;
+            probedLift = EaseToLimit(probedLift, limit, ref liftVelocity, dt);
+            liftProbed = true;
+        }
+
+        // Step 4 (optional). freeRight / freeLeft: how far the collision sphere can move from LiftedPivot along
+        // Right / -Right before touching a wall (probe up to ShoulderReach; infinity = open). The offset shrinks
+        // instantly when its side is blocked, so the camera never ends up inside or behind the wall, and (if
+        // AutoSwapShoulderWhenBlocked) swaps to the other shoulder until the blocked side has cleared.
+        public void UpdateShoulder(float freeRight, float freeLeft, float realDeltaTime)
+        {
+            float dt = CameraMath.SafeDeltaTime(realDeltaTime);
+            float reach = ShoulderReach;
+            float right = CameraMath.IsFinite(freeRight) ? Angles.Clamp(freeRight, 0f, reach) : reach;
+            float left = CameraMath.IsFinite(freeLeft) ? Angles.Clamp(freeLeft, 0f, reach) : reach;
+            UpdateAutoSwap(right, left, dt);
+
+            // The room is tracked for whichever side the offset is on right now. Crossing sides can't pop,
+            // because the offset is (almost) zero at the moment it crosses.
+            float side = wantedOffset < 0f ? -1f : 1f;
+            shoulderRoom = EaseToLimit(shoulderRoom, side > 0f ? right : left, ref shoulderRoomVelocity, dt);
+            probedOffset = side * Math.Min(Math.Abs(wantedOffset), shoulderRoom);
+            shoulderProbed = true;
+        }
+
+        // Step 5. maxDistance is how far the camera can go back from the ShoulderPoint before touching a wall this
         // frame (DesiredDistance or more when nothing is in the way).
         public void UpdateDistance(float maxDistance, float realDeltaTime)
         {
             float dt = CameraMath.SafeDeltaTime(realDeltaTime);
             float limit = DesiredDistance;
             if (CameraMath.IsFinite(maxDistance)) limit = Angles.Clamp(maxDistance, 0f, DesiredDistance);
-
-            if (limit <= Distance)
-            {
-                // Pull in instantly: a camera that eased in would spend several frames inside the wall.
-                Distance = limit;
-                distanceVelocity = 0f;
-            }
-            else
-            {
-                // Ease back out, so the view doesn't pop every time a pillar stops blocking it.
-                float smoothTime = Math.Max(0f, tuning.CollisionEaseOutTime) / SmoothTimesToSettle;
-                Distance = Math.Min(limit, Smooth.Damp(Distance, limit, ref distanceVelocity, smoothTime, dt));
-            }
+            Distance = EaseToLimit(Distance, limit, ref distanceVelocity, dt);
         }
 
         // Radial response curve for a stick: magnitude^exponent, same direction. Small tilts turn slowly for
@@ -259,13 +351,16 @@ namespace VaatusRevenge.Core
         void FrameLockTarget(Vector3 targetPoint, float dt)
         {
             Vector3 toTarget = targetPoint - Pivot;
+            float horizontal = CameraMath.HorizontalLength(toTarget);
 
             // Yaw: swing round to face the target, always the short way (DampAngle). A target (almost) straight
             // above or below the pivot has no meaningful direction, so hold the yaw rather than spin.
             float deadZone = Math.Max(1e-3f, tuning.LockOnYawDeadZone);
-            if (CameraMath.HorizontalLength(toTarget) > deadZone)
+            if (horizontal > deadZone)
             {
-                float targetYaw = Directions.YawOf(toTarget, Yaw);
+                // Aim from the shoulder point, not the pivot: turning a little extra puts the target on the centre
+                // line while the fighter stays off to the side, so both are framed.
+                float targetYaw = Directions.YawOf(toTarget, Yaw) - ShoulderAimCorrection(horizontal);
                 Yaw = Angles.Wrap180(Smooth.DampAngle(Yaw, targetYaw, ref yawVelocity, tuning.LockOnYawSmoothTime, dt));
             }
             else
@@ -274,13 +369,27 @@ namespace VaatusRevenge.Core
             }
 
             // Pitch: rest at LockOnPitch, but tilt just enough that the target stays within the framing limits
-            // above/below the screen centre. Measured from the pivot, which errs on the side of tilting a little
-            // early (the camera sits behind the pivot, so the target really appears slightly nearer the centre).
-            float pitchToTarget = Directions.PitchOf(toTarget);
+            // above/below the screen centre. Measured from the shoulder point (the centre of the screen passes
+            // through it), which errs on the side of tilting a little early (the camera sits behind that point,
+            // so the target really appears slightly nearer the centre).
+            float pitchToTarget = Directions.PitchOf(targetPoint - ShoulderPoint);
             float above = Math.Max(0f, tuning.LockOnFramingAbove);
             float below = Math.Max(0f, tuning.LockOnFramingBelow);
             float desired = ClampPitch(Angles.Clamp(tuning.LockOnPitch, pitchToTarget - below, pitchToTarget + above));
             Pitch = ClampPitch(Smooth.Damp(Pitch, desired, ref pitchVelocity, tuning.LockOnPitchSmoothTime, dt));
+        }
+
+        // Degrees to turn left (right for a left shoulder) so the target sits on the screen's centre line even
+        // though the camera looks past a shoulder: sin(angle) = offset / horizontal distance. Capped, because up
+        // close the angle grows fast and would swing the camera round as the enemy steps in and out.
+        float ShoulderAimCorrection(float horizontalDistance)
+        {
+            float offset = ShoulderOffset;
+            if (offset == 0f) return 0f;
+            float maxAngle = Angles.Clamp(Finite(tuning.LockOnMaxShoulderAim), 0f, PitchLimit) * Directions.Deg2Rad;
+            float limit = (float)Math.Sin(maxAngle);
+            float sine = Angles.Clamp(offset / horizontalDistance, -limit, limit);
+            return (float)Math.Asin(sine) * Directions.Rad2Deg;
         }
 
         void StepRecenter(float dt)
@@ -297,6 +406,116 @@ namespace VaatusRevenge.Core
                 pitchVelocity = 0f;
                 recentering = false;
             }
+        }
+
+        // Spider-Man 2 widens the view in fights. A foe inside the radius starts it; it keeps going for
+        // CombatFramingReleaseDelay after the last one leaves, then eases back. Not while locked on: the locked
+        // distance and offset do the framing then.
+        void UpdateCombatFraming(in OrbitCameraInput input, float dt)
+        {
+            bool foeClose = !locked && input.HasFoe && CameraMath.IsFinite(input.NearestFoeDistance)
+                            && input.NearestFoeDistance <= Math.Max(0f, Finite(tuning.CombatFramingRadius));
+            if (foeClose) combatHold = Math.Max(0f, Finite(tuning.CombatFramingReleaseDelay));
+            else combatHold = Math.Max(0f, combatHold - dt);
+
+            float target = !locked && (foeClose || combatHold > 0f) ? 1f : 0f;
+            combatBlend = Angles.Clamp(Smooth.Damp(combatBlend, target, ref combatVelocity, tuning.CombatFramingSmoothTime, dt), 0f, 1f);
+        }
+
+        // A wall pressed against the shoulder side swaps to the other shoulder for as long as it's there, with
+        // hysteresis: swap when less than ShoulderBlockedFraction of the offset fits; swap back only once the
+        // original side has fully cleared for ShoulderSwapBackDelay (or at once if the new side is even tighter).
+        void UpdateAutoSwap(float freeRight, float freeLeft, float dt)
+        {
+            float size = Math.Abs(BaseOffset());
+            if (!tuning.AutoSwapShoulderWhenBlocked || size < CentredOffset)
+            {
+                autoSwapped = false;
+                swapBackTimer = 0f;
+                return;
+            }
+
+            float preferred = PreferredSide();
+            float freePreferred = preferred > 0f ? freeRight : freeLeft;
+            float freeOther = preferred > 0f ? freeLeft : freeRight;
+            float blocked = Angles.Clamp(Finite(tuning.ShoulderBlockedFraction), 0f, 1f) * size;
+
+            if (!autoSwapped)
+            {
+                if (freePreferred < blocked && freeOther >= blocked && freeOther > freePreferred)
+                {
+                    autoSwapped = true;
+                    swapBackTimer = 0f;
+                }
+                return;
+            }
+
+            bool preferredClear = freePreferred >= size - 1e-3f;
+            swapBackTimer = preferredClear ? swapBackTimer + dt : 0f;
+            bool clearLongEnough = preferredClear && swapBackTimer >= Math.Max(0f, Finite(tuning.ShoulderSwapBackDelay));
+            bool swappedSideTighter = freeOther < blocked && freePreferred > freeOther;
+            if (clearLongEnough || swappedSideTighter)
+            {
+                autoSwapped = false;
+                swapBackTimer = 0f;
+            }
+        }
+
+        // Walls win instantly (pull in: easing in would spend frames inside the wall); open space comes back
+        // gently (ease out, so the view doesn't pop every time a pillar stops blocking it).
+        float EaseToLimit(float current, float limit, ref float velocity, float dt)
+        {
+            if (limit <= current)
+            {
+                velocity = 0f;
+                return limit;
+            }
+            float smoothTime = Math.Max(0f, tuning.CollisionEaseOutTime) / SmoothTimesToSettle;
+            return Math.Min(limit, Smooth.Damp(current, limit, ref velocity, smoothTime, dt));
+        }
+
+        // Offset from the tuning for the current state (locked or not), with its sign: + = right shoulder.
+        float BaseOffset()
+        {
+            return Finite(locked ? tuning.LockedShoulderOffset : tuning.ShoulderOffset);
+        }
+
+        // The shoulder the player picked: the tuning's side, flipped by each press of the swap button.
+        float PreferredSide()
+        {
+            return chosenSide * (BaseOffset() < 0f ? -1f : 1f);
+        }
+
+        // Where the offset is heading: the picked shoulder (or the other one while a wall has swapped it), sized
+        // for the current state.
+        float TargetOffset()
+        {
+            float side = PreferredSide() * (autoSwapped ? -1f : 1f);
+            return side * Math.Abs(BaseOffset());
+        }
+
+        // Everything that eases (distance, shoulder, combat framing) jumps straight to its resting value.
+        void ResetFraming()
+        {
+            baseDistance = WantedDistance();
+            desiredDistanceVelocity = 0f;
+            combatBlend = 0f;
+            combatVelocity = 0f;
+            combatHold = 0f;
+            DesiredDistance = baseDistance;
+            // Starts fully out; the next UpdateDistance pulls it in instantly if a wall is in the way.
+            Distance = DesiredDistance;
+            distanceVelocity = 0f;
+
+            autoSwapped = false;
+            swapBackTimer = 0f;
+            wantedOffset = TargetOffset();
+            wantedOffsetVelocity = 0f;
+            shoulderRoom = ShoulderReach;
+            shoulderRoomVelocity = 0f;
+            probedOffset = wantedOffset;
+            probedLift = 0f;
+            liftVelocity = 0f;
         }
 
         float WantedDistance()
@@ -317,6 +536,11 @@ namespace VaatusRevenge.Core
             float high = Angles.Clamp(Math.Max(tuning.MinPitch, tuning.MaxPitch), -PitchLimit, PitchLimit);
             if (!CameraMath.IsFinite(pitch)) pitch = 0f;
             return Angles.Clamp(pitch, low, high);
+        }
+
+        static float Finite(float value)
+        {
+            return CameraMath.IsFinite(value) ? value : 0f;
         }
     }
 }

@@ -22,7 +22,8 @@ namespace VaatusRevenge
 
         // Slots for remembering each button's held state from last frame.
         const int LightSlot = 0, HeavySlot = 1, DodgeSlot = 2, JumpSlot = 3, GuardSlot = 4, SkillSlot = 5, HealSlot = 6, LockOnSlot = 7;
-        const int SlotCount = 8;
+        const int SwapShoulderSlot = 8;
+        const int SlotCount = 9;
         // Mouse movement is ignored for this many frames after the cursor is captured: some platforms report the
         // cursor's jump to the window centre as one huge movement, which would whip the camera round.
         const int MouseSettleFrames = 2;
@@ -38,7 +39,7 @@ namespace VaatusRevenge
 
         InputActionMap map;
         InputAction move, lookStick, lookMouse;
-        InputAction light, lightMouse, heavy, heavyMouse, dodge, jump, guard, skill, heal, lockOn, lockOnMouse;
+        InputAction light, lightMouse, heavy, heavyMouse, dodge, jump, guard, skill, heal, lockOn, lockOnMouse, swapShoulder;
         InputAction switchLeft, switchRight, switchScroll, releaseCursor;
         readonly InputAction[] elementActions = new InputAction[4];
         InputAction[] sharedActions;
@@ -146,6 +147,7 @@ namespace VaatusRevenge
             ButtonState skillButton = ReadButton(SkillSlot, skill, null);
             ButtonState healButton = ReadButton(HealSlot, heal, null);
             ButtonState lockOnButton = ReadButton(LockOnSlot, lockOn, mouseButtonsLive ? lockOnMouse : null);
+            ButtonState swapShoulderButton = ReadButton(SwapShoulderSlot, swapShoulder, null);
 
             Vector2 moveValue = Vector2.ClampMagnitude(move.ReadValue<Vector2>(), 1f);
             Vector2 stickLook = lookStick.ReadValue<Vector2>();
@@ -176,6 +178,7 @@ namespace VaatusRevenge
                 Skill = skillButton,
                 Heal = healButton,
                 LockOn = lockOnButton,
+                SwapShoulder = swapShoulderButton,
                 SwitchTargetDelta = ReadSwitchDelta(scroll),
                 ElementSelect = ReadElementSelect(),
             };
@@ -309,6 +312,8 @@ namespace VaatusRevenge
             heal = AddButton("Heal", "<Gamepad>/buttonWest", "<Keyboard>/r");
             lockOn = AddButton("LockOn", "<Gamepad>/rightStickPress", "<Keyboard>/tab");
             lockOnMouse = AddButton("LockOnMouse", "<Mouse>/middleButton", null);
+            // Camera only: flips the over-the-shoulder view to the other side.
+            swapShoulder = AddButton("SwapShoulder", "<Gamepad>/leftStickPress", "<Keyboard>/v");
 
             // Right-stick flicks are detected by LockOnController from Look; these are the keyboard/mouse ways.
             switchLeft = AddButton("SwitchTargetLeft", "<Keyboard>/z", null);
@@ -324,7 +329,7 @@ namespace VaatusRevenge
 
             sharedActions = new[]
             {
-                move, light, heavy, dodge, jump, guard, skill, heal, lockOn, switchLeft, switchRight,
+                move, light, heavy, dodge, jump, guard, skill, heal, lockOn, swapShoulder, switchLeft, switchRight,
                 elementActions[0], elementActions[1], elementActions[2], elementActions[3],
             };
         }

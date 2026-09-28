@@ -28,6 +28,7 @@ namespace VaatusRevenge.Core
     //   Skill     LT (L2) / E                  Heal      X (Square) / R
     //   LockOn    R3 / middle mouse or Tab     SwitchTargetDelta  mouse wheel / Z,C (stick flicks are
     //                                                              detected by the lock-on code from Look)
+    //   SwapShoulder  L3 (click left stick) / V   flip the over-the-shoulder camera to the other side
     //   ElementSelect  D-pad / 1-4
     public struct PlayerInputFrame
     {
@@ -43,6 +44,7 @@ namespace VaatusRevenge.Core
         public ButtonState Skill;
         public ButtonState Heal;
         public ButtonState LockOn;
+        public ButtonState SwapShoulder; // camera only: the gameplay rules ignore it
 
         public int SwitchTargetDelta; // -1 = previous/left, +1 = next/right, 0 = none (edge-triggered)
         public ElementId ElementSelect; // None unless a direction was pressed this frame (edge-triggered)

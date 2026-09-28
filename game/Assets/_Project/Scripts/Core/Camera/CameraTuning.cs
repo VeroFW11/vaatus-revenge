@@ -4,21 +4,47 @@ namespace VaatusRevenge.Core
 {
     // Every number the third-person camera uses. It lives inside a CameraTuningAsset, so it can be tweaked
     // in the Inspector while playing (the camera reads it every frame, so changes show up immediately).
-    // Defaults are the starting numbers from the Fire combat prototype spec: first guesses to tune by playtesting.
+    // Defaults are the over-the-shoulder camera (like Marvel's Spider-Man 2) from the Fire combat prototype spec:
+    // first guesses to tune by playtesting. CreateCentred() gives the older centred, Elden Ring-style camera
+    // with the same code, so the two framings can be compared side by side.
     // Angles are degrees, times are seconds, distances are metres.
     [Serializable]
     public class CameraTuning
     {
-        // How far the camera sits behind the pivot (a point at the player's neck).
-        public float FreeDistance = 4.0f;
-        public float LockedDistance = 4.6f;      // a little further back when locked on, to fit both fighters in
+        // How far the camera sits behind the shoulder point (the pivot at the player's neck, moved to one side).
+        public float FreeDistance = 3.2f;        // close, so the fighter reads big on screen, as in Spider-Man 2
+        public float LockedDistance = 4.0f;      // wider when locked on, to fit both fighters in. About FreeDistance +
+                                                 // CombatPullback, so locking on mid-fight doesn't jump in or out
         public float MinDistance = 1.0f;         // the free/locked distances are never closer than this. Walls can still
                                                  // push the camera closer: a close camera beats looking through a wall
         public float DistanceSmoothTime = 0.3f;  // easing between the free and locked distances
 
+        // Over the shoulder. The camera looks past one shoulder instead of straight at the fighter's back, so the
+        // fighter sits to one side and the space they're running and fighting into stays open. 0 on both offsets
+        // puts the fighter back in the middle of the screen (the centred framing).
+        public float ShoulderOffset = 0.55f;          // metres to the side; + = over the right shoulder (fighter left of centre)
+        public float LockedShoulderOffset = 0.35f;    // smaller while locked on, so the target stays readable near the centre
+        public float ShoulderSmoothTime = 0.2f;       // easing whenever the offset changes: swapping shoulders, locking on/off
+        public bool AutoSwapShoulderWhenBlocked = true; // a wall hugging the shoulder side swaps to the other shoulder
+                                                        // until it clears, instead of squashing the view against it
+        public float ShoulderBlockedFraction = 0.5f;  // that side counts as blocked when less than this share of the offset fits
+        public float ShoulderSwapBackDelay = 1.5f;    // the original side must stay clear this long before swapping back,
+                                                      // so running past a row of pillars or a broken wall doesn't flip the
+                                                      // camera back and forth
+        public float LockOnMaxShoulderAim = 15f;      // degrees: most the lock-on turn is corrected for the offset. Up close
+                                                      // the full correction grows fast and would swing the camera around
+
+        // Combat pull-back: with a foe nearby and no lock-on, the view widens so the whole fight fits, like Spider-Man 2.
+        public float CombatFramingRadius = 8f;        // a living foe this close counts as "in a fight"
+        public float CombatPullback = 0.9f;           // extra distance in a fight (0 turns the pull-back off)
+        public float CombatPullbackHeight = 0.2f;     // and this much higher, to see over the fighters
+        public float CombatFramingSmoothTime = 0.4f;  // how gently it widens and narrows (settles in about three times this)
+        public float CombatFramingReleaseDelay = 1.5f; // stays wide this long after the last foe leaves the radius, so an
+                                                       // enemy circling at the edge doesn't pump the camera in and out
+
         // The pivot the camera orbits, measured up from the player's feet.
-        public float PivotHeight = 1.55f;
-        public float PivotHorizontalSmoothTime = 0.05f; // short, so the player stays centred while running and dashing
+        public float PivotHeight = 1.6f;
+        public float PivotHorizontalSmoothTime = 0.05f; // short, so the player stays put on screen while running and dashing
         public float PivotVerticalSmoothTime = 0.18f;   // longer, so jumps and stair steps don't bob the camera
         public float PivotMaxHorizontalLag = 1.5f;      // safety net: the pivot never trails the player by more than
         public float PivotMaxVerticalLag = 1.5f;        // this, so a long fall can't drop them off screen. Hitting the
@@ -39,7 +65,7 @@ namespace VaatusRevenge.Core
         public float MouseDegreesPerPixel = 0.12f; // mouse sensitivity. Never multiplied by frame time (see OrbitCameraModel)
         public bool InvertY = false;
 
-        // Lock-on framing. The camera swings behind the player to face the target.
+        // Lock-on framing. The camera swings round behind the player to face the target.
         public float LockOnYawSmoothTime = 0.12f;  // how quickly it swings round
         public float LockOnPitch = 18f;            // resting pitch while locked on
         public float LockOnPitchSmoothTime = 0.25f;
@@ -66,5 +92,27 @@ namespace VaatusRevenge.Core
         // Camera shake (CameraShake.Add takes amplitudes of 0..1; 0.05 to 0.3 is typical).
         public float ShakeMaxAngle = 8f;           // degrees of wobble at amplitude 1
         public float ShakeFrequency = 18f;         // wobbles per second
+
+        // The default: over the shoulder, like Marvel's Spider-Man 2.
+        public static CameraTuning CreateOverTheShoulder()
+        {
+            return new CameraTuning();
+        }
+
+        // The first prototype's centred, Elden Ring-style camera: fighter in the middle of the screen, further back,
+        // no combat pull-back. Same code, just these numbers, so Jeremy can compare the two in the same fight.
+        public static CameraTuning CreateCentred()
+        {
+            return new CameraTuning
+            {
+                FreeDistance = 4.0f,
+                LockedDistance = 4.6f,
+                PivotHeight = 1.55f,
+                ShoulderOffset = 0f,
+                LockedShoulderOffset = 0f,
+                CombatPullback = 0f,
+                CombatPullbackHeight = 0f,
+            };
+        }
     }
 }

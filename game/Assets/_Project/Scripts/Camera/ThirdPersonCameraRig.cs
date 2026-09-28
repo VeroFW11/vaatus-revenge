@@ -1,16 +1,18 @@
+using System.Collections.Generic;
 using UnityEngine;
 using VaatusRevenge.Core;
 
 namespace VaatusRevenge
 {
-    // The third-person camera: orbits the player, frames the lock-on target, slides in front of walls, and
-    // plays screen shake and the sprint FOV boost. Put it on the GameObject that has the scene's Camera
-    // (it adds one if missing). Don't add a Cinemachine Brain to that camera: it would fight this rig.
+    // The third-person camera: looks over the player's shoulder (like Marvel's Spider-Man 2), frames the lock-on
+    // target, widens the view in fights, slides in front of walls, and plays screen shake and the sprint FOV
+    // boost. Put it on the GameObject that has the scene's Camera (it adds one if missing). Don't add a
+    // Cinemachine Brain to that camera: it would fight this rig.
     //
     // It runs in LateUpdate, after the player and enemies have moved in Update, so it always frames where
     // everyone is this frame (moving the camera before the player moves is the classic cause of jitter).
-    // The rules live in OrbitCameraModel (pure C#); this class feeds it input, lock-on and wall probes and
-    // copies the result onto the Camera.
+    // The rules live in OrbitCameraModel (pure C#); this class feeds it input, lock-on, nearby foes and wall
+    // probes and copies the result onto the Camera.
     //
     // Setup from code (e.g. an editor scene builder): AddComponent, then Configure(tuningAsset, playerRoot).
     [DefaultExecutionOrder(100)]
@@ -19,6 +21,9 @@ namespace VaatusRevenge
     public class ThirdPersonCameraRig : MonoBehaviour
     {
         public static ThirdPersonCameraRig Instance { get; private set; }
+
+        // Metres the collision probes stop short of a wall (a tiny safety gap, not a tuning number).
+        const float ProbeSkin = 0.02f;
 
         [Tooltip("Camera and lock-on numbers (Create > Vaatu's Revenge > Tuning > Camera). Empty = built-in defaults.")]
         [SerializeField] private CameraTuningAsset tuningAsset;
@@ -34,6 +39,8 @@ namespace VaatusRevenge
         float fovBoostTarget;
         float fovBoost;
         float fovBoostVelocity;
+        Transform followCombatantOf;
+        Combatant followCombatant;
         bool warnedNoTuning;
         bool warnedNoCamera;
         bool warnedNoTarget;
@@ -50,6 +57,8 @@ namespace VaatusRevenge
         public float SprintFovBoost => ActiveTuning.SprintFovBoost;
         // Flat forward direction of the camera, handy for camera-relative movement.
         public Vector3 PlanarForward => Directions.FromYaw(Model.Yaw).ToUnity();
+        // +1 = looking over the right shoulder, -1 = the left, 0 = centred (e.g. for a HUD hint).
+        public int ShoulderSide => Model.ShoulderSide;
 
         public CameraTuningAsset TuningAsset
         {
@@ -102,7 +111,7 @@ namespace VaatusRevenge
             bool playing = Application.isPlaying;
             // In play mode, respect walls straight away so a respawn next to one doesn't show a frame from
             // inside it. At edit time physics isn't reliable yet; the first played frame takes care of it.
-            if (playing) Model.UpdateDistance(ProbeWalls(tuning), 0f);
+            if (playing) ApplyCollision(tuning, 0f);
             ApplyToCamera(cam, tuning, 0f, playing);
         }
 
@@ -112,6 +121,12 @@ namespace VaatusRevenge
         {
             Transform target = ResolveFollowTarget();
             if (target != null) Model.BeginRecenter(target.eulerAngles.y);
+        }
+
+        // Moves the camera smoothly to the other shoulder (the L3 / V button does this through the input reader).
+        public void SwapShoulder()
+        {
+            Model.SwapShoulder();
         }
 
         // Extra field of view in degrees on top of the base FOV, eased in and out (e.g. +5 while sprinting to
@@ -165,13 +180,18 @@ namespace VaatusRevenge
             orbit.Tuning = tuning;
             if (snapPending) SnapModelBehind(target);
 
-            // Real time for anything the player controls or feels (look, lock-on swing, wall easing, FOV),
-            // so the camera stays responsive while hitstop or slow motion changes Time.timeScale.
+            // Real time for anything the player controls or feels (look, lock-on swing, shoulder, wall easing,
+            // FOV), so the camera stays responsive while hitstop or slow motion changes Time.timeScale.
             float realDt = Time.unscaledDeltaTime;
 
             PlayerInputReader reader = PlayerInputReader.Instance;
             PlayerInputFrame frame = reader != null ? reader.Frame : default(PlayerInputFrame);
-            OrbitCameraInput input = new OrbitCameraInput { Look = frame.Look, LookIsMouse = frame.LookIsMouse };
+            OrbitCameraInput input = new OrbitCameraInput
+            {
+                Look = frame.Look,
+                LookIsMouse = frame.LookIsMouse,
+                SwapShoulder = frame.SwapShoulder.Pressed,
+            };
             LockOnController lockOn = LockOnController.Instance;
             Combatant lockTarget = lockOn != null ? lockOn.Target : null;
             if (lockTarget != null)
@@ -179,43 +199,99 @@ namespace VaatusRevenge
                 input.HasLockTarget = true;
                 input.LockTargetPoint = lockTarget.AimPoint.position.ToNumerics();
             }
+            // Combat pull-back only needs the nearest foe; skip the search when it's switched off.
+            if (tuning.CombatPullback > 0f || tuning.CombatPullbackHeight > 0f)
+            {
+                float foeDistance;
+                input.HasFoe = FindNearestFoe(target, out foeDistance);
+                input.NearestFoeDistance = foeDistance;
+            }
 
             // Game time for following the player: see OrbitCameraModel.UpdatePivot for why.
             orbit.UpdatePivot(target.position.ToNumerics(), Time.deltaTime);
             orbit.UpdateOrientation(input, realDt);
-            orbit.UpdateDistance(ProbeWalls(tuning), realDt);
+            ApplyCollision(tuning, realDt);
             ApplyToCamera(cam, tuning, realDt, true);
         }
 
-        // How far the camera can back away from the pivot before its collision sphere touches level geometry.
-        // Only the environment layer counts, so fighters walking behind the player never shove the camera.
-        float ProbeWalls(CameraTuning tuning)
+        // Keeps the camera out of level geometry, in the order the camera is built: rise from the pivot (combat
+        // lift), step out to the shoulder, then back away from the shoulder point. Each probe starts where the
+        // previous one safely ended, so a wall on the shoulder side can never end up between the pivot and the
+        // camera. Only the environment layer counts, so fighters walking past never shove the camera.
+        void ApplyCollision(CameraTuning tuning, float realDt)
         {
             OrbitCameraModel orbit = Model;
-            float length = orbit.DesiredDistance;
-            if (!(length > 0f)) return 0f;
-
-            Vector3 pivot = orbit.Pivot.ToUnity();
-            Vector3 back = -orbit.Forward.ToUnity();
             float radius = Mathf.Max(0f, tuning.CollisionRadius);
+
+            orbit.UpdateLift(Probe(orbit.Pivot.ToUnity(), Vector3.up, orbit.DesiredLift, radius), realDt);
+
+            Vector3 lifted = orbit.LiftedPivot.ToUnity();
+            Vector3 right = orbit.Right.ToUnity();
+            float reach = orbit.ShoulderReach;
+            float freeRight = Probe(lifted, right, reach, radius);
+            float freeLeft = Probe(lifted, -right, reach, radius);
+            orbit.UpdateShoulder(freeRight, freeLeft, realDt);
+
+            orbit.UpdateDistance(Probe(orbit.ShoulderPoint.ToUnity(), -orbit.Forward.ToUnity(), orbit.DesiredDistance, radius), realDt);
+        }
+
+        // How far the camera's collision sphere can travel from origin along direction before touching level
+        // geometry. Returns length when nothing is in the way. Stops a hair (ProbeSkin) short of what it hits, so
+        // the next probe in the chain starts in free space instead of already touching the wall.
+        static float Probe(Vector3 origin, Vector3 direction, float length, float radius)
+        {
+            if (!(length > 0f)) return 0f;
             RaycastHit hit;
             if (radius <= 0.001f)
             {
-                return Physics.Raycast(pivot, back, out hit, length, Layers.EnvironmentMask, QueryTriggerInteraction.Ignore)
-                    ? hit.distance
+                return Physics.Raycast(origin, direction, out hit, length, Layers.EnvironmentMask, QueryTriggerInteraction.Ignore)
+                    ? Mathf.Max(0f, hit.distance - ProbeSkin)
                     : length;
             }
-            if (Physics.CheckSphere(pivot, radius, Layers.EnvironmentMask, QueryTriggerInteraction.Ignore))
+            if (Physics.CheckSphere(origin, radius, Layers.EnvironmentMask, QueryTriggerInteraction.Ignore))
             {
-                // The pivot's sphere already touches something (e.g. it trailed round a pillar corner). SphereCast
-                // can't see colliders it starts inside, so use a thin ray and stay one radius clear of the hit.
-                return Physics.Raycast(pivot, back, out hit, length, Layers.EnvironmentMask, QueryTriggerInteraction.Ignore)
-                    ? Mathf.Max(0f, hit.distance - radius)
+                // The sphere already touches something where it starts (e.g. the pivot trailed round a pillar
+                // corner). SphereCast can't see colliders it starts inside, so use a thin ray and stay one radius
+                // clear of the hit.
+                return Physics.Raycast(origin, direction, out hit, length, Layers.EnvironmentMask, QueryTriggerInteraction.Ignore)
+                    ? Mathf.Max(0f, hit.distance - radius - ProbeSkin)
                     : length;
             }
-            return Physics.SphereCast(pivot, radius, back, out hit, length, Layers.EnvironmentMask, QueryTriggerInteraction.Ignore)
-                ? hit.distance
+            return Physics.SphereCast(origin, radius, direction, out hit, length, Layers.EnvironmentMask, QueryTriggerInteraction.Ignore)
+                ? Mathf.Max(0f, hit.distance - ProbeSkin)
                 : length;
+        }
+
+        // Distance from the player's feet to the nearest living fighter who isn't on their side (enemies and
+        // neutral targets such as the sparring dummy). False when there's none.
+        bool FindNearestFoe(Transform target, out float distance)
+        {
+            distance = float.PositiveInfinity;
+            Combatant self = FollowCombatant(target);
+            Team team = self != null ? self.Team : Team.Player;
+            Vector3 feet = target.position;
+            float nearestSquared = float.PositiveInfinity;
+            List<Combatant> all = Combatant.All;
+            for (int i = 0; i < all.Count; i++)
+            {
+                Combatant fighter = all[i];
+                if (fighter == null || fighter == self || fighter.Team == team || !fighter.IsAlive) continue;
+                float squared = (fighter.Feet - feet).sqrMagnitude;
+                if (squared < nearestSquared) nearestSquared = squared;
+            }
+            if (float.IsPositiveInfinity(nearestSquared)) return false;
+            distance = Mathf.Sqrt(nearestSquared);
+            return true;
+        }
+
+        Combatant FollowCombatant(Transform target)
+        {
+            if (followCombatantOf != target)
+            {
+                followCombatantOf = target;
+                followCombatant = target != null ? target.GetComponent<Combatant>() : null;
+            }
+            return followCombatant;
         }
 
         void ApplyToCamera(Camera cam, CameraTuning tuning, float realDt, bool withShake)

@@ -6,7 +6,9 @@ using VaatusRevenge.Core;
 namespace VaatusRevenge.Tests
 {
     // The orbit camera's rules: look input, pitch limits, lock-on framing, pivot follow and wall collision.
-    // These are the things a player feels every second, so they're pinned down here.
+    // These are the things a player feels every second, so they're pinned down here. They run on the centred
+    // (Elden Ring-style) numbers, CameraTuning.CreateCentred(), which also proves that a zero shoulder offset
+    // gives exactly the first prototype's camera. The over-the-shoulder behaviour is in CameraShoulderTests.
     public class CameraOrbitModelTests
     {
         const float Frame = 1f / 60f;
@@ -14,7 +16,7 @@ namespace VaatusRevenge.Tests
 
         static OrbitCameraModel NewCamera(CameraTuning tuning = null, float yaw = 0f, float pitch = 12f)
         {
-            var camera = new OrbitCameraModel(tuning ?? new CameraTuning());
+            var camera = new OrbitCameraModel(tuning ?? CameraTuning.CreateCentred());
             camera.Snap(Vector3.Zero, yaw, pitch);
             return camera;
         }
@@ -99,7 +101,10 @@ namespace VaatusRevenge.Tests
         [Test]
         public void MisorderedPitchLimitsStillClamp()
         {
-            var camera = NewCamera(new CameraTuning { MinPitch = 50f, MaxPitch = -10f });
+            CameraTuning misordered = CameraTuning.CreateCentred();
+            misordered.MinPitch = 50f;
+            misordered.MaxPitch = -10f;
+            var camera = NewCamera(misordered);
             Run(camera, Stick(0f, -1f), 3f);
             Assert.That(camera.Pitch, Is.EqualTo(50f).Within(1e-4f));
         }
@@ -115,7 +120,9 @@ namespace VaatusRevenge.Tests
             mouseCamera.UpdateOrientation(Mouse(0f, 10f), Frame);
             Assert.That(mouseCamera.Pitch, Is.EqualTo(12f - 1.2f).Within(1e-4f), "mouse up looks up");
 
-            var inverted = NewCamera(new CameraTuning { InvertY = true });
+            CameraTuning invertY = CameraTuning.CreateCentred();
+            invertY.InvertY = true;
+            var inverted = NewCamera(invertY);
             inverted.UpdateOrientation(Stick(0f, 1f), Frame);
             Assert.Greater(inverted.Pitch, 12f);
         }
@@ -237,7 +244,7 @@ namespace VaatusRevenge.Tests
         {
             // Player on a 3 m platform, enemy on the ground 2 m out from the edge.
             var feet = new Vector3(0f, 3f, 0f);
-            var camera = new OrbitCameraModel(new CameraTuning());
+            var camera = new OrbitCameraModel(CameraTuning.CreateCentred());
             camera.Snap(feet, 0f, 12f);
             var target = new Vector3(0f, 1.3f, 2f);
             Run(camera, LockOn(target), 2f, feet);
@@ -368,7 +375,7 @@ namespace VaatusRevenge.Tests
         public void AJumpStaysInsideTheLagCapSoItNeverJolts()
         {
             // 1.25 m jump (gravity 28) while running: the pivot's own smoothing handles it, the cap is never hit.
-            var tuning = new CameraTuning();
+            CameraTuning tuning = CameraTuning.CreateCentred();
             var camera = NewCamera(tuning);
             var feet = Vector3.Zero;
             float upSpeed = (float)Math.Sqrt(2.0 * 28.0 * 1.25);
@@ -388,7 +395,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void ALongFallNeverDropsThePlayerOffScreen()
         {
-            var tuning = new CameraTuning();
+            CameraTuning tuning = CameraTuning.CreateCentred();
             var camera = NewCamera(tuning);
             var feet = Vector3.Zero;
             for (int i = 0; i < 60; i++)
