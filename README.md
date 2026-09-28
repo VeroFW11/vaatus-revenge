@@ -23,7 +23,7 @@ You wake as the Avatar in a world torn between the Spirit World and the physical
 4. Install [Blender](https://www.blender.org/download/) (free).
 5. Install Unity Hub + the Unity version listed below (once chosen).
 
-**Unity version:** _TBD — everyone must use the exact same version._
+**Unity version:** **6000.6.3f1** (Unity 6, URP). Everyone must use this exact version. Install it through Unity Hub, then open the `game/` folder as a project.
 
 ## How we work together
 
