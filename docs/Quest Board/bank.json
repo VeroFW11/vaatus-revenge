@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-27",
+  "updated": "2026-09-28",
   "questions": [
     {
       "id": "a01",
@@ -1627,7 +1627,8 @@
           "label": "Several majors per region",
           "detail": ""
         }
-      ]
+      ],
+      "status": "recorded"
     },
     {
       "id": "f02",
@@ -1711,7 +1712,8 @@
           "detail": ""
         }
       ],
-      "mvp": 2
+      "mvp": 2,
+      "status": "recorded"
     },
     {
       "id": "f05",
@@ -1839,24 +1841,29 @@
       "xp": 20,
       "type": "choice",
       "title": "Animation pipeline",
-      "prompt": "How do we get martial-arts animation?",
-      "context": "",
+      "prompt": "Where should our martial-arts animation come from?",
+      "context": "Blender is in every option: characters are modelled, rigged and cleaned up there. This is only about where the movement comes from. Full pros and cons are in doc 10. For the combat prototype, Mixamo alone is enough.",
       "options": [
         {
           "k": "A",
-          "label": "Mixamo basics + custom bending",
-          "detail": "The realistic start.",
-          "rec": true
+          "label": "Mixamo",
+          "detail": "Free and instant; good walks, rolls, punches and kicks. Generic: no real Tai Chi or Hung Gar, and other games use the same moves."
         },
         {
           "k": "B",
           "label": "Film ourselves + AI mocap",
-          "detail": "Rokoko Vision, DeepMotion."
+          "detail": "Real martial-arts motion (Rokoko Vision, DeepMotion). Someone must perform well, and results need cleanup in Blender."
         },
         {
           "k": "C",
           "label": "Hand-animate in Blender",
-          "detail": ""
+          "detail": "Total control and anime-style exaggeration. By far the slowest and hardest for beginners."
+        },
+        {
+          "k": "D",
+          "label": "Hybrid",
+          "detail": "Mixamo for movement, mocap for martial arts, Blender for bending flourishes and cleanup.",
+          "rec": true
         }
       ],
       "mvp": 2
@@ -1884,7 +1891,8 @@
           "detail": ""
         }
       ],
-      "mvp": 1
+      "mvp": 1,
+      "status": "recorded"
     },
     {
       "id": "f11",
@@ -1909,7 +1917,8 @@
           "detail": "Different dodges per input."
         }
       ],
-      "mvp": 1
+      "mvp": 1,
+      "status": "recorded"
     },
     {
       "id": "f12",
@@ -1975,7 +1984,8 @@
           "detail": "Better visuals out of the box; Blueprints are hard for Claude to edit."
         }
       ],
-      "mvp": 1
+      "mvp": 1,
+      "status": "recorded"
     },
     {
       "id": "p03",
@@ -2172,7 +2182,38 @@
           "detail": "Circling and evasion. Needs good lock-on first."
         }
       ],
-      "mvp": 1
+      "mvp": 1,
+      "status": "recorded"
+    },
+    {
+      "id": "f14",
+      "realm": "fire",
+      "doc": "10 Combat and Martial Arts",
+      "lead": "Jeremy",
+      "xp": 30,
+      "type": "choice",
+      "mvp": 1,
+      "title": "Dodge feel",
+      "prompt": "How fluid vs. punishing should dodging be?",
+      "context": "David wants Spider-Man 2's fluid dodging. Elden Ring's dodges are costly and committed. All the numbers will be tunable.",
+      "options": [
+        {
+          "k": "A",
+          "label": "Souls-weighted",
+          "detail": "Costs stamina, locks you in until it ends. Deliberate and punishing."
+        },
+        {
+          "k": "B",
+          "label": "Spider-Man fluid",
+          "detail": "Nearly free, cancels into anything. Fast and flashy, less tension."
+        },
+        {
+          "k": "C",
+          "label": "Hybrid",
+          "detail": "Costs stamina, but cancels into attacks; a perfect dodge gives a counter or slow-down.",
+          "rec": true
+        }
+      ]
     }
   ],
   "sidequests": [

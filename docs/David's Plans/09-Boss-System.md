@@ -13,12 +13,12 @@
 
 ## Things to decide
 
-- [ ] **Boss list.** One major boss per region? Plus optional bosses?
+- [x] **Boss list.** **One major boss per region, plus optional bosses.** *(Quest Board, 28 Sep)*
 - [ ] **Can corrupted spirits be purified instead of killed?** (In the show, Korra purifies dark spirits. This could give a different reward or lead to an alternate ending.)
 - [x] **Are there human enemies too?** Yes: human fighters using every martial art type (see the roster below).
 - [x] **How much technology fits our ancient era?** **Ancient technology only.** No electrified gear, gas devices or mecha.
 - [ ] **Why are humans fighting the Avatar?** Bandits, rival martial orders guarding secrets, people corrupted by Vaatu's influence, soldiers of warring nations?
-- [ ] **Boss phases.** How many phases for major bosses? Does Vaatu get extra phases?
+- [x] **Boss phases.** **Major bosses have 2 phases; Vaatu has 3 or more.** *(Quest Board, 28 Sep)*
 - [ ] **Does beating a boss unlock something?** An element, an Avatar State stage, a region?
 - [ ] **What do bosses drop?** Unique weapon, artifact, big rune drop?
 

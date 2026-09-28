@@ -36,6 +36,7 @@ Games that came up as inspiration (see the [27 Sep planning session](../Transcri
 
 - **Elden Ring.** The core loop, runes and death penalty, open world with optional dungeons, and multiple endings. Its seals/wands spell system is **not** the model for bending.
 - **Batman: Arkham series.** "Detective mode": a toggle that shows enemies through walls. The model for **seismic sense**.
+- **Marvel's Spider-Man 2.** The reference for **fluid, fun dodging**: dodges chain straight into attacks and movement (Quest Board, 28 Sep).
 - **Black Myth: Wukong.** A souls-like with martial-arts-style combat and abilities on buttons. Closer to how bending should feel than Elden Ring's spells.
 
 ## Other sections (to fill)

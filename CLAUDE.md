@@ -28,7 +28,8 @@ Combat is built on the real martial arts behind each bending style: Tai Chi (wat
 
 ## Tools
 
-- **Engine:** Unity 6 + URP (recommended, not yet locked in). The Unity project lives in `game/`.
+- **Engine:** **Unity 6 + URP (decided 28 Sep).** The Unity project lives in `game/`.
+- **Combat prototype:** Fire first. Elden Ring move set plus jump and sprint attacks; one dodge button that changes with element; fluid, Spider-Man-2-like feel. Mixamo animations for the prototype.
 - **3D:** Blender. Source files go in `art/`, exported FBX files go into `game/Assets/`.
 - **Budget:** free tools preferred.
 - **Hardware:** David has an RTX 4070. Jeremy's PC is still unknown, and both must be able to run the chosen engine.

@@ -25,17 +25,26 @@
 - **Concern:** modifier-heavy inputs (hold a bumper + press a button) and directional dodge combos could be near-impossible to perform while switching elements quickly.
 - **Plan: prototype and playtest the controls.** Changing controls and movesets should be quick to try in the engine.
 
+**From the Quest Board (28 Sep):**
+- **Core move set:** Elden Ring's set (light, heavy, dodge, block/parry, lock-on) **plus jump attacks and sprint attacks**.
+- **Feel:** bending and attack movesets should feel **fluid and fun**. The reference for dodging is **Marvel's Spider-Man 2**, which feels far more fluid than a souls-like roll.
+- **Dodge input:** **one dodge button**, and the dodge changes with your current element.
+- **First element to prototype: Fire.**
+- **Animation:** I intended to use Blender, but I'm open to easier options if they give the same quality. I need the pros and cons first (see below).
+
 ## Things to decide
 
 - [x] **Is Toph's style its own path?** Yes: seismic sense is taught by its own earth master (the badgermole hermit, see [02](02-Storyline.md)), and it works as a see-through-walls toggle.
 - [ ] **Where does fa jin fit?** A charged power strike, a perfect-timing bonus, or an Avatar State move?
 - [x] ~~Does pro-bending appear?~~ **No.** Pro-bending is from Korra's era, thousands of years after ours (see [01](01-Lore-and-Universe.md)). Its acrobatic/MMA influence could still shape how some human fighters move, without the sport itself.
 - [x] **Toph's style without Toph.** Solved: it's an ancient badgermole technique. The first earthbenders learned from badgermoles, who "see" through vibration.
-- [ ] **How do we get authentic animation?** See the pipeline options below.
-- [ ] **Combat basics.** Light attack, heavy attack, dodge, block/parry, lock-on, like Elden Ring?
+- [ ] **How do we get authentic animation?** Pros and cons are in "Getting animation that matches the real styles" below.
+- [x] **Combat basics.** Light, heavy, dodge, block/parry, lock-on, **plus jump and sprint attacks**.
+- [x] **First element to prototype.** **Fire.**
+- [ ] **Souls-like or Spider-Man-fluid dodging?** These pull in different directions (see "Fluid vs. punishing" below). Jeremy's call.
 - [x] **Switching elements mid-fight.** **D-pad:** one direction per element, and the same buttons do the chosen element's moves. *(To be confirmed by playtesting.)*
 - [x] **Dodging.** **Each element has its own dodge.** Airbending blends into movement.
-- [ ] **Dodge inputs.** A simple dodge button (the dodge changes with your element), or direction + button for different dodges? Prototype both and playtest.
+- [x] **Dodge inputs.** **One dodge button**; the dodge changes with your element.
 - [ ] **Avatar State in combat.** A temporary power mode with a meter?
 
 ## Claude's suggestions
@@ -54,13 +63,31 @@ The aim is that the martial art changes **how each element plays**, not just how
 | Special | Fa jin | Explosive whole-body power released over a short distance | **Burst strike**: a short charge, then a huge release. Could be a perfect-timing reward or an Avatar State technique. |
 | Human fighters (inspired by, not the sport) | Pro-bending's influences | Acrobatics plus MMA | Some human enemies use light, bouncing footwork and quick jab combos. |
 
+### Fluid vs. punishing: the dodge tension
+
+Spider-Man 2 and Elden Ring treat dodging very differently:
+
+| | Elden Ring | Spider-Man 2 |
+|---|---|---|
+| Cost | Stamina; spamming it leaves you open | Nearly free |
+| Commitment | Once you roll, you're locked in until it ends | Cancels straight into attacks, webs or movement |
+| Reward | Survival | Flow: a well-timed dodge leads into a counter or combo |
+| Feel | Weighty, deliberate, punishing | Fast, acrobatic, flashy |
+
+**A hybrid that keeps both:** dodges still cost stamina/chi, but they can **cancel into attacks**, and a **perfectly timed dodge** gives a reward: a free counter, a short slow-down, or a momentum boost for fire. Each element's dodge expresses its martial art. Fire's is aggressive and dashes forward; Air's curves around the enemy (Baguazhang circling). This is a starting point for the prototype, and the numbers (stamina cost, cancel timing, perfect-dodge window) all go in tuning data so they're easy to adjust.
+
 ### Getting animation that matches the real styles
 
-Mixamo's free animation library won't have real Tai Chi or Hung Gar forms, so we'll need our own. Free or cheap options, from easiest to hardest:
+**Blender is in every option.** Whatever we pick, the character is modelled and rigged in Blender, and animations get cleaned up there. The question is only *where the movement comes from*.
 
-1. **Reference video → hand animation in Blender.** Record yourselves or use practitioner videos as reference. It's slow, but gives the most control.
-2. **Video → motion capture with AI tools.** Some tools turn a single video into a 3D animation (e.g. Rokoko Vision, DeepMotion, both with free tiers). You or Jeremy could film yourselves doing basic forms.
-3. **Mixamo basics + custom attacks.** Use Mixamo for walking, running and rolling, and custom animations only for bending moves. This is the realistic starting point.
+| Option | How it works | Pros | Cons |
+|---|---|---|---|
+| **A. Mixamo** | Free Adobe library: upload your character, it auto-rigs it, then download ready-made animations | Free, instant, good quality. It has walks, runs, rolls, and plenty of punches and kicks (a few martial-arts moves too). Perfect for prototyping | Generic: it won't have real Tai Chi or Hung Gar forms. Other games use the same animations. Not unique to us |
+| **B. Film yourselves + AI motion capture** | Film a move on a phone; a tool like Rokoko Vision or DeepMotion turns it into a 3D animation | **Real martial arts motion**, which fits the pillar. Fast once set up. Free tiers exist | Someone has to perform the moves well. Results need cleanup in Blender (foot sliding, jitter). Free tiers have limits. Using other people's videos needs their permission |
+| **C. Hand-animate in Blender** | Pose the character frame by frame | Total control, including anime-style exaggeration that real bodies can't do. Free | By far the slowest, with a steep learning curve. Hard for beginners to make martial arts look real |
+| **D. Hybrid** *(Claude's recommendation)* | A for movement, B for martial-arts moves, C for bending flourishes and cleanup | Each tool does what it's best at. Quality where it matters, speed everywhere else | More tools to learn (but you learn them gradually) |
+
+**For the combat prototype:** Mixamo alone is enough. Grey-box testing is about timing and feel, not looks. Unity can mix animations from all these sources on the same character (its "Humanoid" rig system), so starting with Mixamo loses nothing later.
 
 **Early task:** collect reference videos of each style (basic forms, stances, key strikes) in `docs/knowledge/`. It helps whoever animates, and it shows us which moves each element should have.
 
