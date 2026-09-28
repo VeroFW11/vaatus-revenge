@@ -260,3 +260,113 @@ Before reporting done, every builder runs:
 3. A self-review of your diff against sections 4-7, looking for: NaN/zero-length vectors, division by zero, state that can get stuck, events that fire twice or never, missing null checks on `Instance` singletons, per-frame allocations in hot paths.
 
 Report back with: files created/changed, the public API you provided (exact signatures), deviations from this spec and why, known gaps, and anything the next phase must know.
+
+---
+
+## 9. Phase 2 pinned API (player, enemies, integrator build against exactly this)
+
+Phase 1 is done: core rules (`Scripts/Core/Combat`, `AI`, `Movement`, `Tuning`), camera/lock-on/input and grey-box/VFX/hit system are in the repo. Phase 2's three agents work at the same time, so these names are fixed. Add extra members freely; don't rename or drop these.
+
+```csharp
+// ---- Scripts/Player (player-engineer) ----
+[CreateAssetMenu(menuName = "Vaatu's Revenge/Tuning/Player")]
+public class PlayerTuningAsset : ScriptableObject
+{
+    public string PresetName = "Fluid";
+    public PlayerTuning Tuning = PlayerTuning.CreateFluid();
+    public PlayerFeedbackSettings Feedback = new PlayerFeedbackSettings(); // shake, rumble, flash (Unity-side feel data)
+}
+
+[CreateAssetMenu(menuName = "Vaatu's Revenge/Tuning/Move Set")]
+public class MoveSetAsset : ScriptableObject
+{
+    public string PresetName = "Fluid";
+    public ElementMoveSet MoveSet = ElementMoveSet.CreateFireFluid();
+}
+
+[DefaultExecutionOrder(0)]
+public class PlayerController : MonoBehaviour, IDamageReceiver
+{
+    public static PlayerController Instance { get; }
+    public static PlayerController Spawn(Transform parent, Vector3 position, float yaw, PlayerTuningAsset tuning, MoveSetAsset moveSet);
+    public void Configure(PlayerTuningAsset tuning, MoveSetAsset moveSet);   // edit-time wiring
+    public void ApplyTuning(PlayerTuningAsset tuning, MoveSetAsset moveSet); // live preset swap (F5/F6)
+    public void Respawn(Vector3 position, float yaw);
+    public event System.Action Died;
+    public PlayerCombatModel Model { get; }          // null until the model exists
+    public PlayerTuningAsset TuningAsset { get; }
+    public MoveSetAsset MoveSetAsset { get; }
+    public string PresetName { get; }
+    public bool IsDead { get; }
+    public float Health01 { get; }
+    public float Stamina01 { get; }
+    public float Momentum01 { get; }
+    public float MomentumMultiplier { get; }
+    public int HealCharges { get; }
+    public int MaxHealCharges { get; }
+    public bool IsCharging { get; }
+    public float ChargeLevel01 { get; }
+    public bool InSweetSpot { get; }
+    public float SweetSpotStart01 { get; }
+    public float SweetSpotEnd01 { get; }
+    public ElementId CurrentElement { get; }
+    public string ElementMessage { get; }            // "" unless a locked element was just picked (shown ~2 s)
+    public string StateName { get; }
+    public string MoveName { get; }
+    public string DebugText { get; }                  // multi-line, for the F3 panel
+}
+
+// ---- Scripts/Enemies (enemy-engineer) ----
+[CreateAssetMenu(menuName = "Vaatu's Revenge/Tuning/Enemy")]
+public class EnemyTuningAsset : ScriptableObject { public EnemyTuning Tuning = EnemyTuning.CreateDaoSoldier(); }
+
+[CreateAssetMenu(menuName = "Vaatu's Revenge/Tuning/Encounter")]
+public class EncounterTuningAsset : ScriptableObject { public int MaxSimultaneousAttackers = 2; }
+
+public class EnemyEncounter : MonoBehaviour            // one per scene; owns the shared AttackTokenPool
+{
+    public static EnemyEncounter Instance { get; }
+    public AttackTokenPool Tokens { get; }
+    public void Configure(EncounterTuningAsset tuning);
+}
+
+[DefaultExecutionOrder(10)]
+public class EnemyController : MonoBehaviour, IDamageReceiver
+{
+    public static IReadOnlyList<EnemyController> All { get; }
+    public static EnemyController Spawn(Transform parent, Vector3 position, float yaw, EnemyTuningAsset tuning);
+    public void Configure(EnemyTuningAsset tuning);
+    public void ResetEnemy();                         // back to its spawn point, full health, alive
+    public EnemyTuningAsset TuningAsset { get; }
+    public bool IsDead { get; }
+    public float Health01 { get; }
+    public string StateName { get; }
+    public string DebugText { get; }
+}
+
+[DefaultExecutionOrder(10)]
+public class TrainingDummy : MonoBehaviour, IDamageReceiver
+{
+    public static IReadOnlyList<TrainingDummy> All { get; }
+    public static TrainingDummy Spawn(Transform parent, Vector3 position, float yaw, EnemyTuningAsset tuning, bool swings);
+    public void Configure(EnemyTuningAsset tuning, bool swings);
+    public void ResetDummy();
+    public bool SwingEnabled { get; set; }
+    public float Health01 { get; }
+    public int ComboHits { get; }
+    public float ComboDamage { get; }
+    public float ComboDps { get; }
+    public float LastHitDamage { get; }
+}
+// EnemyHealthBar (OnGUI name + bar above the head) is added by the Spawn factories.
+
+// ---- Scripts/UI, Scripts/Sandbox, Editor/Sandbox (integrator) ----
+public class CombatHud : MonoBehaviour { }              // OnGUI; reads PlayerController.Instance, LockOnController.Instance
+public class SandboxDirector : MonoBehaviour
+{
+    public void Configure(PlayerTuningAsset fluidTuning, MoveSetAsset fluidMoves,
+                          PlayerTuningAsset punishingTuning, MoveSetAsset punishingMoves, Transform playerSpawn);
+}
+```
+
+Fighter conventions: all fighters are 1.8 m tall `CharacterController`s (radius 0.4, centre y 0.9, step offset 0.3 so the arena stairs work, slope limit 50) with their pivot at the feet, on the Player (8) or Enemy (9) layer. Colours: player warm orange-red; Dao Soldier steel blue-grey (with weapon); Crossbowman olive green; Sparring Dummy straw tan. Dummies are `Team.Enemy`. Enemy telegraph glow: yellow for normal attacks, red for heavy/delayed ones.
