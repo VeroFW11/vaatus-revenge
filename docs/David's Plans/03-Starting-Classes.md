@@ -18,7 +18,7 @@ Starting class = **choose your region**:
 ## Things to decide
 
 - [x] Does your starting element decide **where you start** on the map? **Yes.**
-- [ ] Starting stats for each class: which of the six stats does each element favour? (See [05](05-Stats-and-Skill-Trees.md).)
+- [x] Starting stats for each class *(Quest Board, 28 Sep)*: **Earth favours Strength, Water favours Healing, Air favours Agility, Fire favours Damage.** Bending Power starts equal for everyone. *(Which stat list we use overall is still open; see [05](05-Stats-and-Skill-Trees.md).)*
 - [ ] Starting gear for each class.
 - [x] Does the starting element stay your strongest? **It keeps a permanent bonus.**
 - [ ] **What is the birth-element bonus?** Extra damage with that element, cheaper skills in its tree, or a unique technique only natives learn?

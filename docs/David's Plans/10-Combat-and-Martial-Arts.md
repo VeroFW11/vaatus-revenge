@@ -41,7 +41,7 @@
 - [ ] **How do we get authentic animation?** Pros and cons are in "Getting animation that matches the real styles" below.
 - [x] **Combat basics.** Light, heavy, dodge, block/parry, lock-on, **plus jump and sprint attacks**.
 - [x] **First element to prototype.** **Fire.**
-- [ ] **Souls-like or Spider-Man-fluid dodging?** These pull in different directions (see "Fluid vs. punishing" below). Jeremy's call.
+- [x] **Souls-like or Spider-Man-fluid dodging?** **Spider-Man fluid** *(Quest Board, 28 Sep)*: dodges are nearly free and cancel into anything. Bending and attacks cost stamina, so the tension moves from dodging to how you spend stamina. *Jeremy (lead on combat feel) should try it in the prototype and confirm.*
 - [x] **Switching elements mid-fight.** **D-pad:** one direction per element, and the same buttons do the chosen element's moves. *(To be confirmed by playtesting.)*
 - [x] **Dodging.** **Each element has its own dodge.** Airbending blends into movement.
 - [x] **Dodge inputs.** **One dodge button**; the dodge changes with your element.

@@ -479,7 +479,8 @@
       "type": "open",
       "title": "Starting stats",
       "prompt": "Which of the six stats does each element's class favour?",
-      "context": "Stats: Vigor, Stamina, Strength, Dexterity, Intelligence, Bending. E.g. Earth: high Vigor and Strength."
+      "context": "Stats: Vigor, Stamina, Strength, Dexterity, Intelligence, Bending. E.g. Earth: high Vigor and Strength.",
+      "status": "recorded"
     },
     {
       "id": "e06",
@@ -520,7 +521,8 @@
           "rec": true
         }
       ],
-      "mvp": 1
+      "mvp": 1,
+      "status": "recorded"
     },
     {
       "id": "e08",
@@ -765,7 +767,7 @@
       "type": "choice",
       "title": "Stat table",
       "prompt": "Accept the draft stat table?",
-      "context": "Vigor = health. Stamina = stamina and equip load. Strength = heavy weapons, Earth. Dexterity = fast weapons, Air/Fire. Intelligence = spirit and status. Bending = bending damage.",
+      "context": "Superseded by 'The stat list' question.",
       "options": [
         {
           "k": "A",
@@ -779,7 +781,8 @@
           "detail": "Say how in the notes."
         }
       ],
-      "mvp": 2
+      "mvp": 2,
+      "status": "recorded"
     },
     {
       "id": "e17",
@@ -2211,6 +2214,37 @@
           "k": "C",
           "label": "Hybrid",
           "detail": "Costs stamina, but cancels into attacks; a perfect dodge gives a counter or slow-down.",
+          "rec": true
+        }
+      ],
+      "status": "recorded"
+    },
+    {
+      "id": "e24",
+      "realm": "earth",
+      "doc": "05 Stats and Skill Trees",
+      "lead": "Both",
+      "xp": 30,
+      "type": "choice",
+      "mvp": 2,
+      "title": "The stat list",
+      "prompt": "Which stat list do we use?",
+      "context": "Your new list (Bending Power, Strength, Healing, Agility, Damage) has no health or stamina stat, and stamina now powers bending.",
+      "options": [
+        {
+          "k": "A",
+          "label": "Original six",
+          "detail": "Vigor, Stamina, Strength, Dexterity, Intelligence, Bending."
+        },
+        {
+          "k": "B",
+          "label": "New five",
+          "detail": "Bending Power, Strength, Healing, Agility, Damage."
+        },
+        {
+          "k": "C",
+          "label": "Merged seven",
+          "detail": "Vigor, Stamina, Bending Power, Strength (earth), Agility (air), Spirit (water), Ferocity (fire).",
           "rec": true
         }
       ]

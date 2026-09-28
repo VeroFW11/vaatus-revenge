@@ -30,8 +30,16 @@
 
 ## Things to decide
 
-- [ ] **What does each stat do?** Fill in the table below.
-- [ ] **What powers bending?** Elden Ring has a separate "Mind" stat that powers spells (FP). Does bending use stamina, its own chi bar, or the Bending stat?
+- [ ] **What does each stat do?** Fill in the table below. *See the new stat list from the Quest Board below; the two lists need merging.*
+- [x] **What powers bending?** **Stamina** *(Quest Board, 28 Sep)*. Bending shares the stamina bar with attacks and blocking, so every move is a trade-off.
+- [ ] **Which stat list do we use?** The Quest Board answer (28 Sep) proposed a new list:
+  - **Bending Power**: equal across all elements
+  - **Strength**: earthbending favours it
+  - **Healing**: waterbending favours it
+  - **Agility**: airbending favours it
+  - **Damage**: firebending favours it
+
+  This differs from the original six (Dexterity, Stamina, Vigor, Strength, Intelligence, Bending). The new list has **no health stat (Vigor) and no Stamina stat**, and Stamina now powers bending, so it's important. Claude's suggestion for a merged list: **Vigor** (health), **Stamina** (bending, attacks, blocking), **Bending Power** (all elements), **Strength** (earth), **Agility** (air), **Spirit** (water: healing and spirit abilities), **Ferocity** (fire: damage). Decide on the Quest Board.
 - [ ] **Does Bending cover all four elements, or does each element scale differently?** (e.g. Earth scales with Strength, Air with Dexterity.)
 - [ ] **What is Intelligence for?** Spirit abilities? Energybending? Status effects? Reading ancient texts?
 - [ ] **Skill tree shape.** One tree per element, plus an Avatar State tree? How do you earn skill points: by levelling, from masters, or from artifacts?
