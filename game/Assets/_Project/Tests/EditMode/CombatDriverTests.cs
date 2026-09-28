@@ -1,0 +1,205 @@
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using NUnit.Framework;
+using VaatusRevenge.Core;
+
+namespace VaatusRevenge.Tests
+{
+    // Buttons a test holds down on a frame (edges are worked out from the previous frame, like the reader).
+    [Flags]
+    public enum Pad
+    {
+        None = 0,
+        Light = 1,
+        Heavy = 2,
+        Dodge = 4,
+        Jump = 8,
+        Guard = 16,
+        Skill = 32,
+        Heal = 64
+    }
+
+    // Drives a PlayerCombatModel the way PlayerController will: one Tick per frame at a fixed dt, then moves
+    // a pretend CharacterController on flat ground at y = 0 by the returned velocity. Logs every event with
+    // the frame it happened on. Frame 0 is the first Step.
+    public sealed class PlayerDriver
+    {
+        public readonly float Dt;
+        public readonly PlayerCombatModel Model;
+        public PlayerWorldState World;
+        public readonly List<PlayerEvent> Log = new List<PlayerEvent>();
+        public readonly List<int> LogFrames = new List<int>();
+        public int Frame = -1;
+        public PlayerTickResult Last;
+        Pad held;
+
+        public PlayerDriver(PlayerTuning tuning = null, ElementMoveSet moveSet = null, float fps = 60f)
+        {
+            Dt = 1f / fps;
+            Model = new PlayerCombatModel(tuning ?? PlayerTuning.CreateFluid(), moveSet ?? ElementMoveSet.CreateFireFluid(), 1);
+            World = new PlayerWorldState { Grounded = true, SelfRadius = 0.4f };
+        }
+
+        public static PlayerDriver Punishing(float fps = 60f)
+        {
+            return new PlayerDriver(PlayerTuning.CreatePunishing(), ElementMoveSet.CreateFirePunishing(), fps);
+        }
+
+        public PlayerInputFrame MakeInput(Pad now, Vector2 move)
+        {
+            var input = new PlayerInputFrame { Move = move };
+            input.Light = ButtonState.From((now & Pad.Light) != 0, (held & Pad.Light) != 0);
+            input.Heavy = ButtonState.From((now & Pad.Heavy) != 0, (held & Pad.Heavy) != 0);
+            input.Dodge = ButtonState.From((now & Pad.Dodge) != 0, (held & Pad.Dodge) != 0);
+            input.Jump = ButtonState.From((now & Pad.Jump) != 0, (held & Pad.Jump) != 0);
+            input.Guard = ButtonState.From((now & Pad.Guard) != 0, (held & Pad.Guard) != 0);
+            input.Skill = ButtonState.From((now & Pad.Skill) != 0, (held & Pad.Skill) != 0);
+            input.Heal = ButtonState.From((now & Pad.Heal) != 0, (held & Pad.Heal) != 0);
+            return input;
+        }
+
+        public PlayerTickResult Step(Pad now = Pad.None, Vector2 move = default, float? dt = null)
+        {
+            PlayerInputFrame input = MakeInput(now, move);
+            held = now;
+            float stepDt = dt ?? Dt;
+            Frame++;
+            Last = Model.Tick(stepDt, input, World);
+            for (int i = 0; i < Last.Events.Count; i++)
+            {
+                Log.Add(Last.Events[i]);
+                LogFrames.Add(Frame);
+            }
+            AssertFinite(Last.Velocity, "velocity");
+            Assert.IsFalse(float.IsNaN(Last.FacingYaw) || float.IsInfinity(Last.FacingYaw), "facing yaw");
+
+            if (stepDt > 0f)
+            {
+                Vector3 p = World.Position + Last.Velocity * stepDt;
+                World.Grounded = p.Y <= 0f;
+                if (p.Y < 0f) p.Y = 0f;
+                World.Position = p;
+            }
+            return Last;
+        }
+
+        public void Run(int frames, Pad now = Pad.None, Vector2 move = default)
+        {
+            for (int i = 0; i < frames; i++) Step(now, move);
+        }
+
+        // Steps until the condition holds (checked after each step). Fails after maxFrames.
+        public int RunUntil(Func<PlayerDriver, bool> done, int maxFrames, Pad now = Pad.None, Vector2 move = default)
+        {
+            for (int i = 0; i < maxFrames; i++)
+            {
+                Step(now, move);
+                if (done(this)) return Frame;
+            }
+            Assert.Fail("condition not reached in " + maxFrames + " frames (state " + Model.State + ")");
+            return -1;
+        }
+
+        public void Tap(Pad button, Vector2 move = default)
+        {
+            Step(button, move);
+            Step(Pad.None, move);
+        }
+
+        public int FirstFrame(PlayerEventType type, int fromFrame = 0)
+        {
+            for (int i = 0; i < Log.Count; i++)
+                if (Log[i].Type == type && LogFrames[i] >= fromFrame) return LogFrames[i];
+            return -1;
+        }
+
+        public int Count(PlayerEventType type)
+        {
+            int n = 0;
+            for (int i = 0; i < Log.Count; i++) if (Log[i].Type == type) n++;
+            return n;
+        }
+
+        public List<PlayerEvent> All(PlayerEventType type)
+        {
+            var list = new List<PlayerEvent>();
+            for (int i = 0; i < Log.Count; i++) if (Log[i].Type == type) list.Add(Log[i]);
+            return list;
+        }
+
+        public void ClearLog()
+        {
+            Log.Clear();
+            LogFrames.Clear();
+        }
+
+        // Frame on which an action started on frame 0 first reaches 'mark' seconds (same float sums as the model).
+        public int FramesToReach(float mark)
+        {
+            float t = 0f;
+            int frames = 0;
+            while (t < mark)
+            {
+                t += Dt;
+                frames++;
+            }
+            return frames;
+        }
+
+        public void LockOn(Vector3 target, float radius = 0.4f)
+        {
+            World.HasLockTarget = true;
+            World.LockTargetPosition = target;
+            World.LockTargetAimPoint = target + new Vector3(0f, 1.2f, 0f);
+            World.LockTargetRadius = radius;
+        }
+
+        public static void AssertFinite(Vector3 v, string what)
+        {
+            Assert.IsFalse(float.IsNaN(v.X) || float.IsNaN(v.Y) || float.IsNaN(v.Z), what + " is NaN");
+            Assert.IsFalse(float.IsInfinity(v.X) || float.IsInfinity(v.Y) || float.IsInfinity(v.Z), what + " is infinite");
+        }
+
+        // A hit from an enemy standing in 'fromDirection' (world, horizontal) of the player.
+        public static DamageInfo EnemyHit(float damage, float poise, Vector3 fromDirection, bool parryable = true,
+            float guardStamina = 10f, bool unblockable = false)
+        {
+            return new DamageInfo
+            {
+                Damage = damage, PoiseDamage = poise, GuardStaminaDamage = guardStamina, Knockback = 0.5f,
+                Direction = -Vector3.Normalize(fromDirection), SourceTeam = Team.Enemy, SourceId = 99,
+                AttackId = CombatIds.Next(), Parryable = parryable, Unblockable = unblockable, Kind = HitKind.Light
+            };
+        }
+
+        public HitResult HitFromFront(float damage, float poise = 0f, bool parryable = true, float guardStamina = 10f)
+        {
+            return Model.ReceiveHit(EnemyHit(damage, poise, Model.Forward, parryable, guardStamina), Model.Forward);
+        }
+    }
+
+    // Sanity checks for the driver itself, so the other tests can trust it.
+    public class CombatDriverTests
+    {
+        [Test]
+        public void IdlePlayerStaysPutOnTheGround()
+        {
+            var d = new PlayerDriver();
+            d.Run(120);
+            Assert.AreEqual(PlayerState.Locomotion, d.Model.State);
+            Assert.That(d.World.Position.X, Is.EqualTo(0f).Within(1e-5f));
+            Assert.That(d.World.Position.Z, Is.EqualTo(0f).Within(1e-5f));
+            Assert.IsTrue(d.World.Grounded);
+            Assert.Less(d.Last.Velocity.Y, 0f, "grounded characters get a small push down to hug the floor");
+        }
+
+        [Test]
+        public void FramesToReachMatchesSixtyFps()
+        {
+            var d = new PlayerDriver();
+            Assert.AreEqual(8, d.FramesToReach(0.12f));
+            Assert.AreEqual(14, d.FramesToReach(0.22f));
+        }
+    }
+}
