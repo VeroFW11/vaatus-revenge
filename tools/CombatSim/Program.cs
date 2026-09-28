@@ -38,10 +38,10 @@ namespace VaatusRevenge.CombatSim
             { "controls", ("Tap vs hold, dead zone, sprint attack and plunge conditions, guard/deflect windows, heal", ControlsScenario.Run) },
             { "abilities", ("Fa jin timing, plunge area, fire blast, Momentum loop, perfect dodge windows, stagger immunity", AbilitiesScenario.Run) },
             { "fairness", ("Telegraphs vs human reaction, unavoidable damage (oracle bot), attack tokens", FairnessScenario.Run) },
-            { "duels", ("Bots vs 1-2 soldiers, crossbowman and a mixed group, many seeds, both presets", DuelsScenario.Run) },
+            { "duels", ("Bots vs 1-2 soldiers, a crossbowman, a mixed group and the full sandbox ring, many seeds, both presets", DuelsScenario.Run) },
             { "duel", ("One duel (--bot --enemies --seed --preset), optionally --record replay.json", DuelsScenario.RunOne) },
             { "fuzz", ("Long random-input runs at 30/60/144 fps with dt spikes; invariants", FuzzScenario.Run) },
-            { "camera", ("Orbit camera and lock-on: circling, overhead, elevated target, retarget, switching, walls", CameraScenario.Run) },
+            { "camera", ("Camera and lock-on: circling, overhead, elevated target, retarget, switching, walls, shoulder swap, pull-back", CameraScenario.Run) },
             { "all", ("Everything above except 'duel' (use --quick for fewer seeds)", RunAll) },
         };
 
@@ -73,6 +73,13 @@ namespace VaatusRevenge.CombatSim
             try
             {
                 entry.run(o);
+            }
+            catch (ArgumentException e)
+            {
+                // A bad --bot or --enemies value: say so plainly instead of a stack trace.
+                Out.Line();
+                Out.Line("Error: " + e.Message);
+                return 2;
             }
             finally
             {
@@ -138,7 +145,7 @@ namespace VaatusRevenge.CombatSim
             foreach (var kv in Scenarios) Console.WriteLine("  " + kv.Key.PadRight(10) + " " + kv.Value.help);
             Console.WriteLine();
             Console.WriteLine("Options: --seed N  --seeds N  --preset fluid|punishing|both  --fps N  --record file.json  --out results.md");
-            Console.WriteLine("         --bot masher|react|anticipate|guard|aggressive|fajin|oracle|idle  --enemies soldier,soldier,crossbow,dummy  --seconds N  --quick");
+            Console.WriteLine("         --bot masher|react|anticipate|guard|aggressive|fajin|oracle|idle  --enemies soldier,soldier,crossbow,platform,dummy  --seconds N  --quick");
         }
 
         // A short hash of the core sources measured, so results can be matched to a version of the code.

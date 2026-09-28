@@ -196,7 +196,10 @@ namespace VaatusRevenge.CombatSim
             sb.Append("],\n\"enemyStates\":[");
             string[] es = Enum.GetNames(typeof(EnemyState));
             for (int i = 0; i < es.Length; i++) sb.Append(i > 0 ? "," : "").Append(Q(es[i]));
-            sb.Append("],\n\"enemyPhases\":[\"None\",\"Startup\",\"Active\",\"Recovery\"]");
+            sb.Append("],\n\"enemyPhases\":[");
+            string[] phases = Enum.GetNames(typeof(AttackPhase));
+            for (int i = 0; i < phases.Length; i++) sb.Append(i > 0 ? "," : "").Append(Q(phases[i]));
+            sb.Append(']');
             sb.Append(",\n\"frameFormat\":").Append(Q("[frame, realTime, gameTime, timeScale, [player:[x,y,z,yaw,state,hp,stamina,momentum,invulnerable,charge] | enemy:[x,y,z,yaw,state,hp,phase,alive]], [camYaw,camPitch,camDist,camX,camY,camZ,lockTargetIndex], [projectile:[x,y,z,isFire]]]"));
             sb.Append(",\n\"fighters\":").Append(fightersJson);
             sb.Append(",\n\"frames\":[\n").Append(frames).Append("\n]");

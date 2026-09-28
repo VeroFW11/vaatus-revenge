@@ -12,7 +12,9 @@ namespace VaatusRevenge.CombatSim
         {
             Out.Heading("Abilities");
             FaJin(o);
+            FaJinAfterPerfectDodge(o);
             DamageLoops(o);
+            StaminaAtZero(o);
             FireBlast(o);
             Momentum(o);
             PerfectDodge(o);
@@ -81,6 +83,76 @@ namespace VaatusRevenge.CombatSim
             }
             tierCache = arr;
             return arr;
+        }
+
+
+        // ---------------------------------------------------------------- fa jin inside the perfect-dodge slow motion
+        static void FaJinAfterPerfectDodge(Options o)
+        {
+            Out.Sub("Fa jin as a counter: heavy held for a fixed real time, starting right after a perfect dodge (slow motion 0.35x for 0.35 s)");
+            var t = new Table("Held for (real time)", "Tier from idle", "Tier right after a perfect dodge");
+            foreach (float hold in new[] { 0.8f, 0.9f, 1.0f, 1.1f })
+            {
+                var cells = new List<object> { Out.N(hold, 2) + " s" };
+                foreach (bool afterPerfect in new[] { false, true })
+                {
+                    var s = new Session(Preset.Fluid, o.Fps, SimLevel.Empty(), camera: false);
+                    if (afterPerfect) s.World.Time.SlowMotion(0.35f, 0.35f);
+                    int holdFrames = (int)Math.Round(hold * o.Fps);
+                    ChargeTier tier = ChargeTier.None;
+                    s.World.PlayerEvent += e => { if (e.Type == PlayerEventType.AttackStarted && e.AttackKind == PlayerAttackKind.Heavy) tier = e.ChargeTier; };
+                    for (int f = 0; f < holdFrames + 30; f++) s.Step(new Pad { Heavy = f < holdFrames });
+                    cells.Add(tier);
+                }
+                t.Row(cells.ToArray());
+            }
+            t.Print();
+            Out.Line("The charge counts game time, so after a perfect dodge the sweet spot arrives ~0.23 s later in real time than the player's learned rhythm; "
+                     + "the flash still marks it, but reacting to a flash is unreliable (see above).");
+        }
+
+        // ---------------------------------------------------------------- stamina at zero
+        static void StaminaAtZero(Options o)
+        {
+            Out.Sub("What a move really costs once stamina is empty (any stamina above 0 lets a move start)");
+            Out.Line("Each move is spammed for 8 s starting from 0 stamina, against a planted dummy. 'Full-stamina rate' = the same spam with stamina never running out.");
+            var t = new Table("Preset", "Move", "Moves per 8 s from empty", "Moves per 8 s with full stamina", "Rate kept when empty");
+            foreach (Preset p in o.Presets)
+            {
+                foreach (var (name, button) in new[] { ("Light (chain)", Button.Light), ("Heavy tap", Button.Heavy), ("Fire Blast", Button.Skill), ("Dodge", Button.Dodge) })
+                {
+                    int Count(bool infinite)
+                    {
+                        var s = new Session(p, o.Fps, SimLevel.Empty(), camera: false);
+                        EnemyTuning dt = EnemyTuning.CreateSparringDummy();
+                        dt.MaxHealth = 1e7f;
+                        s.World.AddEnemy(dt, new Vector3(0f, 0f, 1.8f), 180f, 1);
+                        if (infinite) s.Model.Tuning.MaxStamina = 1e6f;
+                        if (infinite) s.Model.Respawn(0f);
+                        // Empty the bar first (mash dodge), then start counting.
+                        int guard = 0;
+                        while (!infinite && s.Model.Stamina > 0f && guard++ < 2000) s.Step(new Pad { Dodge = guard % 4 < 2, Move = new Vector2(0.1f, 0.9f) });
+                        while (s.Model.State != PlayerState.Locomotion && guard++ < 4000) s.Step(new Pad());
+                        int n = 0;
+                        s.World.PlayerEvent += e =>
+                        {
+                            if (button == Button.Dodge && e.Type == PlayerEventType.DodgeStarted) n++;
+                            else if (button != Button.Dodge && e.Type == PlayerEventType.AttackStarted) n++;
+                        };
+                        for (int f = 0; f < (int)(8 * o.Fps); f++)
+                        {
+                            var pad = new Pad();
+                            Trace.Set(ref pad, button, f % 4 < 2);
+                            if (button == Button.Dodge) pad.Move = new Vector2(0f, 1f);
+                            s.Step(pad);
+                        }
+                        return n;
+                    }
+                    int empty = Count(false), full = Count(true);
+                    t.Row(p, name, empty, full, Out.Pct(empty / (double)Math.Max(1, full)));
+                }
+            }
+            t.Print();
         }
 
         // ---------------------------------------------------------------- damage loops (plunge spam etc.)

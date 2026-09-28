@@ -112,20 +112,22 @@ namespace VaatusRevenge.CombatSim
                 s.Step(pad);
             }
             Metrics m = s.World.Metrics;
-            bool avoided = m.HitsTaken == 0 && (mode != "deflect" || m.Deflects > 0 || m.Blocks > 0 || true);
-            if (mode == "deflect") avoided = m.Deflects > 0;
-            return (avoided && m.HitsTaken == 0, m.PerfectEvadeOutcomes > 0);
+            // A deflect trial only counts when the hit was actually deflected; a dodge trial when nothing landed.
+            bool avoided = m.HitsTaken == 0 && (mode != "deflect" || m.Deflects > 0);
+            return (avoided, m.PerfectEvadeOutcomes > 0);
         }
 
         static void Unavoidable(Options o)
         {
             Out.Sub("Unavoidable damage: a frame-perfect dodging bot (no attacks) for 60 s, " + o.Seeds + " seeds per group");
-            Out.Line("The oracle knows every strike and bolt and dodges 3 frames before it, away from the group. Any hit it still takes is damage "
-                     + "a person couldn't dodge either (at least not by dodging alone).");
+            Out.Line("The oracle knows every strike and bolt and dodges 5 frames before a strike (7 before a bolt arrives), so the hit lands inside "
+                     + "either preset's i-frames; it dashes sideways and away from the group and never attacks. Any hit it still takes is damage a person "
+                     + "couldn't dodge either, at least not by dodging alone (guarding bolts and positioning are other tools). 'platform' = the sandbox's "
+                     + "second crossbowman, on the raised block.");
             var t = new Table("Preset", "Group", "Hits taken / min", "Runs with ≥1 hit", "Deaths", "Hits by source", "Max attackers at once");
             foreach (Preset p in o.Presets)
             {
-                foreach (string group in new[] { "soldier", "soldier,soldier", "crossbow", "soldier,soldier,crossbow" })
+                foreach (string group in new[] { "soldier", "soldier,soldier", "crossbow", "soldier,soldier,crossbow", "soldier,soldier,crossbow,platform" })
                 {
                     int hits = 0, runsHit = 0, deaths = 0, maxAttackers = 0;
                     var by = new Dictionary<string, int>();

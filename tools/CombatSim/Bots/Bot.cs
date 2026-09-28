@@ -485,9 +485,10 @@ namespace VaatusRevenge.CombatSim
         protected override void Think(ref Pad pad) { }
     }
 
-    // Frame-perfect defence only (no attacks): it plans a dodge 4 frames before every strike that would reach it
-    // and before every bolt touches its capsule (on-release presses are started early enough), moving away from
-    // the attackers. Hits it still takes are unavoidable by dodging alone.
+    // Frame-perfect defence only (no attacks): it plans a dodge 5 frames before every strike that would reach it
+    // and 7 frames before every bolt touches its capsule (on-release presses are started early enough), so the hit
+    // lands inside either preset's i-frames; it dodges sideways and away from the group and keeps ~3.5 m from the
+    // nearest enemy. Hits it still takes are unavoidable by dodging alone (guarding bolts or positioning may help).
     public sealed class OracleBot : Bot
     {
         public OracleBot() { Name = "oracle"; UseLockOn = false; }

@@ -40,7 +40,10 @@ namespace VaatusRevenge.CombatSim
                     soldiers++;
                 }
                 else if (e.StartsWith("cross")) s.World.AddEnemy(EnemyTuning.CreateCrossbowman(), new Vector3(8f, 0f, 9f), -140f, seed * 31 + 17);
+                // The sandbox's second crossbowman (spawn Crossbow_Platform): on top of the 2.5 m block, facing the ring.
+                else if (e.StartsWith("plat")) s.World.AddEnemy(EnemyTuning.CreateCrossbowman(), new Vector3(-13f, 2.5f, 12f), 128f, seed * 31 + 23);
                 else if (e.StartsWith("dummy")) s.World.AddEnemy(EnemyTuning.CreateSparringDummy(), new Vector3(0f, 0f, -1f), 180f, seed, true);
+                else throw new ArgumentException("unknown enemy '" + raw + "' (use soldier, crossbow, platform, dummy)");
             }
             s.World.LockOn.SnapBehindPlayer();
             Bot bot = Bots.Create(botName);
@@ -69,7 +72,8 @@ namespace VaatusRevenge.CombatSim
                      + "dodges ~0.06 s before the strike ± 0.05 s, dashes into attacks), guard (holds guard, re-presses to deflect ± 0.05 s), aggressive "
                      + "(stays close, chains, sprint-kicks in, fa jin on staggers), fajin (waits for openings, fa jin with ± 0.05 s timing). "
                      + "All use lock-on and move relative to the real camera.");
-            string[] groups = { "soldier", "soldier,soldier", "crossbow", "soldier,soldier,crossbow" };
+            // The last group is the whole sandbox ring: both soldiers and both crossbowmen (one on the platform).
+            string[] groups = { "soldier", "soldier,soldier", "crossbow", "soldier,soldier,crossbow", "soldier,soldier,crossbow,platform" };
             foreach (Preset p in o.Presets)
             {
                 Out.Sub(p + " preset");
