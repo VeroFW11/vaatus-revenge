@@ -27,6 +27,14 @@ namespace VaatusRevenge.Core
     //   than the move's own LungeDistance, by up to PlayerTuning.GapCloseDistance, stopping short of the target.
     // ZIP STRIKE: needs PlayerWorldState.HasZipTarget; without one the press is dropped and costs nothing. The dash
     //   covers the whole gap to the target during the move's startup and active frames. Not in the air.
+    // LAUNCHER: keep holding the attack press that started a ground string for AerialSettings.LauncherHoldTime and the
+    //   string's move turns into the launcher (Spider-Man's hold-square): the hit throws the target up and SelfLift
+    //   carries you after it when the strike lands.
+    // AIR STRING: attack while in the air (jumping, launched, after a zip) walks the AirChain, which does not loop and is
+    //   capped at AerialSettings.AirAttacksPerJump strikes before touching down. Air strikes lift you (SelfLift) and
+    //   gravity is scaled by AirAttackGravityScale while one runs, so you hang as you strike. Heavy in the air = plunge.
+    // AIR DASH: dodge in the air, up to AirDashesPerJump times before landing: a flat dash with no gravity.
+    // ABILITIES: AbilityNorth / AbilityEast run like the skill (grounded, from the usual cancel points).
     // SPRINT ATTACK: light while sprinting for SprintAttackMinSprintTime, or within SprintAttackGrace after such
     //   a sprint ends while still moving at full running speed (strafe speed when locked on).
     public sealed partial class PlayerCombatModel
@@ -38,9 +46,12 @@ namespace VaatusRevenge.Core
                 buffer.Clear();
                 return;
             }
+            TryLauncherHold(world);
             switch (buffer.Command)
             {
                 case PlayerCommand.Light: TryLight(world); break;
+                case PlayerCommand.AbilityNorth: TryAbility(moveSet.AbilityNorth, world); break;
+                case PlayerCommand.AbilityEast: TryAbility(moveSet.AbilityEast, world); break;
                 case PlayerCommand.Heavy: TryHeavy(world); break;
                 case PlayerCommand.Skill: TrySkill(world); break;
                 case PlayerCommand.Dodge: TryDodge(world); break;
@@ -96,16 +107,20 @@ namespace VaatusRevenge.Core
             }
         }
 
+        // In the air for the purpose of choosing moves: airborne, or attacking / dashing with no ground under us.
+        bool Aloft => state == PlayerState.Airborne
+            || (!grounded && (state == PlayerState.Attacking || state == PlayerState.Dodging || state == PlayerState.Plunging));
+
         void TryLight(in PlayerWorldState world)
         {
-            if (state == PlayerState.Airborne)
+            if (Aloft)
             {
-                TryPlunge(world);
+                TryAirAttack(world);
                 return;
             }
             if (!CanStartAttack()) return;
 
-            int next = IsFree && clock <= chainGraceUntil + 1e-6 ? chainGraceNext : 0;
+            int next = IsFree && clock <= chainGraceUntil + 1e-6 && chainGraceKind == PlayerAttackKind.Light ? chainGraceNext : 0;
             if (state == PlayerState.Attacking && attackKind == PlayerAttackKind.Light)
             {
                 // Still inside (or before) the combo window: wait, the window decides chain vs restart.
@@ -140,6 +155,66 @@ namespace VaatusRevenge.Core
             return Directions.Flatten(moveVelocity).Length() >= fullSpeed - Epsilon;
         }
 
+        void TryAirAttack(in PlayerWorldState world)
+        {
+            MoveData[] chain = moveSet.AirChain;
+            if (chain == null || chain.Length == 0)
+            {
+                buffer.Clear();
+                return;
+            }
+            int next = 0;
+            if (state == PlayerState.Attacking && attackKind == PlayerAttackKind.Air)
+            {
+                if (!CanStartAttack()) return;
+                // Still inside (or before) the combo window: wait, the window decides.
+                if (!buffer.Locked && action.Time <= currentMove.ComboWindowEnd) return;
+                next = buffer.Locked ? chainIndex + 1 : 0;
+            }
+            else if (state == PlayerState.Airborne)
+            {
+                if (clock <= chainGraceUntil + 1e-6 && chainGraceKind == PlayerAttackKind.Air) next = chainGraceNext;
+            }
+            else if (state == PlayerState.Dodging)
+            {
+                return;                                      // after the air dash (the press waits in the buffer)
+            }
+            else if (!CanStartAttack())
+            {
+                return;
+            }
+            if (next >= chain.Length || chain[next] == null || airAttacksUsed >= Math.Max(0, Aerial.AirAttacksPerJump))
+            {
+                buffer.Clear();                              // the air string is spent until you land
+                return;
+            }
+            if (!stamina.CanAct) return;
+            buffer.Clear();
+            airAttacksUsed++;
+            StartAttack(chain[next], PlayerAttackKind.Air, next, ChargeTier.None, ConsumeCounterWindow(), true, world);
+        }
+
+        // Holding the press that started a ground string's move turns it into the launcher.
+        void TryLauncherHold(in PlayerWorldState world)
+        {
+            if (state != PlayerState.Attacking || attackKind != PlayerAttackKind.Light || moveSet.Launcher == null) return;
+            if (!lightHeld || !grounded) return;
+            if (clock - lightPressClock < Aerial.LauncherHoldTime - Epsilon) return;
+            // The held press must be the one that started this move (buffered presses count from a little earlier).
+            if (lightPressClock < attackStartClock - tuning.InputBufferWindow - Epsilon) return;
+            if (!stamina.CanAct) return;
+            if (buffer.Command == PlayerCommand.Light) buffer.Clear();
+            StartAttack(moveSet.Launcher, PlayerAttackKind.Launcher, -1, ChargeTier.None, isCounter || ConsumeCounterWindow(), true, world);
+            lightPressClock = double.NegativeInfinity;       // one launcher per hold
+        }
+
+        void TryAbility(MoveData move, in PlayerWorldState world)
+        {
+            if (!CanStartAttack() || !stamina.CanAct) return;
+            buffer.Clear();
+            if (move != null) StartAttack(move, PlayerAttackKind.Ability, -1, ChargeTier.None, ConsumeCounterWindow(), true, world);
+        }
+
         void TryHeavy(in PlayerWorldState world)
         {
             if (state == PlayerState.Airborne)
@@ -161,7 +236,8 @@ namespace VaatusRevenge.Core
 
         void TryZipStrike(in PlayerWorldState world)
         {
-            if (!CanStartAttack() || !stamina.CanAct) return;
+            bool canStart = state == PlayerState.Airborne || CanStartAttack();   // a zip works from the air too
+            if (!canStart || !stamina.CanAct) return;
             buffer.Clear();
             if (moveSet.ZipStrike == null || !world.HasZipTarget) return;
             StartAttack(moveSet.ZipStrike, PlayerAttackKind.ZipStrike, -1, ChargeTier.None, ConsumeCounterWindow(), true, world);
@@ -218,7 +294,10 @@ namespace VaatusRevenge.Core
             isCounter = counter;
             activeOpen = false;
             if (payStamina) SpendStamina(move.StaminaCost);
+            attackStartClock = clock;
             lungeDistance = PlanLunge(move, kind, world);
+            // Air strikes lift you as they start (you hang while striking); the launcher lifts you when its kick lands.
+            if (move.SelfLift > 0f && kind != PlayerAttackKind.Launcher) ApplySelfLift(move.SelfLift);
             currentAttackId = CombatIds.Next();
             RememberAttack(currentAttackId, tier == ChargeTier.FaJin ? Charge.FaJinMomentumGain : move.MomentumGain);
             moveVelocity = Vector3.Zero;
@@ -237,7 +316,7 @@ namespace VaatusRevenge.Core
                 lungeHoming = world.HasZipTarget;
                 return world.HasZipTarget ? GapTo(world.ZipTargetPosition, world.ZipTargetRadius, world) : 0f;
             }
-            if (kind != PlayerAttackKind.Light || !(tuning.GapCloseDistance > 0f)) return own;
+            if ((kind != PlayerAttackKind.Light && kind != PlayerAttackKind.Air) || !(tuning.GapCloseDistance > 0f)) return own;
             float gap;
             if (world.HasLockTarget) gap = GapTo(world.LockTargetPosition, world.LockTargetRadius, world);
             else if (world.HasSoftTarget) gap = GapTo(world.SoftTargetPosition, world.SoftTargetRadius, world);
@@ -266,7 +345,8 @@ namespace VaatusRevenge.Core
             action.MarkChecked();
 
             // A light press inside the combo window is accepted as the chain follow-up (see top of file).
-            if (attackKind == PlayerAttackKind.Light && buffer.Command == PlayerCommand.Light && !buffer.Locked
+            bool stringMove = attackKind == PlayerAttackKind.Light || attackKind == PlayerAttackKind.Air;
+            if (stringMove && buffer.Command == PlayerCommand.Light && !buffer.Locked
                 && action.Time >= move.ComboWindowStart && action.Time <= move.ComboWindowEnd)
             {
                 buffer.Lock();
@@ -276,15 +356,18 @@ namespace VaatusRevenge.Core
             {
                 // If the combo window reaches past the end of the move (e.g. its recovery was tuned shorter),
                 // a light press shortly after it ends, or one already queued, still continues the chain.
-                bool wasLight = attackKind == PlayerAttackKind.Light;
+                PlayerAttackKind kindEnded = attackKind;
+                bool wasLight = kindEnded == PlayerAttackKind.Light || kindEnded == PlayerAttackKind.Air;
                 bool queued = buffer.Locked && buffer.Command == PlayerCommand.Light;
-                int next = (chainIndex + 1) % Math.Max(1, ChainLength);
+                // The ground string loops; the air string doesn't (TryAirAttack refuses an index past its end).
+                int next = kindEnded == PlayerAttackKind.Air ? chainIndex + 1 : (chainIndex + 1) % Math.Max(1, ChainLength);
                 float grace = Math.Max(0f, move.ComboWindowEnd - move.TotalDuration);
                 FinishAction();
                 if (wasLight && (grace > 0f || queued))
                 {
                     chainGraceUntil = clock + grace;
                     chainGraceNext = next;
+                    chainGraceKind = kindEnded;
                 }
             }
         }
@@ -292,6 +375,7 @@ namespace VaatusRevenge.Core
         void OpenActive(in PlayerWorldState world)
         {
             activeOpen = true;
+            if (attackKind == PlayerAttackKind.Launcher && currentMove.SelfLift > 0f) ApplySelfLift(currentMove.SelfLift);
             Emit(new PlayerEvent
             {
                 Type = PlayerEventType.AttackActiveStart, Move = currentMove, AttackKind = attackKind, AttackId = currentAttackId,

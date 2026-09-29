@@ -12,8 +12,10 @@ namespace VaatusRevenge
     // and can't get out of sync. The layout is Spider-Man 2's (see the spec's controls table): face buttons
     // attack / zip / dodge / jump, a tapped LB parries and a tapped RB fires the ranged skill. The shoulders are
     // also modifiers, the way Spider-Man 2 does abilities and gadgets:
-    //   hold LB + X (Q + left mouse)  = the ability slot: Heavy (charge the fa jin palm, release on the flash).
-    //                                  LB + Y / B / A are empty ability slots and still do their normal action.
+    //   hold LB + X (Q + left mouse)  = Heavy (charge the fa jin palm, release on the flash; in the air: plunge)
+    //   hold LB + Y (Q + F)            = AbilityNorth (Fire: Fire Whip, mid range)
+    //   hold LB + B (Q + Left Shift)   = AbilityEast (Fire: Flame Wheel, close, all round)
+    //   LB + A is an empty slot and still jumps.
     //   hold RB + Y / B / A / X        = pick an element (Up / Right / Down / Left slot). RB then fires nothing:
     //                                  the Fire Blast comes from a quick RB tap on its own, on release. The mouse only counts while the cursor is captured: click the Game view to
     // capture it (that click is not an attack), Esc or switching windows releases it. The gamepad and keyboard
@@ -58,6 +60,8 @@ namespace VaatusRevenge
 
         PlayerInputFrame frame;
         bool heavyChord;                                   // X was pressed while LB was held: X is the Heavy until let go
+        bool abilityNorthChord;                            // same for Y (AbilityNorth) ...
+        bool abilityEastChord;                             // ... and B (AbilityEast)
         bool skillPadDown;                                 // RB is down (tap = skill, held with a face button = element pick)
         float skillPadHeldTime;
         bool skillPadChordUsed;
@@ -178,7 +182,9 @@ namespace VaatusRevenge
             ElementId elementPick = ReadElementChord(ref zipButton, ref dodgeButton, ref jumpButton, ref attackButton);
             ButtonState skillButton = ReadSkillTap(skillPadButton, Time.unscaledDeltaTime);
             if (skillMouseButton.Pressed) skillButton.Pressed = true;
-            ButtonState heavyButton = ReadHeavyChord(ref attackButton, guardButton);
+            ButtonState heavyButton = ReadAbilityChord(ref attackButton, guardButton, ref heavyChord);
+            ButtonState abilityNorthButton = ReadAbilityChord(ref zipButton, guardButton, ref abilityNorthChord);
+            ButtonState abilityEastButton = ReadAbilityChord(ref dodgeButton, guardButton, ref abilityEastChord);
 
             if (!gameplayEnabled)
             {
@@ -198,6 +204,8 @@ namespace VaatusRevenge
                 Light = attackButton,
                 Heavy = heavyButton,
                 ZipStrike = zipButton,
+                AbilityNorth = abilityNorthButton,
+                AbilityEast = abilityEastButton,
                 Dodge = dodgeButton,
                 Jump = jumpButton,
                 Guard = guardButton,
@@ -213,22 +221,24 @@ namespace VaatusRevenge
         void ResetChords()
         {
             heavyChord = false;
+            abilityNorthChord = false;
+            abilityEastChord = false;
             skillPadDown = false;
             skillPadHeldTime = 0f;
             skillPadChordUsed = false;
             System.Array.Clear(faceSwallowed, 0, faceSwallowed.Length);
         }
 
-        // Hold LB (Q) and press X (left mouse): that press, and everything until it's let go, is the Heavy, not an
-        // attack. Returns the Heavy button; the attack button reads as untouched meanwhile.
-        ButtonState ReadHeavyChord(ref ButtonState attackButton, ButtonState guardButton)
+        // Hold LB (Q) and press a face button: that press, and everything until it's let go, is the ability in that
+        // slot, not the button's normal action. Returns the ability button; the face button reads as untouched meanwhile.
+        static ButtonState ReadAbilityChord(ref ButtonState faceButton, ButtonState guardButton, ref bool latched)
         {
-            if (attackButton.Pressed && guardButton.Held) heavyChord = true;
-            if (!heavyChord) return default(ButtonState);
-            ButtonState heavyButton = attackButton;
-            attackButton = default(ButtonState);
-            if (!heavyButton.Held) heavyChord = false;   // let go (or a sub-frame tap): the chord is over
-            return heavyButton;
+            if (faceButton.Pressed && guardButton.Held) latched = true;
+            if (!latched) return default(ButtonState);
+            ButtonState abilityButton = faceButton;
+            faceButton = default(ButtonState);
+            if (!abilityButton.Held) latched = false;   // let go (or a sub-frame tap): the chord is over
+            return abilityButton;
         }
 
         // While RB is held, a face button picks the element in that slot instead of doing its usual action.

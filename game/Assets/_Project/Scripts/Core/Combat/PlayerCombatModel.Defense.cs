@@ -64,22 +64,46 @@ namespace VaatusRevenge.Core
 
         void TryDodge(in PlayerWorldState world)
         {
+            if (Aloft)
+            {
+                TryAirDash(world);
+                return;
+            }
             if (!CanDefensiveCancel(true) || !stamina.CanAct) return;
             buffer.Clear();
-            StartDodge(world);
+            StartDodge(world, false);
         }
 
-        void StartDodge(in PlayerWorldState world)
+        // Dodge in the air: a Flame Step dash with no gravity, AirDashesPerJump times before landing.
+        void TryAirDash(in PlayerWorldState world)
+        {
+            bool allowed = state == PlayerState.Airborne
+                || (state == PlayerState.Attacking && action.Time >= currentMove.DodgeCancelAt);
+            if (!allowed || airDashesUsed >= Math.Max(0, Aerial.AirDashesPerJump))
+            {
+                if (state == PlayerState.Airborne) buffer.Clear();   // no dash left: don't save it for the landing
+                return;
+            }
+            if (!stamina.CanAct) return;
+            buffer.Clear();
+            airDashesUsed++;
+            StartDodge(world, true);
+        }
+
+        void StartDodge(in PlayerWorldState world, bool inAir)
         {
             DodgeProfile dodge = Dodge;
             ExitAction(true);
             state = PlayerState.Dodging;
+            dodgeInAir = inAir;
 
             Vector3 stick = Directions.CameraRelative(moveStick, world.CameraYaw);
             float stickLength = stick.Length();
-            dodgeIsBackstep = stickLength <= Math.Max(tuning.StickDeadzone, Epsilon);
-            dodgeDirection = dodgeIsBackstep ? -Forward : stick / stickLength;
-            dodgeDistance = Math.Max(0f, dodgeIsBackstep ? dodge.BackstepDistance : dodge.Distance);
+            // In the air there's no backstep: no stick dashes forward.
+            dodgeIsBackstep = !inAir && stickLength <= Math.Max(tuning.StickDeadzone, Epsilon);
+            bool hasStick = stickLength > Math.Max(tuning.StickDeadzone, Epsilon);
+            dodgeDirection = hasStick ? stick / stickLength : (dodgeIsBackstep ? -Forward : Forward);
+            dodgeDistance = Math.Max(0f, inAir ? Aerial.AirDashDistance : dodgeIsBackstep ? dodge.BackstepDistance : dodge.Distance);
             // Not locked on: face where you dash. Locked on: keep facing the target (a strafe dodge).
             if (!dodgeIsBackstep && !world.HasLockTarget) facingYaw = Directions.YawOf(dodgeDirection, facingYaw);
 
@@ -87,21 +111,23 @@ namespace VaatusRevenge.Core
             dodgeStartClock = clock;
             dodgeStartPosition = world.Position;
             dodgeStartRadius = Math.Max(0f, world.SelfRadius);
-            iFrameStart = Math.Max(clock + dodge.IFrameStart, lastIFrameEnd + Math.Max(0f, dodge.ChainIFrameGap));
-            iFrameEnd = clock + dodge.IFrameEnd;
+            iFrameStart = Math.Max(clock + (inAir ? 0f : dodge.IFrameStart), lastIFrameEnd + Math.Max(0f, dodge.ChainIFrameGap));
+            iFrameEnd = clock + (inAir ? Aerial.AirDashIFrameEnd : dodge.IFrameEnd);
+            if (inAir) verticalVelocity = 0f;
             perfectRewardGiven = false;
             moveVelocity = Vector3.Zero;
             action.Begin();
             Emit(new PlayerEvent
             {
-                Type = PlayerEventType.DodgeStarted, Direction = dodgeDirection, Amount = dodgeDistance, IsBackstep = dodgeIsBackstep
+                Type = PlayerEventType.DodgeStarted, Direction = dodgeDirection, Amount = dodgeDistance, IsBackstep = dodgeIsBackstep,
+                InAir = inAir
             });
         }
 
         void UpdateDodge()
         {
             action.MarkChecked();
-            if (action.Time >= Dodge.TotalDuration) FinishAction();
+            if (action.Time >= (dodgeInAir ? Aerial.AirDashDuration : Dodge.TotalDuration)) FinishAction();
         }
 
         // Called whenever a dodge ends (finished or cut short): remembers when its i-frames really ended.

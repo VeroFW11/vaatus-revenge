@@ -10,7 +10,7 @@ namespace VaatusRevenge
     // The rows are built once (and rebuilt only if a name shown in them changes), so drawing allocates nothing.
     public sealed class HudControlsOverlay
     {
-        const int GameplayRows = 14;
+        const int GameplayRows = 19;
         const int SandboxRows = 7;
 
         static readonly Color PanelColor = new Color(0.035f, 0.035f, 0.045f, 0.92f);
@@ -24,7 +24,7 @@ namespace VaatusRevenge
         readonly string[] sandboxKeys = new string[SandboxRows];
         readonly string[] sandboxActions = new string[SandboxRows];
         bool built;
-        string builtSkill, builtZip, builtHeavy, builtElement, builtHeal;
+        string builtSkill, builtZip, builtHeavy, builtElement, builtHeal, builtNorth, builtEast, builtLauncher;
         bool builtParryOnly;
         float builtSlowScale = -1f;
 
@@ -100,10 +100,14 @@ namespace VaatusRevenge
         {
             string skillName = moves != null && moves.Skill != null ? moves.Skill.DisplayName : "";
             string zipName = moves != null && moves.ZipStrike != null ? moves.ZipStrike.DisplayName : "";
+            string northName = moves != null && moves.AbilityNorth != null ? moves.AbilityNorth.DisplayName : "";
+            string eastName = moves != null && moves.AbilityEast != null ? moves.AbilityEast.DisplayName : "";
+            string launcherName = moves != null && moves.Launcher != null ? moves.Launcher.DisplayName : "";
             string heavyName = moves != null && moves.Heavy != null ? moves.Heavy.DisplayName : "";
             string elementName = moves != null ? moves.DisplayName : "";
             bool parryOnly = moves == null || moves.Guard == null || moves.Guard.IsParryOnly;
-            if (built && builtSkill == skillName && builtZip == zipName && builtHeavy == heavyName && builtElement == elementName
+            if (built && builtSkill == skillName && builtZip == zipName && builtNorth == northName && builtEast == eastName
+                && builtLauncher == launcherName && builtHeavy == heavyName && builtElement == elementName
                 && builtHeal == healName && builtParryOnly == parryOnly && Mathf.Approximately(builtSlowScale, slowMotionScale))
             {
                 return;
@@ -111,6 +115,9 @@ namespace VaatusRevenge
             built = true;
             builtSkill = skillName;
             builtZip = zipName;
+            builtNorth = northName;
+            builtEast = eastName;
+            builtLauncher = launcherName;
             builtHeavy = heavyName;
             builtElement = elementName;
             builtHeal = healName;
@@ -128,12 +135,16 @@ namespace VaatusRevenge
             Row(ref r, "Move", "Left stick", "W A S D");
             Row(ref r, "Camera", "Right stick", "Mouse");
             Row(ref r, "Swap camera shoulder (hold)", "Hold L3 (left-stick click)", "Hold V");
-            Row(ref r, "Attack (aims at the enemy your stick points at)", "X / Square", "Left mouse");
+            Row(ref r, "Attack: 5-hit string (aims where your stick points)", "X / Square", "Left mouse");
+            Row(ref r, Named("Launcher: hold attack, then attack in the air", launcherName), "Hold X / Square", "Hold left mouse");
+            Row(ref r, "Air combo (in the air) / plunge (in the air)", "X  /  hold LB + X", "Left mouse  /  hold Q + left mouse");
             Row(ref r, zip, "Y / Triangle", "F");
             // Taught as a rhythm, not a reaction: letting go when the band lights up is usually too late
             // (playtest report HUD-01). The meter's white "get ready" mark comes just before the gold band.
             Row(ref r, heavy + ": hold, let go as the meter fills the gold band", "Hold LB / L1, then hold X / Square", "Hold Q, then hold left mouse");
-            Row(ref r, "Dodge (tap) / Sprint (hold)", "B / Circle", "Left Shift");
+            Row(ref r, Named("Mid-range ability", northName), "Hold LB / L1, then Y / Triangle", "Hold Q, then F");
+            Row(ref r, Named("Close all-round ability", eastName), "Hold LB / L1, then B / Circle", "Hold Q, then Left Shift");
+            Row(ref r, "Dodge (tap) / Sprint (hold) / Air dash (in the air)", "B / Circle", "Left Shift");
             Row(ref r, "Jump", "A / Cross", "Space");
             Row(ref r, parryOnly ? "Parry (tap just before a hit lands)" : "Guard (hold) / Deflect (press just before a hit)",
                 parryOnly ? "Tap LB / L1" : "LB / L1", "Q");

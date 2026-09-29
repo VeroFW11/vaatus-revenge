@@ -16,6 +16,11 @@ namespace VaatusRevenge.Core
     // TOKENS: an enemy holds an attack token from the moment it commits to an attack until the attack ends or
     // is interrupted (stagger, death, reset, losing interest, giving up the approach). As a safety net, a
     // token is also dropped at the end of any frame where the brain isn't attacking or about to.
+    // JUGGLING: a clean hit with LaunchSpeed on a launchable enemy that isn't armoured throws it up (state Launched):
+    //   it drops its attack and token and is helpless until it lands. While up, AirLift hits keep it up (until
+    //   MaxJuggleTime has passed) and SlamSpeed hits drive it down; air hits never count toward a break-out or poise.
+    //   Landing knocks it down (the Staggered state for KnockdownTime, announced with KnockedDown); StaggerEnded
+    //   comes when it's back on its feet, followed by the usual stagger immunity.
     // BREAK-OUT (EnemyTuning.BreakOut, the anti-mash rule): enough clean hits in a short window, while not
     // staggered, arm an armoured counter. It starts at the next free moment (or cuts short a wind-up that has
     // no armour yet), needs a token like any attack, and is shown with its own TelegraphKind.
@@ -70,6 +75,8 @@ namespace VaatusRevenge.Core
         float breakOutArmed;          // > 0: the break-out has triggered and waits (this many seconds) for a free moment
         float breakOutCooldown;       // > 0: hits don't count towards a break-out yet (runs from the break-out's start)
         bool strikeLanded;            // a strike of the current attack hit the player (OnStrikeLanded)
+        float launchedTime;           // seconds since the launch (juggle limit, and the stuck-in-the-air safety net)
+        bool launchedLeftGround;      // the launch has actually carried it off the ground (landing counts after that)
 
         protected EnemyBrain(EnemyTuning tuning, AttackTokenPool tokens, int ownerId, int seed, float facingYaw)
         {
@@ -117,6 +124,9 @@ namespace VaatusRevenge.Core
         public bool HoldsToken => tokens != null && tokens.IsHolding(OwnerId);
         public float AttackCooldownRemaining => Math.Max(0f, AttackTimer);
         public float StaggerRemaining => state == EnemyState.Staggered ? Math.Max(0f, staggerDuration - action.Time) : 0f;
+        public bool IsLaunched => state == EnemyState.Launched;
+        public float LaunchedTime => IsLaunched ? launchedTime : 0f;
+        public float VerticalVelocity => verticalVelocity;
         // True while staggered and for StaggerImmunity seconds afterwards: hits still hurt but can't re-stagger.
         public bool IsStaggerImmune => state == EnemyState.Staggered || staggerImmunityRemaining > 0f;
         // The anti-mash counter has triggered and is waiting to start (for tests and the debug panel).
@@ -274,7 +284,7 @@ namespace VaatusRevenge.Core
             aggro = false;
             if (state == EnemyState.Attacking) ExitAttack();
             CancelPendingAttack();
-            if (state != EnemyState.Staggered) SetState(EnemyState.Idle);
+            if (state != EnemyState.Staggered && state != EnemyState.Launched) SetState(EnemyState.Idle);   // a launched foe lands first
         }
 
         // ---------------------------------------------------------------- helpers for subclasses
@@ -591,6 +601,16 @@ namespace VaatusRevenge.Core
                 actionStep = LungeStep(world);
                 UpdateAttack(world);
             }
+            else if (state == EnemyState.Launched)
+            {
+                action.Advance(dt);
+                action.MarkChecked();
+                launchedTime += dt;
+                if (!world.Grounded) launchedLeftGround = true;
+                // Down again (or stuck on something for far too long): knocked down.
+                bool landed = launchedLeftGround && world.Grounded && verticalVelocity <= 0f;
+                if (landed || launchedTime > tuning.MaxJuggleTime + 3f) KnockDown();
+            }
             else if (state == EnemyState.Staggered)
             {
                 action.Advance(dt);
@@ -621,6 +641,7 @@ namespace VaatusRevenge.Core
                     break;
                 case EnemyState.Staggered:
                 case EnemyState.Dead:
+                case EnemyState.Launched:
                     moveVelocity = Vector3.Zero;
                     break;
                 default:
@@ -633,7 +654,8 @@ namespace VaatusRevenge.Core
             }
             displacement += actionStep + knockback.Step(dt);
             actionStep = Vector3.Zero;
-            if (world.Grounded) verticalVelocity = -tuning.GroundStickSpeed;
+            if (state == EnemyState.Launched) verticalVelocity = LocomotionRules.ApplyGravity(verticalVelocity, tuning.LaunchedGravity, 0f, dt);
+            else if (world.Grounded) verticalVelocity = -tuning.GroundStickSpeed;
             else verticalVelocity = LocomotionRules.ApplyGravity(verticalVelocity, tuning.Gravity, 0f, dt);
             lastVelocity = moveVelocity + displacement / dt + new Vector3(0f, verticalVelocity, 0f);
         }
@@ -720,6 +742,18 @@ namespace VaatusRevenge.Core
                 Die();
                 return result;
             }
+            if (state == EnemyState.Launched)
+            {
+                Juggle(hit);
+                return result;
+            }
+            if (hit.LaunchSpeed > 0f && tuning.Launchable && !HasHyperArmor && !IsBreakingOut)
+            {
+                Launch(hit.LaunchSpeed);
+                knockback.Start(hit.Direction, hit.Knockback, tuning.KnockbackTime);
+                result.PoiseBroken = true;            // it's interrupted and helpless, like a stagger
+                return result;
+            }
             // During a stagger and its immunity window, poise takes no damage at all, so the next stagger
             // needs a fresh build-up once the enemy is fighting back.
             if (!HasHyperArmor && !IsStaggerImmune && poise.Damage(hit.PoiseDamage, tuning.MaxPoise))
@@ -765,6 +799,39 @@ namespace VaatusRevenge.Core
             breakOutArmed = 0f;               // a stagger is earned: it wipes any break-out in the making
             ClearBreakOutHits();
             Emit(new EnemyEvent { Type = EnemyEventType.Staggered, Duration = staggerDuration });
+        }
+
+        void Launch(float speed)
+        {
+            if (state == EnemyState.Attacking) ExitAttack();
+            CancelPendingAttack();
+            SetState(EnemyState.Launched);
+            verticalVelocity = speed;
+            launchedTime = 0f;
+            launchedLeftGround = false;
+            moveVelocity = Vector3.Zero;
+            action.Begin();
+            breakOutArmed = 0f;
+            ClearBreakOutHits();
+            Emit(new EnemyEvent { Type = EnemyEventType.Launched, Amount = speed });
+        }
+
+        // An air hit on a launched enemy: slam it down, or keep it up (within the juggle time limit).
+        void Juggle(in DamageInfo hit)
+        {
+            if (hit.SlamSpeed > 0f) verticalVelocity = -hit.SlamSpeed;
+            else if (hit.AirLift > 0f && launchedTime < tuning.MaxJuggleTime) verticalVelocity = Math.Max(verticalVelocity, hit.AirLift);
+            else return;
+            knockback.Start(hit.Direction, hit.Knockback * 0.5f, tuning.KnockbackTime);
+            Emit(new EnemyEvent { Type = EnemyEventType.Juggled, Amount = verticalVelocity, Direction = hit.Direction });
+        }
+
+        void KnockDown()
+        {
+            float down = Math.Max(0f, tuning.KnockdownTime);
+            Emit(new EnemyEvent { Type = EnemyEventType.KnockedDown, Duration = down });
+            verticalVelocity = 0f;
+            Stagger(down);
         }
 
         void Die()
@@ -864,6 +931,8 @@ namespace VaatusRevenge.Core
             moveVelocity = Vector3.Zero;
             desiredVelocity = Vector3.Zero;
             verticalVelocity = 0f;
+            launchedTime = 0f;
+            launchedLeftGround = false;
             lastVelocity = Vector3.Zero;
             knockback.Stop();
             actionStep = Vector3.Zero;

@@ -68,6 +68,8 @@ namespace VaatusRevenge.Core
             {
                 airTime = 0f;
                 jumpedSinceGrounded = false;
+                airAttacksUsed = 0;                  // touching down refills the air string and the air dash
+                airDashesUsed = 0;
             }
             else
             {
@@ -223,9 +225,16 @@ namespace VaatusRevenge.Core
             }
             displacement += actionStep + knockback.Step(dt);
 
-            if (state == PlayerState.Plunging && !plungeLanded) verticalVelocity = plungeFalling ? -Plunge.FallSpeed : 0f;
+            if (TryZipVertical(world, dt, out float zipVertical)) verticalVelocity = zipVertical;
+            else if (state == PlayerState.Plunging && !plungeLanded) verticalVelocity = plungeFalling ? -Plunge.FallSpeed : 0f;
+            else if (state == PlayerState.Dodging && dodgeInAir) verticalVelocity = 0f;   // an air dash is flat
             else if (grounded) verticalVelocity = -tuning.GroundStickSpeed;   // hug the ground (slopes, steps)
-            else if (!jumpedThisTick) verticalVelocity = LocomotionRules.ApplyGravity(verticalVelocity, tuning.Gravity, tuning.MaxFallSpeed, dt);
+            else if (!jumpedThisTick)
+            {
+                // Hanging in the air while an air strike runs (Spider-Man's air combos), normal gravity otherwise.
+                float gravityScale = state == PlayerState.Attacking ? Angles.Clamp(Aerial.AirAttackGravityScale, 0f, 1f) : 1f;
+                verticalVelocity = LocomotionRules.ApplyGravity(verticalVelocity, tuning.Gravity * gravityScale, tuning.MaxFallSpeed, dt);
+            }
 
             lastVelocity = Directions.Flatten(moveVelocity) + displacement / dt + new Vector3(0f, verticalVelocity, 0f);
         }
@@ -259,8 +268,9 @@ namespace VaatusRevenge.Core
             if (state == PlayerState.Dodging)
             {
                 DodgeProfile dodge = Dodge;
-                float before = MotionCurves.WindowProgress(action.PreviousTime, 0f, dodge.Duration, dodge.DashEaseOut);
-                float after = MotionCurves.WindowProgress(action.Time, 0f, dodge.Duration, dodge.DashEaseOut);
+                float duration = dodgeInAir ? Aerial.AirDashDuration : dodge.Duration;
+                float before = MotionCurves.WindowProgress(action.PreviousTime, 0f, duration, dodge.DashEaseOut);
+                float after = MotionCurves.WindowProgress(action.Time, 0f, duration, dodge.DashEaseOut);
                 return dodgeDirection * (dodgeDistance * (after - before));
             }
             return state == PlayerState.Attacking ? LungeStep(world) : Vector3.Zero;
@@ -276,6 +286,33 @@ namespace VaatusRevenge.Core
             float before = MotionCurves.WindowProgress(action.PreviousTime, start, end, 0f);
             float after = MotionCurves.WindowProgress(action.Time, start, end, 0f);
             return LimitApproach(LungeDirection(world) * (lungeDistance * (after - before)), world);
+        }
+
+        // Launching yourself: a launcher's rise, or an air strike's small lift. Leaves the ground this frame.
+        void ApplySelfLift(float speed)
+        {
+            verticalVelocity = speed;
+            grounded = false;
+            jumpedThisTick = true;                   // this frame's gravity mustn't eat the lift
+            jumpedSinceGrounded = true;              // no coyote jump off the back of a launcher
+        }
+
+        // During a zip strike's dash, rise or fall to arrive level with the target (a juggled enemy up in the air).
+        bool TryZipVertical(in PlayerWorldState world, float dt, out float vertical)
+        {
+            vertical = 0f;
+            if (state != PlayerState.Attacking || attackKind != PlayerAttackKind.ZipStrike || !lungeHoming || !world.HasZipTarget) return false;
+            float remaining = currentMove.ActiveEnd - action.Time;
+            if (remaining <= 0f) return false;
+            float dy = world.ZipTargetPosition.Y - world.Position.Y;
+            if (grounded && dy <= 0.05f) return false;   // level ground: stay on it
+            vertical = Angles.Clamp(dy / Math.Max(remaining, dt), -25f, 25f);
+            if (vertical > 0f)
+            {
+                grounded = false;
+                jumpedSinceGrounded = true;
+            }
+            return true;
         }
 
         // Straight at the target for a homing lunge (so turning during startup doesn't curve the path), else forward.

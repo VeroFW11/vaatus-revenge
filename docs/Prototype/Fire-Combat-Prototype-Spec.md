@@ -19,7 +19,13 @@ Spider-Man 2's layout (David, 29 Sep). The shoulder buttons double as modifiers,
 | Move | Left stick | WASD |
 | Camera | Right stick | Mouse |
 | Swap camera shoulder (hold) | Hold L3 (left-stick click) | Hold V |
-| Attack (3-hit chain; aims at the enemy your stick points at and lunges to close the gap) | X / Square | Left mouse |
+| Attack (5-hit string; aims at the enemy your stick points at and lunges to close the gap) | X / Square | Left mouse |
+| Launcher (hold attack: the string's move becomes Rising Dragon Kick, throws the enemy up and you follow) | Hold X / Square | Hold left mouse |
+| Air string (attack in the air: 3 strikes that keep you both up, the last slams it down) | X / Square in the air | Left mouse in the air |
+| Air dash (once per jump) | B / Circle in the air | Left Shift in the air |
+| Plunge (Falling Axe Kick) | Hold LB + X in the air | Hold Q + left mouse in the air |
+| Fire Whip (mid range, 6.5 m arc) | Hold LB / L1, then Y / Triangle | Hold Q, then F |
+| Flame Wheel (close, all round) | Hold LB / L1, then B / Circle | Hold Q, then Left Shift |
 | Zip strike (Flame Step Strike: dash across to a far enemy and kick it) | Y / Triangle | F |
 | Fa Jin Palm (ability slot: hold to charge, release on the flash) | Hold LB / L1, then hold X / Square | Hold Q, then hold left mouse |
 | Dodge (tap) / Sprint (hold) | B / Circle | Left Shift |
@@ -31,7 +37,7 @@ Spider-Man 2's layout (David, 29 Sep). The shoulder buttons double as modifiers,
 | Lock on / off (optional; off by default) | R3 | Middle mouse or Tab |
 | Switch target | Flick right stick while locked | Mouse wheel, or Z / C |
 
-- **Empty ability slots:** LB + Y / B / A have no ability yet, so they still zip, dodge and jump as normal.
+- **Ability slots:** LB + X = Fa Jin Palm, LB + Y = Fire Whip, LB + B = Flame Wheel. LB + A is empty and still jumps.
 - **Fire Blast fires on release** so RB can also be the element modifier. A tap longer than 0.35 s (`PlayerInputReader.skillTapMaxTime`) counts as a cancelled element pick and fires nothing.
 - **Defence style is per element** (`GuardSettings.Style`): Fire is **parry only** (Spider-Man 2). A later element can switch to `BlockAndParry` (hold to block, press on time to deflect) in its move set, with no code change.
 
@@ -43,7 +49,11 @@ Northern Shaolin is long, extended strikes, powerful kicks and fast footwork wit
 
 | Move | Input | Idea |
 |---|---|---|
-| Flame Jab → Flame Cross → Dragon Tail Kick | Light x3 | Quick, fire-extended punches, then a wide spinning kick finisher |
+| Flame Jab → Flame Cross → Rising Snap Kick → Dragon Tail Kick → Phoenix Palm | Attack x5 | Lead and rear punches, a chambered front snap kick (tan tui), a spinning kick, then a double-palm push that throws a cone of fire (4.5 m). Loops back to the jab |
+| Rising Dragon Kick (launcher) | Hold attack | Throws the enemy up; you rise with it |
+| Sky Jab → Crescent Flame Kick → Tornado Slam Kick | Attack in the air | Each hit keeps you both up; the tornado kick slams the enemy down into a knockdown |
+| Fire Whip | LB + Y | Mid range: a sweeping lash of flame, 6.5 m, 110° |
+| Flame Wheel | LB + B | Close: a low spinning sweep ringed with fire, 3.4 m all round |
 | Fa Jin Palm | Hold LB + X (ability slot) | Charge, then release. Releasing inside the **sweet spot** (the fighter flashes) gives a fa jin burst: huge damage and stagger. Tests the open question "where does fa jin fit?" as a timing reward |
 | Flying Fire Kick | Attack while sprinting | Long lunging kick that closes distance |
 | Flame Step Strike | Zip strike | Fire from the feet carries you across up to 14 m into a flying kick (Spider-Man 2's web strike). Needs a target where you're aiming; with none, nothing happens and it costs nothing |
@@ -102,6 +112,10 @@ Seconds unless noted; distances in metres. At 60 fps, 0.1 s = 6 frames. All of t
 **Momentum:** 0-100 · +8 light hit, +14 heavy/sprint/plunge, +20 fa jin, +25 perfect dodge or deflect · starts draining 1.6 s after the last gain at 20/s · drains 35/s while locked on and moving away from the target · damage x1.0 at 0 up to x1.4 at 100.
 **Hitstop** (freeze-frame on impact): light 0.035, finisher 0.06, heavy 0.08, fa jin 0.2.
 **Attack tracking:** attacks turn towards the stick (or the lock-on target) quickly during startup, then commit. Enemies do the same: **they stop tracking when their active frames start**, which is what makes dodging possible.
+**5-hit string:** Jab 0.12/0.10/0.30 dmg 8 · Cross 0.13/0.10/0.32 dmg 9 · Snap Kick 0.14/0.10/0.32 dmg 10, range 2.9 · Dragon Tail Kick 0.18/0.12/0.40 dmg 13, arc 200 · Phoenix Palm 0.22/0.12/0.50 dmg 18, range 4.5, arc 90. Poise over the whole string is 43, just under a soldier's 45, so one string never staggers a fresh soldier on its own.
+**Aerial (`ElementMoveSet.Aerial`):** hold attack 0.25 s = launcher (dmg 9, LaunchSpeed 11 m/s, you rise at 9.5 m/s when the kick lands) · air strikes lift you and the target 3.2 m/s and gravity drops to 30% while one runs · up to 6 air strikes and 1 air dash (3.4 m, 0.22 s, invincible for 0.14 s) per jump · Tornado Slam Kick slams at 16 m/s.
+**Juggled enemies (`EnemyTuning`):** launched gravity 22 m/s² · air hits stop lifting after 3.5 s · landing = knockdown 0.9 s, then up (stagger immunity follows) · air hits never count toward the break-out · dummies can't be launched (they're planted).
+**Fire Whip:** startup 0.24 · active 0.14 · recovery 0.45 · dmg 12 · range 6.5 · arc 110 · stamina 18. **Flame Wheel:** 0.20 / 0.20 / 0.45 · dmg 14 · poise 22 · range 3.4 all round · knockback 1.6 · stamina 20.
 **Soft lock and free-flow lunge:** when not locked on, an attack aims at the nearest enemy within 7 m and 60° of where you're aiming (the stick, else your facing). A light attack at a target out of reach lunges up to 4.5 m further than its own step (`PlayerTuning.GapCloseDistance`), straight at the target, stopping 0.3 m short of it.
 **Flame Step Strike (zip strike):** target within 14 m, 50° of where you're aiming and 3 m up or down (`ElementMoveSet.Zip`) · dash covers the whole gap during startup 0.30 + active 0.12 · recovery 0.38 · dmg 12 · poise 18 · range 2.4 · arc 90 · stamina 14 (Punishing 20).
 

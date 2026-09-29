@@ -82,34 +82,36 @@ namespace VaatusRevenge.Core
         // Northern Shaolin's five-strike string: lead punch, rear punch, front snap kick (tan tui), a spinning kick and
         // a double-palm push that throws a cone of fire. Each hit reaches a little further and hits a little harder,
         // so the string walks you forward: Fire's relentless pressure.
+        // Poise damage over the whole string is 43, just under a Dao Soldier's 45: one full string never staggers a
+        // fresh soldier by itself (playtest report 01, a rule the tests pin); a string and a bit does.
         static MoveData[] CreateFireLightChain()
         {
             var jab = new MoveData
             {
                 DisplayName = "Flame Jab", Kind = HitKind.Light, Limb = Limb.LeftFist,
                 AnimationKey = AnimationKeys.Jab, EffectKey = EffectKeys.Burst,
-                Startup = 0.10f, Active = 0.08f, Recovery = 0.26f,
-                Damage = 7f, PoiseDamage = 6f, GuardStaminaDamage = 7f, Knockback = 0.15f, Hitstop = 0.035f,
+                Startup = 0.12f, Active = 0.10f, Recovery = 0.30f,
+                Damage = 8f, PoiseDamage = 8f, GuardStaminaDamage = 8f, Knockback = 0.2f, Hitstop = 0.035f,
                 Range = 2.6f, ArcDegrees = 70f, LungeDistance = 0.4f,
-                ComboWindowStart = 0.12f, ComboWindowEnd = 0.38f, ChainCancelAt = 0.20f, DodgeCancelAt = 0.18f,
-                StaminaCost = 8f, MomentumGain = 6f
+                ComboWindowStart = 0.14f, ComboWindowEnd = 0.40f, ChainCancelAt = 0.24f, DodgeCancelAt = 0.22f,
+                StaminaCost = 9f, MomentumGain = 8f
             };
             var cross = new MoveData
             {
                 DisplayName = "Flame Cross", Kind = HitKind.Light, Limb = Limb.RightFist,
                 AnimationKey = AnimationKeys.Cross, EffectKey = EffectKeys.Burst,
-                Startup = 0.11f, Active = 0.08f, Recovery = 0.28f,
-                Damage = 8f, PoiseDamage = 7f, GuardStaminaDamage = 8f, Knockback = 0.2f, Hitstop = 0.035f,
+                Startup = 0.13f, Active = 0.10f, Recovery = 0.32f,
+                Damage = 9f, PoiseDamage = 9f, GuardStaminaDamage = 9f, Knockback = 0.25f, Hitstop = 0.035f,
                 Range = 2.7f, ArcDegrees = 70f, LungeDistance = 0.45f,
-                ComboWindowStart = 0.13f, ComboWindowEnd = 0.40f, ChainCancelAt = 0.21f, DodgeCancelAt = 0.19f,
-                StaminaCost = 8f, MomentumGain = 6f
+                ComboWindowStart = 0.15f, ComboWindowEnd = 0.42f, ChainCancelAt = 0.25f, DodgeCancelAt = 0.23f,
+                StaminaCost = 9f, MomentumGain = 8f
             };
             var snap = new MoveData
             {
                 DisplayName = "Rising Snap Kick", Kind = HitKind.Light, Limb = Limb.RightFoot,
                 AnimationKey = AnimationKeys.SnapKick, EffectKey = EffectKeys.Burst,
                 Startup = 0.14f, Active = 0.10f, Recovery = 0.32f,
-                Damage = 10f, PoiseDamage = 10f, GuardStaminaDamage = 10f, Knockback = 0.3f, Hitstop = 0.045f,
+                Damage = 10f, PoiseDamage = 7f, GuardStaminaDamage = 10f, Knockback = 0.3f, Hitstop = 0.045f,
                 Range = 2.9f, ArcDegrees = 60f, LungeDistance = 0.5f,
                 ComboWindowStart = 0.18f, ComboWindowEnd = 0.46f, ChainCancelAt = 0.28f, DodgeCancelAt = 0.24f,
                 StaminaCost = 9f, MomentumGain = 7f
@@ -119,7 +121,7 @@ namespace VaatusRevenge.Core
                 DisplayName = "Dragon Tail Kick", Kind = HitKind.Light, Limb = Limb.RightFoot,
                 AnimationKey = AnimationKeys.SpinKick, EffectKey = EffectKeys.Trail,
                 Startup = 0.18f, Active = 0.12f, Recovery = 0.40f,
-                Damage = 13f, PoiseDamage = 18f, GuardStaminaDamage = 13f, Knockback = 0.6f, Hitstop = 0.055f,
+                Damage = 13f, PoiseDamage = 8f, GuardStaminaDamage = 13f, Knockback = 0.6f, Hitstop = 0.055f,
                 Range = 3.0f, ArcDegrees = 200f, OriginForward = 0f, LungeDistance = 0.5f,
                 ComboWindowStart = 0.30f, ComboWindowEnd = 0.62f, ChainCancelAt = 0.42f, DodgeCancelAt = 0.30f,
                 StaminaCost = 11f, MomentumGain = 8f
@@ -129,7 +131,7 @@ namespace VaatusRevenge.Core
                 DisplayName = "Phoenix Palm", Kind = HitKind.Light, Limb = Limb.BothFists,
                 AnimationKey = AnimationKeys.PhoenixPalm, EffectKey = EffectKeys.Cone,
                 Startup = 0.22f, Active = 0.12f, Recovery = 0.50f,
-                Damage = 18f, PoiseDamage = 26f, GuardStaminaDamage = 18f, Knockback = 1.4f, Hitstop = 0.07f,
+                Damage = 18f, PoiseDamage = 11f, GuardStaminaDamage = 18f, Knockback = 1.4f, Hitstop = 0.07f,
                 Range = 4.5f, ArcDegrees = 90f, LungeDistance = 0.4f,
                 ComboWindowStart = 0.50f, ComboWindowEnd = 0.80f, ChainCancelAt = 0.60f, DodgeCancelAt = 0.38f,
                 StaminaCost = 14f, MomentumGain = 12f                // the committed finisher earns a little more
@@ -277,7 +279,8 @@ namespace VaatusRevenge.Core
                 AnimationKey = AnimationKeys.ZipKick, EffectKey = EffectKeys.Trail,
                 Startup = 0.30f, Active = 0.12f, Recovery = 0.38f,
                 Damage = 12f, PoiseDamage = 18f, GuardStaminaDamage = 12f, Knockback = 0.9f, Hitstop = 0.05f,
-                Range = 2.4f, ArcDegrees = 90f, LungeDistance = 0f, TrackingTurnRate = 1080f,
+                Range = 2.4f, ArcDegrees = 90f, VerticalReach = 1.6f, LungeDistance = 0f, TrackingTurnRate = 1080f,
+                AirLift = 3.2f,                              // zipping into a juggled enemy keeps it up
                 ComboWindowStart = 0f, ComboWindowEnd = 0f, ChainCancelAt = 0.44f, DodgeCancelAt = 0.36f,
                 StaminaCost = 14f, MomentumGain = 10f
             };

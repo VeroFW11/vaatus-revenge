@@ -133,6 +133,7 @@ namespace VaatusRevenge.Core
             t.BackOffChance = 0f;
             t.UsesAttackToken = false;
             t.BreakOut.Enabled = false;              // a practice target: mashing it is the point
+            t.Launchable = false;                    // it's a post planted in the ground
             t.Attacks = new[]
             {
                 new EnemyAttackData

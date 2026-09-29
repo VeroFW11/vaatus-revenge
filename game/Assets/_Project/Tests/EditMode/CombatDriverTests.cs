@@ -18,7 +18,9 @@ namespace VaatusRevenge.Tests
         Guard = 16,
         Skill = 32,
         Heal = 64,
-        Zip = 128
+        Zip = 128,
+        AbilityNorth = 256,
+        AbilityEast = 512
     }
 
     // Drives a PlayerCombatModel the way PlayerController will: one Tick per frame at a fixed dt, then moves
@@ -67,6 +69,8 @@ namespace VaatusRevenge.Tests
             input.Skill = ButtonState.From((now & Pad.Skill) != 0, (held & Pad.Skill) != 0);
             input.Heal = ButtonState.From((now & Pad.Heal) != 0, (held & Pad.Heal) != 0);
             input.ZipStrike = ButtonState.From((now & Pad.Zip) != 0, (held & Pad.Zip) != 0);
+            input.AbilityNorth = ButtonState.From((now & Pad.AbilityNorth) != 0, (held & Pad.AbilityNorth) != 0);
+            input.AbilityEast = ButtonState.From((now & Pad.AbilityEast) != 0, (held & Pad.AbilityEast) != 0);
             return input;
         }
 

@@ -327,7 +327,7 @@ namespace VaatusRevenge
             if (float.IsNaN(velocity.x) || float.IsNaN(velocity.y) || float.IsNaN(velocity.z)) return;
             // Brains don't know where the edges are, so their own steps (walking, strafing, lunging) stop at a
             // ledge. Knockback only happens while staggered, and being knocked off a ledge is fine.
-            if (b.IsAlive && b.State != EnemyState.Staggered
+            if (b.IsAlive && b.State != EnemyState.Staggered && b.State != EnemyState.Launched
                 && WouldStepOffLedge(new Vector3(velocity.x * dt, 0f, velocity.z * dt)))
             {
                 velocity.x = 0f;

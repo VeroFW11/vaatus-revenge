@@ -211,15 +211,19 @@ namespace VaatusRevenge.Tests
         public void LightChainWalksThroughTheMovesAndLoops()
         {
             var d = new PlayerDriver();
-            for (int press = 0; press < 5; press++)
+            d.Step(Pad.Light);
+            for (int press = 1; press < 7; press++)
             {
+                // Press as soon as the newest move's combo window opens, so every press chains.
+                int started = press;
+                d.RunUntil(x => x.Count(PlayerEventType.AttackStarted) == started && x.Model.CurrentMove != null
+                                && x.Model.ActionTime >= x.Model.CurrentMove.ComboWindowStart, 90);
                 d.Step(Pad.Light);
-                d.Run(18);                                       // next press lands inside each combo window
             }
-            d.Run(60);
+            d.Run(90);
             var starts = d.All(PlayerEventType.AttackStarted);
-            Assert.AreEqual(5, starts.Count);
-            string[] expected = { "Flame Jab", "Flame Cross", "Dragon Tail Kick", "Flame Jab", "Flame Cross" };
+            Assert.AreEqual(7, starts.Count);
+            string[] expected = { "Flame Jab", "Flame Cross", "Rising Snap Kick", "Dragon Tail Kick", "Phoenix Palm", "Flame Jab", "Flame Cross" };
             for (int i = 0; i < expected.Length; i++) Assert.AreEqual(expected[i], starts[i].Move.DisplayName, "press " + i);
         }
 

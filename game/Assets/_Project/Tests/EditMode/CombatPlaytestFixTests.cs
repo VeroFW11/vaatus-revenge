@@ -17,7 +17,7 @@ namespace VaatusRevenge.Tests
         {
             var d = new PlayerDriver();
             d.Step(Pad.Jump);
-            d.Step(Pad.Light);                                   // one frame after take-off: far below MinAirTime
+            d.Step(Pad.Heavy);                                   // one frame after take-off: far below MinAirTime
             Assert.AreEqual(PlayerState.Airborne, d.Model.State);
             Assert.AreEqual(PlayerCommand.None, d.Model.BufferedCommand, "dropped, not buffered");
             d.RunUntil(x => x.Model.State == PlayerState.Locomotion, 120);
@@ -31,13 +31,13 @@ namespace VaatusRevenge.Tests
             var early = new PlayerDriver();
             early.Step(Pad.Jump);
             early.Run(early.FramesToReach(minAir) - 2);
-            early.Step(Pad.Light);                               // just too soon
+            early.Step(Pad.Heavy);                               // just too soon
             Assert.AreEqual(PlayerState.Airborne, early.Model.State);
 
             var onTime = new PlayerDriver();
             onTime.Step(Pad.Jump);
             onTime.Run(onTime.FramesToReach(minAir) - 1);
-            onTime.Step(Pad.Light);
+            onTime.Step(Pad.Heavy);
             Assert.AreEqual(PlayerState.Plunging, onTime.Model.State);
         }
 
@@ -259,7 +259,7 @@ namespace VaatusRevenge.Tests
                 Assert.AreEqual(1.2f, set.Charge.ChargedDamageMultiplier, 1e-5f);
                 Assert.AreEqual(0.2f, set.SprintAttackMinSprintTime, 1e-5f);
                 Assert.AreEqual(0.15f, set.SprintAttackGrace, 1e-5f);
-                Assert.AreEqual(10f, set.LightChain[2].MomentumGain, 1e-5f);
+                Assert.AreEqual(12f, set.LightChain[set.LightChain.Length - 1].MomentumGain, 1e-5f);   // the committed finisher earns more
                 Assert.AreEqual(6f, set.Momentum.BackOffRadius, 1e-5f);
             }
             Assert.AreEqual(0.35f, PlayerTuning.CreateFluid().QueuedPressMaxAge, 1e-5f);
@@ -445,8 +445,8 @@ namespace VaatusRevenge.Tests
         {
             var t = PlayerTuning.CreateFluid();
             Assert.IsTrue(SoftLockSelector.TryScore(Vector3.Zero, 0f, new Vector3(0f, 1.2f, 2f), t, out _));
-            Assert.IsFalse(SoftLockSelector.TryScore(Vector3.Zero, 0f, new Vector3(0f, 2.5f, 2f), t, out _), "up on a ledge");
-            Assert.IsFalse(SoftLockSelector.TryScore(Vector3.Zero, 0f, new Vector3(0f, -2.5f, 2f), t, out _), "down below");
+            Assert.IsFalse(SoftLockSelector.TryScore(Vector3.Zero, 0f, new Vector3(0f, t.SoftLockMaxHeightDifference + 0.5f, 2f), t, out _), "up on a ledge");
+            Assert.IsFalse(SoftLockSelector.TryScore(Vector3.Zero, 0f, new Vector3(0f, -t.SoftLockMaxHeightDifference - 0.5f, 2f), t, out _), "down below");
             Assert.IsTrue(SoftLockSelector.TryScore(Vector3.Zero, 0f, new Vector3(0f, 2.5f, 2f), 4f, 60f, out _), "old overload: no height rule");
         }
     }

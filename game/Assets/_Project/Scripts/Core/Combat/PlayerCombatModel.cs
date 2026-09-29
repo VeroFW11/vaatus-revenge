@@ -33,6 +33,7 @@ namespace VaatusRevenge.Core
         static readonly ChargeSettings FallbackCharge = new ChargeSettings();
         static readonly PlungeSettings FallbackPlunge = new PlungeSettings();
         static readonly MomentumSettings FallbackMomentum = new MomentumSettings { Enabled = false };
+        static readonly AerialSettings FallbackAerial = new AerialSettings();
 
         PlayerTuning tuning;
         ElementMoveSet moveSet;
@@ -67,7 +68,8 @@ namespace VaatusRevenge.Core
         int healCharges;
 
         // Buttons: last frame's held state, so a press is never missed even if a Pressed flag was.
-        bool lightHeld, heavyHeld, jumpHeld, guardHeld, skillHeld, healHeld, zipHeld;
+        bool lightHeld, heavyHeld, jumpHeld, guardHeld, skillHeld, healHeld, zipHeld, abilityNorthHeld, abilityEastHeld;
+        double lightPressClock = double.NegativeInfinity;   // when attack last went down (hold it = launcher)
         Vector2 moveStick;
 
         // Current action (attack, charge, plunge, dodge, heal, stagger).
@@ -80,6 +82,11 @@ namespace VaatusRevenge.Core
         bool lungeHoming;             // a stretched lunge or zip dash travels straight at its target, not along the facing
         double chainGraceUntil = double.NegativeInfinity;   // see UpdateAttack: chain survives a short recovery
         int chainGraceNext;
+        PlayerAttackKind chainGraceKind;   // which string the grace continues (the ground one or the air one)
+        double attackStartClock;      // when the running attack started (the launcher checks the press that started it is still held)
+        int airAttacksUsed;           // air strikes since we last touched the ground (AerialSettings.AirAttacksPerJump)
+        int airDashesUsed;            // air dashes since we last touched the ground
+        bool dodgeInAir;              // the running dodge is an air dash
         bool activeOpen;
         bool isCounter;
         bool releasingCharge;
@@ -155,6 +162,8 @@ namespace VaatusRevenge.Core
         public Vector3 Velocity => lastVelocity;
         public float SprintTime => state == PlayerState.Sprinting ? sprintTime : 0f;
         public bool IsCounterWindowOpen => clock <= counterWindowUntil;
+        public bool IsAirDashing => state == PlayerState.Dodging && dodgeInAir;
+        public int AirAttacksUsed => airAttacksUsed;
         public float CounterWindowRemaining => IsCounterWindowOpen ? (float)(counterWindowUntil - clock) : 0f;
         public float StaggerRemaining => state == PlayerState.Staggered ? Math.Max(0f, staggerDuration - action.Time) : 0f;
 
@@ -169,6 +178,7 @@ namespace VaatusRevenge.Core
         ChargeSettings Charge => moveSet.Charge ?? FallbackCharge;
         PlungeSettings Plunge => moveSet.Plunge ?? FallbackPlunge;
         MomentumSettings MomentumRules => moveSet.Momentum ?? FallbackMomentum;
+        AerialSettings Aerial => moveSet.Aerial ?? FallbackAerial;
 
         // ---------------------------------------------------------------- one frame
 
@@ -229,6 +239,7 @@ namespace VaatusRevenge.Core
             if (moveStick.LengthSquared() > 1f) moveStick = Vector2.Normalize(moveStick);
 
             bool lightPressed = Pressed(input.Light, ref lightHeld);
+            if (lightPressed) lightPressClock = clock;
             bool heavyPressed = Pressed(input.Heavy, ref heavyHeld);
             if (heavyPressed) heavyPressRealClock = realClock;
             bool jumpPressed = Pressed(input.Jump, ref jumpHeld);
@@ -236,6 +247,8 @@ namespace VaatusRevenge.Core
             bool healPressed = Pressed(input.Heal, ref healHeld);
             bool guardPressed = Pressed(input.Guard, ref guardHeld);
             bool zipPressed = Pressed(input.ZipStrike, ref zipHeld);
+            bool abilityNorthPressed = Pressed(input.AbilityNorth, ref abilityNorthHeld);
+            bool abilityEastPressed = Pressed(input.AbilityEast, ref abilityEastHeld);
 
             bool dodgePressed = input.Dodge.Pressed || (input.Dodge.Held && !dodgeButton.IsHeld);
             bool dodgeTap = dodgeButton.Update(dodgePressed, input.Dodge.Released, input.Dodge.Held, dt,
@@ -249,6 +262,8 @@ namespace VaatusRevenge.Core
             if (skillPressed) buffer.Push(PlayerCommand.Skill, clock, defensiveWins);
             if (heavyPressed) buffer.Push(PlayerCommand.Heavy, clock, defensiveWins);
             if (zipPressed) buffer.Push(PlayerCommand.ZipStrike, clock, defensiveWins);
+            if (abilityNorthPressed) buffer.Push(PlayerCommand.AbilityNorth, clock, defensiveWins);
+            if (abilityEastPressed) buffer.Push(PlayerCommand.AbilityEast, clock, defensiveWins);
             if (lightPressed) buffer.Push(PlayerCommand.Light, clock, defensiveWins);
             if (jumpPressed) buffer.Push(PlayerCommand.Jump, clock, defensiveWins);
             if (guardPressed) buffer.Push(PlayerCommand.Guard, clock, defensiveWins);
@@ -285,7 +300,7 @@ namespace VaatusRevenge.Core
             Emit(new PlayerEvent
             {
                 Type = type, Move = currentMove, AttackKind = attackKind, AttackId = currentAttackId,
-                ChargeTier = chargeTier, IsCounter = isCounter
+                ChargeTier = chargeTier, IsCounter = isCounter, InAir = !grounded
             });
         }
 
@@ -454,6 +469,10 @@ namespace VaatusRevenge.Core
             chainIndex = -1;
             lungeDistance = 0f;
             lungeHoming = false;
+            lightPressClock = double.NegativeInfinity;
+            airAttacksUsed = 0;
+            airDashesUsed = 0;
+            dodgeInAir = false;
             chainGraceUntil = double.NegativeInfinity;
             activeOpen = false;
             isCounter = false;

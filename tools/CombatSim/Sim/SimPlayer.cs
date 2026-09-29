@@ -11,6 +11,7 @@ namespace VaatusRevenge.CombatSim
     //   perfect dodge, hitstop on a deflect) -> keep querying the open hitbox every later frame.
     public sealed class SimPlayer : SimFighter
     {
+        public int AirHitsLanded;                      // clean hits by air-string moves (scenario stats)
         public const float DeflectHitstop = 0.06f;    // PlayerFeedbackSettings.DeflectHitstop default
         const float BodyCentreHeight = 0.9f;          // CharacterController.center.y
 
@@ -249,7 +250,11 @@ namespace VaatusRevenge.CombatSim
                 SimHitReport report = hits[i];
                 Model.OnAttackLanded(in report.Result, attackId);
                 world.OnPlayerHitLanded(move, in report);
-                if (report.Result.Outcome == HitOutcome.Hit) clean = true;
+                if (report.Result.Outcome == HitOutcome.Hit)
+                {
+                    clean = true;
+                    if (move != null && move.AirLift + move.SlamSpeed > 0f && Model.CurrentAttackKind == PlayerAttackKind.Air) AirHitsLanded++;
+                }
                 else if (report.Result.Outcome == HitOutcome.Parried) parried = true;
             }
             hits.Clear();

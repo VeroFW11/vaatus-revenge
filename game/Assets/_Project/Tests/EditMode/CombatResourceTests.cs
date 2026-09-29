@@ -101,7 +101,7 @@ namespace VaatusRevenge.Tests
             Assert.AreEqual(PlayerState.Airborne, d.Model.State);
             d.RunUntil(x => x.Last.Velocity.Y <= 0f, 60);        // apex
             float stamina = d.Model.Stamina;
-            d.Step(Pad.Light);
+            d.Step(Pad.Heavy);   // plunge = the fa jin chord (LB + X) in the air; attack in the air is the air string
             Assert.AreEqual(PlayerState.Plunging, d.Model.State);
             Assert.That(d.Model.Stamina, Is.EqualTo(stamina - set.PlungeAttack.StaminaCost).Within(0.5f));
             Assert.AreEqual(0f, d.Last.Velocity.Y, 1e-4f, "hangs first");
