@@ -16,14 +16,23 @@ namespace VaatusRevenge.Core
         // phase: cycle position (left foot touches down at 0, right at 0.5). direction: unit travel direction in
         // the fighter's frame (x right, z forward). speed: m/s. stance: the standing pose to build on (its upper
         // body is used at low speed). result may not be stance.
-        public static void Evaluate(float phase, float speed, Vector2 direction, GaitSettings g, PoseSpec stance, PoseSpec result, float armSwing = 1f)
+        // groundSpeed (optional, m/s): how fast the body is really covering ground. Step rate and stride length come
+        // from it, so a planted foot slides back under the body at the body's true speed (it stays put on the floor
+        // while the fighter speeds up) and a stride never outgrows the legs; the style (walk or run) follows the
+        // smoothed speed. The caller advances the phase at g.Cadence(groundSpeed) too. Negative = use speed.
+        public static void Evaluate(float phase, float speed, Vector2 direction, GaitSettings g, PoseSpec stance, PoseSpec result, float armSwing = 1f, float groundSpeed = -1f)
         {
             result.CopyFrom(stance);
             speed = Math.Max(0f, speed);
-            float cadence = g.Cadence(speed);
-            float stride = speed / cadence;
+            float ground = groundSpeed >= 0f ? groundSpeed : speed;
+            float cadence = g.Cadence(ground);
+            float stride = ground / cadence;
             float run = g.RunBlend(speed);
-            float stanceShare = AnimMath.Lerp(g.WalkStance, g.RunStance, run);
+            // A planted foot can only reach so far in front of and behind the hips: a long stride spends less of the
+            // cycle on the ground (the flight of a real run) rather than asking the legs for a reach they don't
+            // have, which would lift the "planted" foot off the floor.
+            float stanceShare = g.StanceShare(speed);
+            if (stride > 1e-4f) stanceShare = Math.Min(stanceShare, 2f * g.MaxStanceReach / stride);
             float lift = AnimMath.Lerp(g.WalkLift, g.RunLift, run) * AnimMath.Clamp01(speed / Math.Max(0.1f, g.WalkSpeed));
             float half = stanceShare * stride * 0.5f;
             Vector2 dir = direction.LengthSquared() > 1e-4f ? Vector2.Normalize(direction) : new Vector2(0f, 1f);

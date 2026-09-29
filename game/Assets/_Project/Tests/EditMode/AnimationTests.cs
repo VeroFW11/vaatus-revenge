@@ -378,6 +378,53 @@ namespace VaatusRevenge.Tests
             Assert.That(worst, Is.LessThan(0.02f), "a planted foot slid " + worst + " m in one frame");
         }
 
+        // W-03: touching down from a jump plants the feet; they don't float back up for a few frames.
+        [Test]
+        public void LandingKeepsAFootOnTheFloor()
+        {
+            HumanoidSkeleton skeleton = HumanoidSkeleton.Create();
+            var animator = new FighterAnimator(PoseLibrary.Default, skeleton);
+            var fk = new ForwardKinematics(skeleton);
+            for (int i = 0; i < 20; i++) animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "" });
+            for (int i = 0; i < 40; i++)
+                animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = false, ActionKey = "", LocalVelocity = new Vector3(0f, 5f - i * 0.4f, 0f) });
+            for (int i = 0; i < 30; i++)
+            {
+                animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "" });
+                fk.Compute(animator.Pose, Vector3.Zero, 0f);
+                float lowest = Math.Min(fk[BodyJoint.LeftToes].Y, fk[BodyJoint.RightToes].Y);
+                Assert.That(lowest, Is.LessThan(0.035f), "both feet off the floor " + i + " frames after landing");
+            }
+        }
+
+        // The combat rules snap the facing round at an attack's start (a jab at a foe behind you): the body whips round
+        // over a few frames on its planted feet instead of flipping 180 degrees in one.
+        [Test]
+        public void AnInstantAboutTurnIsShownAsAQuickTurn()
+        {
+            MoveData jab = ElementMoveSet.CreateFireFluid().LightChain[0];
+            HumanoidSkeleton skeleton = HumanoidSkeleton.Create();
+            var animator = new FighterAnimator(PoseLibrary.Default, skeleton);
+            var fk = new ForwardKinematics(skeleton);
+            for (int i = 0; i < 30; i++) animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "" });
+            fk.Compute(animator.Pose, Vector3.Zero, 0f);
+            var last = (Vector3[])fk.Positions.Clone();
+            float worst = 0f;
+            for (float t = 0f; t < jab.ActiveStart + 0.001f; t += Dt)
+            {
+                FighterAnimInput input = ActionInput(AnimationKeys.Jab, t, jab);
+                if (t == 0f) input.YawDelta = 180f;
+                animator.Update(input);
+                fk.Compute(animator.Pose, Vector3.Zero, 180f);
+                for (int j = 0; j < BodyJoints.Count; j++) worst = Math.Max(worst, Vector3.Distance(last[j], fk[(BodyJoint)j]));
+                last = (Vector3[])fk.Positions.Clone();
+            }
+            Assert.That(worst, Is.LessThan(0.6f), "a joint jumped " + worst + " m in one frame");
+            // By the first active frame the body faces the new way (the jab's own twist aside).
+            Vector3 fist = fk[BodyJoint.RightHand] - fk[BodyJoint.Hips];
+            Assert.That(fist.Z, Is.LessThan(0f), "the jab still points the old way");
+        }
+
         [Test]
         public void EulerAndLookRotationFollowUnityConventions()
         {

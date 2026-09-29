@@ -164,6 +164,7 @@ namespace VaatusRevenge.Core
             footLocks[0] = footLocks[1] = default;
             lastRootYaw = 0f;
             fadeFromAir = false;
+            groundSpeed = 0f;
             turnCarry = turnCarryFrom = turnCarryTime = turnExcess = 0f;
             clock = 0f;
             EvaluateClip(AnimationKeys.Idle, 0f, default, false, 0f, output);
@@ -264,19 +265,20 @@ namespace VaatusRevenge.Core
             float speed = horizontal.Length();
             if (!hasHistory)
             {
-                smoothSpeed = speed;
+                smoothSpeed = groundSpeed = speed;
                 hasHistory = true;
                 wasGrounded = input.Grounded;
             }
             float k = AnimMath.ExpBlend(gait.SpeedSmoothing, dt);
             smoothSpeed += (speed - smoothSpeed) * k;
+            groundSpeed += (speed - groundSpeed) * AnimMath.ExpBlend(gait.GroundSpeedSmoothing, dt);
             if (speed > 0.05f)
             {
                 Vector2 dir = horizontal / speed;
                 smoothDir = Vector2.Normalize(Vector2.Lerp(smoothDir, dir, AnimMath.Clamp01(k * 1.5f)) + dir * 1e-3f);
             }
             idleTime += dt;
-            if (smoothSpeed > 0.01f) gaitPhase = Wrap01(gaitPhase + gait.Cadence(smoothSpeed) * dt);
+            if (smoothSpeed > 0.01f) gaitPhase = Wrap01(gaitPhase + gait.Cadence(groundSpeed) * dt);
 
             // Landing: knees absorb the impact for a moment, deeper for a hard landing.
             if (input.Grounded && !wasGrounded && airTime > 0.12f)
@@ -314,7 +316,7 @@ namespace VaatusRevenge.Core
                 float moveWeight = AnimMath.SmoothStep((smoothSpeed - gait.MoveThreshold * 0.5f) / Math.Max(0.05f, gait.WalkSpeed * 0.6f));
                 if (moveWeight > 0f)
                 {
-                    GaitGenerator.Evaluate(gaitPhase, smoothSpeed, smoothDir, gait, stanceSpec, gaitSpec, IdleArmSwing());
+                    GaitGenerator.Evaluate(gaitPhase, smoothSpeed, smoothDir, gait, stanceSpec, gaitSpec, IdleArmSwing(), groundSpeed);
                     PoseSpec.Lerp(stanceSpec, gaitSpec, moveWeight, locoSpec);
                 }
                 else
@@ -387,6 +389,7 @@ namespace VaatusRevenge.Core
             output[PoseChannel.RootYaw] += turnCarry;
         }
 
+        float groundSpeed;      // the body's speed over the ground, barely smoothed (sizes the stride: see GaitGenerator)
         bool fadeFromAir;
         readonly float[] savedLegs = new float[2 * PoseSpec.LegChannels + 1];
 

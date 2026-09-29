@@ -92,6 +92,18 @@ namespace VaatusRevenge.Core
 
         public float WalkStance = 0.62f;             // share of the cycle each foot is on the ground at walking pace...
         public float RunStance = 0.44f;              // ...and when running (a short flight phase between steps)
+        public float FlightFromRunBlend = 0.85f;     // 0..1: below this share of running pace a foot is always down (no flight)
+        public float MaxStanceReach = 0.4f;          // metres a planted foot reaches ahead of / behind the hips
+
+        // Share of the cycle each foot is on the ground: at least half (one foot always down) through the walk and
+        // the walk-run transition, dropping below half (both feet briefly off the ground) only near full running pace.
+        public float StanceShare(float speed)
+        {
+            float run = RunBlend(speed);
+            float flightFrom = AnimMath.Clamp(FlightFromRunBlend, 0.05f, 1f);
+            if (run <= flightFrom) return AnimMath.Lerp(WalkStance, Math.Max(0.5f, RunStance), run / flightFrom);
+            return AnimMath.Lerp(Math.Max(0.5f, RunStance), RunStance, (run - flightFrom) / Math.Max(1e-3f, 1f - flightFrom));
+        }
         public float WalkLift = 0.07f;               // how high the swinging foot rises (metres)
         public float RunLift = 0.3f;
         public float FootWidth = 0.11f;              // feet this far either side of the centre line
@@ -109,6 +121,7 @@ namespace VaatusRevenge.Core
         public float RunArmReach = 0.55f;            // ...and bend to 90 degrees running
         public float StrafeWidth = 0.06f;            // extra stance width when moving sideways
         public float SpeedSmoothing = 10f;           // how quickly the gait follows speed changes (1/s)
+        public float GroundSpeedSmoothing = 40f;     // ...and how quickly the stride follows the body's true speed (1/s)
 
         public float Cadence(float speed)
         {
