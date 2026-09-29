@@ -122,16 +122,21 @@ namespace VaatusRevenge.EditorTools
             EditorUtility.SetDirty(data);
         }
 
-        // Finds a component type by its assembly-qualified name, falling back to searching the loaded assemblies
-        // by full name (in case the assembly's name ever changes). Null when it isn't a Component or doesn't exist.
+        // Finds a component type by its assembly-qualified name, falling back to Unity's TypeCache of all component
+        // types by full name (in case the assembly's name ever changes). TypeCache is Unity's recommended way to scan
+        // types; AppDomain.GetAssemblies() can return unloaded assemblies. Null when it doesn't exist.
         static Type FindComponentType(string assemblyQualifiedName)
         {
             Type type = Type.GetType(assemblyQualifiedName, false);
             if (type == null)
             {
                 string fullName = assemblyQualifiedName.Split(',')[0].Trim();
-                Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
-                for (int i = 0; i < assemblies.Length && type == null; i++) type = assemblies[i].GetType(fullName, false);
+                foreach (Type candidate in TypeCache.GetTypesDerivedFrom<Component>())
+                {
+                    if (candidate.FullName != fullName) continue;
+                    type = candidate;
+                    break;
+                }
             }
             return type != null && typeof(Component).IsAssignableFrom(type) ? type : null;
         }
