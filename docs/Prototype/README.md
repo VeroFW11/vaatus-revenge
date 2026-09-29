@@ -43,6 +43,6 @@ The human checklist is in [Playtest Report 01, section 6](Playtest-Report-01.md)
 ## Known open items
 
 - Nothing has run in the real Unity Editor yet: the first run is the real test.
-- Mashing light still beats a single soldier in Fluid (slower and costlier now). Fixing it needs a new enemy rule, e.g. an armoured counter after repeated hits. Jeremy's call.
-- The camera can still jump ~2 m when a lock-on swing sweeps a pillar into it, about every 20-25 s in pillar fights.
+- Dao Soldiers now answer mashing with a violet break-out counter (masher wins 65% vs one soldier in Fluid). It makes Punishing vs 2 soldiers harder; the damage is tunable in `Enemy_DaoSoldier` → `BreakOut`. Jeremy's call.
+- Camera pops near pillars are reduced but not gone (worst ~1.7 m, rare).
 - Fire Blast doesn't lead moving targets (by design for now: close the distance).
