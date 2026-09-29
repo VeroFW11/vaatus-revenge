@@ -18,7 +18,9 @@ namespace VaatusRevenge.Core
         public float MaxHealth = 180f;
         public bool Unkillable = false;              // training dummy: health never drops below 1
         public float HealthRefillDelay = 0f;         // > 0: health refills after this long without being hit
-        public float MaxPoise = 45f;                 // more than one light string (43), so mashing alone doesn't stagger
+        public float MaxPoise = 52f;                 // more than one light string plus a jab (43 + 8), so the break-out (6th hit) gets
+                                                     // its turn before poise breaks; a longer mash staggers. Was 45 for the old 3-hit
+                                                     // chain (report 04, W-01: at 45 the 6th hit staggered and wiped the break-out count)
         public float PoiseRegenDelay = 2f;           // poise refills this long after the last poise damage...
         public float PoiseRegenRate = 60f;           // ...at this many points per second
         public float StaggerDuration = 1.0f;         // stunned time when poise breaks

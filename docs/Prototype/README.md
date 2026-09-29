@@ -61,6 +61,6 @@ The human checklist is in [Playtest Report 01, section 6](Playtest-Report-01.md)
 ## Known open items
 
 - Nothing has run in the real Unity Editor yet: the first run is the real test.
-- Dao Soldiers now answer mashing with a violet break-out counter (masher wins 65% vs one soldier in Fluid). It makes Punishing vs 2 soldiers harder; the damage is tunable in `Enemy_DaoSoldier` → `BreakOut`. Jeremy's call.
+- Dao Soldiers answer mashing with a violet break-out counter: the 5-hit string lands whole, a 6th hit within 2 s arms the shove (soldier poise 52 so the string plus a jab doesn't stagger first; report 04, W-01). It makes Punishing vs 2 soldiers harder; the damage is tunable in `Enemy_DaoSoldier` → `BreakOut`. Jeremy's call.
 - Camera pops near pillars are reduced but not gone (worst ~1.7 m, rare).
 - Fire Blast doesn't lead moving targets (by design for now: close the distance).

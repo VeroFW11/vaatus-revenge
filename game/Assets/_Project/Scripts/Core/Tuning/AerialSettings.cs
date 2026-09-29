@@ -9,9 +9,9 @@ namespace VaatusRevenge.Core
     {
         public float LauncherHoldTime = 0.25f;       // attack held this long (on the ground, during the first chain hit) = launcher
         public float AirAttackGravityScale = 0.3f;   // gravity while an air attack runs: you hang in the air as you strike
-        public int AirAttacksPerJump = 6;
+        public int AirAttacksPerJump = 6;            // air strikes allowed before touching the ground again (no infinite hovering)
         public float AirLiftMaxHeightAboveTarget = 0.6f; // air strikes stop lifting you once your feet are this far above the target's
-                                                     // (a standing foe: you don't float over its head; a juggled one rises with you)            // air strikes allowed before touching the ground again (no infinite hovering)
+                                                     // (a standing foe: you don't float over its head; a juggled one rises with you)
         public int AirDashesPerJump = 1;             // Flame Step dashes allowed in the air before landing (0 = none)
         public float AirDashDistance = 3.4f;
         public float AirDashDuration = 0.22f;        // no gravity while dashing

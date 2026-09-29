@@ -91,6 +91,13 @@ namespace VaatusRevenge.EditorTools
                     return true;
                 }
             }
+            EnemyTuningAsset soldier = AssetDatabase.LoadAssetAtPath<EnemyTuningAsset>(PathFor(DaoSoldierName));
+            if (soldier != null && soldier.Tuning != null && soldier.Tuning.BreakOut != null
+                && (soldier.Tuning.BreakOut.HitsToTrigger == 3 || soldier.Tuning.MaxPoise == 45f))
+            {
+                reason = DaoSoldierName + " still has the old 3-hit-chain break-out and poise";
+                return true;
+            }
             PlayerTuningAsset player = AssetDatabase.LoadAssetAtPath<PlayerTuningAsset>(PathFor(PlayerFluidName));
             if (player != null && player.Tuning != null && player.Tuning.SoftLockRange == 4f)
             {

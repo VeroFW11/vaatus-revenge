@@ -142,7 +142,7 @@ namespace VaatusRevenge
             // Taught as a rhythm, not a reaction: letting go when the band lights up is usually too late
             // (playtest report HUD-01). The meter's white "get ready" mark comes just before the gold band.
             Row(ref r, heavy + ": hold, let go as the meter fills the gold band", "Hold LB / L1, then hold X / Square", "Hold Q, then hold left mouse");
-            Row(ref r, Named("Mid-range ability", northName), "Hold LB / L1, then Y / Triangle", "Hold Q, then F");
+            Row(ref r, Named("Mid-range ability (face button within 0.5 s of LB)", northName), "Hold LB / L1, then Y / Triangle", "Hold Q, then F");
             Row(ref r, Named("Close all-round ability", eastName), "Hold LB / L1, then B / Circle", "Hold Q, then Left Shift");
             Row(ref r, "Dodge (tap) / Sprint (hold) / Air dash (in the air)", "B / Circle", "Left Shift");
             Row(ref r, "Jump", "A / Cross", "Space");

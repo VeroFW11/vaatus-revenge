@@ -756,7 +756,9 @@ namespace VaatusRevenge.Core
             }
             // During a stagger and its immunity window, poise takes no damage at all, so the next stagger
             // needs a fresh build-up once the enemy is fighting back.
-            if (!HasHyperArmor && !IsStaggerImmune && poise.Damage(hit.PoiseDamage, tuning.MaxPoise))
+            // An armed break-out braces the enemy: poise can't break until the shove has happened, otherwise the very next
+            // hit of a mash would stagger it and wipe the counter it just earned (report 04, W-01).
+            if (!HasHyperArmor && !IsStaggerImmune && breakOutArmed <= 0f && poise.Damage(hit.PoiseDamage, tuning.MaxPoise))
             {
                 result.PoiseBroken = true;
                 Stagger(tuning.StaggerDuration);

@@ -298,6 +298,13 @@ namespace VaatusRevenge.Core
             activeOpen = false;
             if (payStamina) SpendStamina(move.StaminaCost);
             attackStartClock = clock;
+            // Free-flow snap (Spider-Man): a string, air or launcher strike at a target turns you to face it at once, so an
+            // enemy behind you gets hit instead of the swing going wide (report 04, W-02). Startup tracking does the rest.
+            if ((kind == PlayerAttackKind.Light || kind == PlayerAttackKind.Air || kind == PlayerAttackKind.Launcher)
+                && TryGetWorldLungeTarget(world, out Vector3 snapTarget, out _))
+            {
+                facingYaw = YawTowards(world.Position, snapTarget);
+            }
             lungeDistance = PlanLunge(move, kind, world);
             // Air strikes lift you as they start (you hang while striking); the launcher lifts you when its kick lands.
             // An air strike stalls you: your rise is replaced by its own small lift (or none, over a standing foe), so a
