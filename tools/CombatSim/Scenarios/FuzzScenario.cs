@@ -152,14 +152,16 @@ namespace VaatusRevenge.CombatSim
                     if (deadSince < 0) { deadSince = s.World.RealTime; deaths++; }
                     else if (s.World.RealTime - deadSince > 1.0)
                     {
-                        s.Player.Respawn(new Vector3(0f, 0f, -5f), 0f);
+                        s.World.Projectiles.ClearAll();   // SandboxDirector.ResetAllEnemies clears projectiles (60cb8ee)
                         foreach (var e in s.World.Enemies) e.ResetEnemy();
+                        s.Player.Respawn(new Vector3(0f, 0f, -5f), 0f);
                         deadSince = -1;
                         resets++;
                     }
                 }
                 if (s.World.AllEnemiesDead)
                 {
+                    s.World.Projectiles.ClearAll();
                     foreach (var e in s.World.Enemies) e.ResetEnemy();
                     resets++;
                 }
@@ -168,7 +170,7 @@ namespace VaatusRevenge.CombatSim
                     bool toFluid = rng.Chance(0.5f);
                     s.Model.ApplyTuning(toFluid ? ft : pt, toFluid ? fm : pm);
                 }
-                if (rng.NextFloat() < 0.0005f) { foreach (var e in s.World.Enemies) e.ResetEnemy(); resets++; }
+                if (rng.NextFloat() < 0.0005f) { s.World.Projectiles.ClearAll(); foreach (var e in s.World.Enemies) e.ResetEnemy(); resets++; }
                 OrbitCameraModel orbit = s.World.LockOn.Orbit;
                 if (!(Finite(orbit.Yaw) && Finite(orbit.Pitch) && Finite(orbit.Distance)) || !Finite(s.World.LockOn.CameraPosition))
                     if (cam.Count < 10) cam.Add("NaN at frame " + f);

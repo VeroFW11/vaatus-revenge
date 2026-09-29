@@ -54,6 +54,7 @@ namespace VaatusRevenge.CombatSim
 
         public SimEnemy AddEnemy(EnemyTuning tuning, Vector3 position, float yaw, int seed, bool dummySwings = false)
         {
+            TuningOverrides.ApplyEnemy(tuning);
             var e = new SimEnemy(this, tuning, Tokens, position, yaw, seed, dummySwings);
             fighters.Add(e);
             Enemies.Add(e);

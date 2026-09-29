@@ -127,7 +127,7 @@ namespace VaatusRevenge.CombatSim
         {
             Out.Sub("Jump attack (Falling Axe Kick): Light pressed k frames after the jump");
             var t = new Table("Light at", "Plunge?", "Landing ring at", "Height when it started", "Free again at");
-            foreach (int k in new[] { 1, 2, 4, 8, 16, 24, 30, 34, 36 })
+            foreach (int k in new[] { 1, 2, 4, 8, 14, 15, 16, 24, 30, 34, 36 })
             {
                 float startHeight = 0f;
                 Session sess = null;
@@ -153,7 +153,7 @@ namespace VaatusRevenge.CombatSim
                 s.World.PlayerEvent += e => { };
                 for (int f = 0; f < 60; f++)
                 {
-                    s.Step(new Pad { Jump = f == 0, Light = f == 4 });
+                    s.Step(new Pad { Jump = f == 0, Light = f == 16 });   // after Plunge.MinAirTime
                     if (dummy.Brain.Health < dummy.Brain.MaxHealth) hit = true;
                 }
                 cells.Add(hit ? "yes" : "no");

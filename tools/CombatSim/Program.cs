@@ -69,7 +69,9 @@ namespace VaatusRevenge.CombatSim
             var sw = Stopwatch.StartNew();
             Out.Line("# CombatSim: " + o.Scenario);
             Out.Line();
-            Out.Line("Core sources: " + CoreFingerprint() + " · seeds " + o.Seed + ".." + (o.Seed + o.Seeds - 1) + " · " + o.Fps + " fps");
+            Out.Line("Core sources: " + CoreFingerprint() + " · seeds " + o.Seed + ".." + (o.Seed + o.Seeds - 1) + " · " + o.Fps + " fps"
+                     + (SimEnemy.NotifyStrikes ? " · --notify-strikes (NOT what Unity does today)" : "")
+                     + (TuningOverrides.Any ? " · what-if: " + TuningOverrides.Describe() : ""));
             try
             {
                 entry.run(o);
@@ -121,6 +123,8 @@ namespace VaatusRevenge.CombatSim
                     case "--enemies": o.Enemies = Next(); break;
                     case "--seconds": o.Seconds = double.Parse(Next(), CultureInfo.InvariantCulture); break;
                     case "--quick": o.Quick = true; break;
+                    case "--notify-strikes": SimEnemy.NotifyStrikes = true; break;
+                    case "--set": TuningOverrides.Add(Next()); break;
                     case "--preset":
                         string p = Next().ToLowerInvariant();
                         o.Presets = p == "both" ? new List<Preset> { Preset.Fluid, Preset.Punishing }
@@ -146,6 +150,8 @@ namespace VaatusRevenge.CombatSim
             Console.WriteLine();
             Console.WriteLine("Options: --seed N  --seeds N  --preset fluid|punishing|both  --fps N  --record file.json  --out results.md");
             Console.WriteLine("         --bot masher|react|anticipate|guard|aggressive|fajin|oracle|idle  --enemies soldier,soldier,crossbow,platform,dummy  --seconds N  --quick");
+            Console.WriteLine("         --notify-strikes  enemies call PlayerCombatModel.NotifyEnemyStrike (Unity doesn't yet, so off by default)");
+            Console.WriteLine("         --set target.Field=value  what-if tuning (targets: player, dodge, charge, soldier, crossbow), repeatable");
         }
 
         // A short hash of the core sources measured, so results can be matched to a version of the code.
@@ -225,6 +231,7 @@ namespace VaatusRevenge.CombatSim
                 tuning = PlayerTuning.CreateFluid();
                 moves = ElementMoveSet.CreateFireFluid();
             }
+            TuningOverrides.ApplyPlayer(tuning, moves);
         }
 
         public void Step(in Pad pad)

@@ -51,7 +51,7 @@ namespace VaatusRevenge.CombatSim
         public static void Run(Options o)
         {
             Out.Heading("Camera and lock-on");
-            Out.Line("Measured on the over-the-shoulder camera (commit a818bd2: shoulder 0.55 m / 0.35 m locked, distance 3.2 / 4.0, combat pull-back 0.9 m) "
+            Out.Line("Measured on the over-the-shoulder camera (CameraTuning defaults; 60cb8ee added LockOnMaxYawSpeed 540°/s and ShoulderSwapHoldTime 0.25 s: shoulder 0.55 m / 0.35 m locked, distance 3.2 / 4.0, combat pull-back 0.9 m) "
                      + "unless a row says 'centred' (CameraTuning.CreateCentred(), the first prototype's framing, same code). "
                      + "Screen positions: x, y in −1..1 across a 16:9 screen with a 60° vertical FOV. 'Reversals' = the yaw's direction of travel flipping "
                      + "between frames (a jitter measure); 'max step' = the largest yaw change in one frame.");
@@ -68,6 +68,72 @@ namespace VaatusRevenge.CombatSim
             CombatPullback(o);
             LookInput(o);
             InCombat(o);
+            Pops(o);
+        }
+
+        // Playtest report 02: a replay render showed the camera "collapsing" near the low corridor. Walk, orbit and fight
+        // around the corridor and the pillar field and record every one-frame change the viewer would see.
+        static void Pops(Options o)
+        {
+            Out.Sub("Camera pops near the low corridor and the pillars (sandbox arena, Fluid)");
+            Out.Line("Pull-in = one-frame drop in the camera's distance behind the shoulder point. Jump = one-frame move of the camera "
+                     + "position itself (walking at 4.8 m/s plus orbiting at full stick is ~0.2 m per frame, so anything well above that is a visible pop). "
+                     + "Lift = the combat rise above the pivot. Fights: anticipate bot, locked on, one Dao Soldier, 10 seeds × 30 s.");
+            var t = new Table("Camera", "Case", "Min distance", "Largest pull-in", "Frames pulling in > 0.3 m", "Largest camera jump", "Largest lift drop", "Inside geometry (frames)");
+            var cases = new (string name, Vector3 at, float yaw, Func<Session, int, Pad> pad, int frames, bool fight)[]
+            {
+                ("stand at the corridor mouth, orbit 1.3 turns", new Vector3(18f, 0f, 4.6f), 0f, (s, f) => new Pad { Look = new Vector2(0.6f, 0f) }, 240, false),
+                ("stand inside the corridor, orbit 1.3 turns", new Vector3(18f, 0f, 12f), 0f, (s, f) => new Pad { Look = new Vector2(0.6f, 0f) }, 240, false),
+                ("walk in diagonally from the south-west", new Vector3(13.5f, 0f, 1.5f), 45f, (s, f) => new Pad { Move = Session.StickFor(
+                    s.Player.Feet.Z < 6.5f ? new Vector3(18f, 0f, 6.5f) - s.Player.Feet : new Vector3(0f, 0f, 1f), s.World.CameraYaw) }, 300, false),
+                ("walk in, then turn round and walk out (camera trails in)", new Vector3(18f, 0f, 2f), 0f, (s, f) => new Pad { Move = Session.StickFor(
+                    f < 150 ? new Vector3(0f, 0f, 1f) : new Vector3(0f, 0f, -1f), s.World.CameraYaw), Look = f >= 150 && f < 190 ? new Vector2(1f, 0f) : Vector2.Zero }, 330, false),
+                ("walk north along the outside of the corridor's west wall", new Vector3(15.3f, 0f, 2f), 0f, (s, f) => new Pad { Move = Session.StickFor(new Vector3(0f, 0f, 1f), s.World.CameraYaw) }, 260, false),
+                ("walk north through the pillar field, orbiting", new Vector3(14.5f, 0f, -27f), 0f, (s, f) => new Pad { Move = Session.StickFor(new Vector3(0f, 0f, 1f), s.World.CameraYaw), Look = new Vector2(0.35f, 0f) }, 300, false),
+                ("strafe east across the pillar rows", new Vector3(9f, 0f, -16.5f), 0f, (s, f) => new Pad { Move = Session.StickFor(new Vector3(1f, 0f, 0f), s.World.CameraYaw) }, 300, false),
+                ("fight a soldier at the corridor mouth", new Vector3(18f, 0f, 3f), 0f, null, 1800, true),
+                ("fight a soldier in the pillar field", new Vector3(14.5f, 0f, -21.5f), 0f, null, 1800, true),
+            };
+            foreach (bool centred in new[] { false, true })
+            {
+                foreach (var c in cases)
+                {
+                    float minD = float.MaxValue, maxIn = 0f, maxJump = 0f, maxLiftDrop = 0f;
+                    int bigIn = 0, inside = 0;
+                    int runs = c.fight ? 10 : 1;
+                    for (int run = 0; run < runs; run++)
+                    {
+                        var s = CamSession(o, centred ? CameraTuning.CreateCentred() : new CameraTuning(), SimLevel.SandboxArena(), c.at, c.yaw);
+                        Bot bot = null;
+                        if (c.fight)
+                        {
+                            Vector3 foe = c.at + new Vector3(0f, 0f, 5f);
+                            s.World.AddEnemy(EnemyTuning.CreateDaoSoldier(), foe, 180f, (o.Seed + run) * 31 + 1);
+                            bot = Bots.Create("anticipate");
+                            bot.Attach(s, (o.Seed + run) * 977 + 13);
+                        }
+                        for (int f = 0; f < 20; f++) s.Step(new Pad());
+                        OrbitCameraModel orb = s.World.LockOn.Orbit;
+                        for (int f = 0; f < c.frames; f++)
+                        {
+                            float d0 = orb.Distance, l0 = orb.Lift;
+                            Vector3 p0 = s.World.LockOn.CameraPosition;
+                            s.Step(bot != null ? bot.NextPad() : c.pad(s, f));
+                            float dd = d0 - orb.Distance;
+                            maxIn = Math.Max(maxIn, dd);
+                            if (dd > 0.3f) bigIn++;
+                            maxLiftDrop = Math.Max(maxLiftDrop, l0 - orb.Lift);
+                            maxJump = Math.Max(maxJump, Vector3.Distance(p0, s.World.LockOn.CameraPosition));
+                            minD = Math.Min(minD, orb.Distance);
+                            inside += Inside(s) ? 1 : 0;
+                            if (bot != null && (!s.Model.IsAlive || s.World.AllEnemiesDead)) break;
+                        }
+                    }
+                    t.Row(centred ? "centred" : "shoulder", c.name, Out.N(minD, 2) + " m", Out.N(maxIn, 2) + " m", bigIn, Out.N(maxJump, 2) + " m",
+                        Out.N(maxLiftDrop, 2) + " m", inside);
+                }
+            }
+            t.Print();
         }
 
         static Session CamSession(Options o, CameraTuning tuning, SimLevel level = null, Vector3? playerAt = null, float yaw = 0f)
@@ -410,6 +476,23 @@ namespace VaatusRevenge.CombatSim
                 t.Row("weaving through the pillar field for 5 s", swaps, backs, Out.N(offs.Min(), 2) + " .. " + Out.N(offs.Max(), 2) + " m", Out.N(step, 3) + " m");
             }
             t.Print();
+
+            // CTRL-04 (60cb8ee): the swap button (L3 / V) must be held CameraTuning.ShoulderSwapHoldTime; one swap per hold.
+            var h = new Table("Swap button held for", "Shoulder side after", "Swaps");
+            foreach (int frames in new[] { 1, 5, 10, 14, 15, 16, 30, 120 })
+            {
+                var s = CamSession(o, new CameraTuning());
+                int side0 = s.World.LockOn.Orbit.ShoulderSide, changes = 0, last = side0;
+                for (int f = 0; f < frames + 30; f++)
+                {
+                    s.Step(new Pad { SwapShoulder = f < frames });
+                    int now = s.World.LockOn.Orbit.ShoulderSide;
+                    if (now != last) changes++;
+                    last = now;
+                }
+                h.Row(frames + " f (" + Out.N(frames / o.Fps, 2) + " s)", last == side0 ? "same" : "swapped", changes);
+            }
+            h.Print();
         }
 
         static void CombatPullback(Options o)

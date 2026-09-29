@@ -28,8 +28,10 @@ dotnet run --project tools/CombatSim -- help
 | `duels` | Six bot styles vs five enemy groups, both presets, many seeds | ~9 min (40 seeds) |
 | `duel` | One duel, optionally recorded (`--record`) | seconds |
 | `fuzz` | Long random-input runs at 30/60/144 fps, with hitches and paused frames, preset swaps, respawns and resets. Every frame is checked against invariants | ~4 min: 8 runs × 150,000 frames (`--quick`: 60,000) |
-| `camera` | Over-the-shoulder camera and lock-on: circling, dash-past, overhead target, elevated target, framing, retarget on kill, switching, line of sight, walls, shoulder swaps, combat pull-back, look input at several frame rates, real fights | ~8 s |
+| `camera` | Over-the-shoulder camera and lock-on: circling, dash-past, overhead target, elevated target, framing, retarget on kill, switching, line of sight, walls, shoulder swaps (auto and the hold-to-swap button), combat pull-back, look input at several frame rates, real fights, and pops near the low corridor and the pillars | ~11 s |
 | `all` | Everything except `duel` (`--quick` caps seeds at 12 and shortens the fuzz) | ~18 min (`--quick`: ~6 min) |
+
+Times above are for Debug builds. `dotnet run --project tools/CombatSim -c Release -- <scenario>` is roughly 10× faster (fairness ~20 s, duels ~1 min, fuzz ~25 s).
 
 Options:
 
@@ -44,6 +46,8 @@ Options:
 | `--seconds N` | `duel` only: time limit | 60 |
 | `--record file.json` | `duel` only: write a per-frame replay | off |
 | `--quick` | Shorter fuzz (60,000 frames per run), at most 12 seeds for `all` | off |
+| `--notify-strikes` | Enemies call `PlayerCombatModel.NotifyEnemyStrike` on every melee strike, so the core's `WouldHaveLanded` perfect-dodge rule works. **No Unity script calls it yet** (report 02, NEW-01), so it's off by default to mirror Unity | off |
+| `--set target.Field=value` | What-if tuning without touching game code, repeatable. Targets: `player` (PlayerTuning), `dodge` (DodgeProfile), `charge` (ChargeSettings), `soldier` / `crossbow` (EnemyTuning). E.g. `--set player.EmptyStaminaRegenDelay=0.8 --set soldier.MaxHealth=110` | none |
 
 Examples:
 
@@ -93,7 +97,7 @@ can be inspected or rendered later:
 - `events`: `[frame, fighterIndex, type, detail]`, e.g. `player:DodgeStarted`, `enemy:TelegraphStarted`,
   and `hit` with the outcome (Hit, Evaded, PerfectEvade, Blocked, Parried...) for every hit resolved.
 
-The sessions that `docs/Prototype/Playtest-Report-01.md` refers to are in `replays/`. They were recorded
+The sessions that `docs/Prototype/Playtest-Report-01.md` refers to are in `replays/` (recorded on the report-01 code; re-record them to see the 60cb8ee behaviour). They were recorded
 with the command shown for each, so they can be re-created:
 
 | File | Command (`duel ...`) | What it shows |
@@ -112,13 +116,13 @@ LockOnController -50, PlayerController 0, enemies 10, FireProjectile 20, camera 
 
 | Unity side | In CombatSim | Simplification |
 |---|---|---|
-| `PlayerController` | `Sim/SimPlayer.cs`: builds `PlayerWorldState` (lock/soft target with line of sight), ticks the model, moves, turns events into hit queries, projectiles, slow motion and hitstop | No animation or VFX. Rumble and screen shake are not modelled |
-| `EnemyFighter`, `EnemyStrikes`, `TrainingDummy` | `Sim/SimEnemy.cs`: brain tick, one move per frame, melee sweeps on open and every later active frame, bolts, deflect reactions, corpses stop blocking | Same rules. No presenter or visuals |
+| `PlayerController` | `Sim/SimPlayer.cs`: builds `PlayerWorldState` (lock/soft target with line of sight, `SelfHeight`, `RealDeltaTime` = unscaled dt, nearest living enemy), ticks the model, moves, turns events into hit queries, projectiles, slow motion and hitstop | No animation or VFX. Rumble and screen shake are not modelled |
+| `EnemyFighter`, `EnemyStrikes`, `TrainingDummy` | `Sim/SimEnemy.cs`: brain tick, the ledge check (`WouldStepOffLedge`), one move per frame, melee sweeps on open and every later active frame, bolts, deflect reactions, corpses stop blocking. `NotifyEnemyStrike` only with `--notify-strikes` | Same rules. No presenter or visuals. The ledge probe reads box tops and the ramp's height field |
 | `MeleeHitQuery`, `FireProjectile` | `Sim/SimHits.cs`: arc and sphere queries with per-attack hit records, chest and head line-of-sight rays, swept projectiles | Geometry is boxes only |
 | `CharacterController` | `Sim/SimPhysics.cs` `SimController`: kinematic capsule, slides on boxes and other fighters, step offset 0.3, `isGrounded` after each move | No skin width, no slope limit. The ramp is a height field |
 | Arena (`ArenaBuilder`) | `SimLevel.SandboxArena()`: floor, walls, pillar field, low corridor, raised platform, stairs, ramp, copied from the builder's constants | Axis-aligned boxes |
 | `TimeScaleController` | `SimTime`: hitstop 0.02×, slowest slow-mo wins, pause 0, timers on real time | Same rules |
-| `LockOnController`, `ThirdPersonCameraRig` | `Sim/SimCameraRig.cs`: lock-on selection, break and switching, the orbit model's pivot → orientation → lift → shoulder → distance order with sphere probes | 16:9, 60° vertical FOV for screen positions. No shake or FOV boost |
+| `LockOnController`, `ThirdPersonCameraRig` | `Sim/SimCameraRig.cs`: lock-on selection, break and switching, the orbit model's pivot → orientation → lift → shoulder → distance order with sphere probes; the swap button is passed as held (`SwapShoulderHeld`), as the rig does since 60cb8ee | 16:9, 60° vertical FOV for screen positions. No shake or FOV boost |
 | `PlayerInputReader` | `Input/Pad.cs`: builds `PlayerInputFrame` press/hold/release flags | Values are what the reader would output after the Input System's own stick dead zone |
 
 ## Layout

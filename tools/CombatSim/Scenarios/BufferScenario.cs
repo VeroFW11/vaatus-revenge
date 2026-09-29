@@ -47,11 +47,13 @@ namespace VaatusRevenge.CombatSim
                 {
                     int holdFrames = (int)Math.Round(0.8f * o.Fps);
                     bool jab = k > 0;
-                    Trace tr = Trace.Run(p, f => new Pad { Light = jab && f == 0, Heavy = f >= k && f < k + holdFrames }, 150, null, o.Fps);
+                    float lastCharge = 0f;   // the model's own charge clock (60cb8ee: real time, plus credit for the held press)
+                    Trace tr = Trace.Run(p, f => new Pad { Light = jab && f == 0, Heavy = f >= k && f < k + holdFrames }, 150, null, o.Fps,
+                        (s, f) => { if (s.Model.State == PlayerState.Charging) lastCharge = s.Model.ChargeTime; });
                     int chargeStart = tr.First(PlayerEventType.ChargeStarted);
                     var heavy = tr.Events.FirstOrDefault(e => e.e.Type == PlayerEventType.AttackStarted && e.e.AttackKind == PlayerAttackKind.Heavy);
                     h.Row(p, jab ? "frame " + k + " of a Jab" : "from idle", chargeStart, Out.N(0.8, 2) + " s",
-                        Out.N((heavy.frame - chargeStart) / o.Fps, 3) + " s", heavy.e.ChargeTier);
+                        Out.N(lastCharge, 3) + " s", heavy.e.ChargeTier);
                 }
             }
             h.Print();

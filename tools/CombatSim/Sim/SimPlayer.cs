@@ -88,7 +88,15 @@ namespace VaatusRevenge.CombatSim
                 Grounded = Controller.Enabled && Controller.IsGrounded,
                 CameraYaw = cameraYaw,
                 SelfRadius = Radius,
+                SelfHeight = Height,
+                RealDeltaTime = world.LastRealDt,   // Time.unscaledDeltaTime: the heavy's charge clock runs on it
             };
+            SimFighter nearest = NearestEnemy();    // PlayerController.NearestEnemy: Momentum drains backing away from it
+            if (nearest != null)
+            {
+                ws.HasNearestEnemy = true;
+                ws.NearestEnemyPosition = nearest.Feet;
+            }
             LockTarget = Usable(world.LockOn != null ? world.LockOn.Target : null);
             SoftTarget = null;
             if (LockTarget != null)
@@ -123,6 +131,23 @@ namespace VaatusRevenge.CombatSim
                 if (world.Level.IsBlocked(AimPoint, c.AimPoint)) continue;
                 best = c;
                 bestScore = score;
+            }
+            return best;
+        }
+
+        SimFighter NearestEnemy()
+        {
+            SimFighter best = null;
+            float bestSq = float.MaxValue;
+            IReadOnlyList<SimFighter> all = world.Fighters;
+            for (int i = 0; i < all.Count; i++)
+            {
+                SimFighter c = Usable(all[i]);
+                if (c == null) continue;
+                float sq = Vector3.DistanceSquared(c.Feet, Feet);
+                if (sq >= bestSq) continue;
+                best = c;
+                bestSq = sq;
             }
             return best;
         }

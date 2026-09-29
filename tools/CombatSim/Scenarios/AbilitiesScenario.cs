@@ -41,15 +41,20 @@ namespace VaatusRevenge.CombatSim
 
             Out.Sub("Fa jin success rate with human timing (" + Math.Max(o.Seeds * 25, 1000) + " trials each)");
             Out.Line("Rhythm = the player times the hold from the press, aiming at 0.80 s, with a normal timing error (σ). "
-                     + "Flash = the player waits for the sweet-spot flash (0.70 s) and releases after a visual reaction time (plus ~1 frame of display latency). "
+                     + "Flash = the player waits for the sweet-spot flash and releases after a visual reaction time (plus ~1 frame of display latency); Ready cue = the same, reacting to the earlier get-ready cue. "
                      + "Real humans: visual reaction ≈ 0.20–0.25 s (σ ≈ 0.03–0.05 s); timing a learned 0.8 s rhythm ≈ σ 0.04–0.08 s.");
             int trials = Math.Max(o.Seeds * 25, 1000);
             var t2 = new Table("Strategy", "Fa jin", "Released too early (Partial)", "Too late (Charged)");
             var human = new Human(o.Seed * 7919);
             foreach (float sd in new[] { 0.03f, 0.05f, 0.08f, 0.12f })
                 t2.Row(RateRow("Rhythm, aim 0.80 s, σ " + Out.N(sd, 2) + " s", trials, () => 0.80f + human.Normal(0f, sd), o.Fps));
+            ChargeSettings charge = ElementMoveSet.CreateFireFluid().Charge;
+            float flashAt = charge.SweetSpotStart, cueAt = charge.SweetSpotStart - charge.ReadyCueLead;
             foreach (float mean in new[] { 0.17f, 0.20f, 0.25f })
-                t2.Row(RateRow("Flash reaction, mean " + Out.N(mean, 2) + " s (σ 0.03)", trials, () => 0.70f + 1f / o.Fps + Math.Max(0.1f, human.Normal(mean, 0.03f)), o.Fps));
+                t2.Row(RateRow("Flash reaction (" + Out.N(flashAt, 2) + " s), mean " + Out.N(mean, 2) + " s (σ 0.03)", trials, () => flashAt + 1f / o.Fps + Math.Max(0.1f, human.Normal(mean, 0.03f)), o.Fps));
+            // 60cb8ee: the ChargeReadyCue / HUD "get ready" mark comes ReadyCueLead before the sweet spot.
+            foreach (float mean in new[] { 0.17f, 0.20f, 0.25f, 0.30f, 0.35f })
+                t2.Row(RateRow("Ready-cue reaction (" + Out.N(cueAt, 2) + " s), mean " + Out.N(mean, 2) + " s (σ 0.03)", trials, () => cueAt + 1f / o.Fps + Math.Max(0.1f, human.Normal(mean, 0.03f)), o.Fps));
             t2.Print();
         }
 
@@ -107,8 +112,7 @@ namespace VaatusRevenge.CombatSim
                 t.Row(cells.ToArray());
             }
             t.Print();
-            Out.Line("The charge counts game time, so after a perfect dodge the sweet spot arrives ~0.23 s later in real time than the player's learned rhythm; "
-                     + "the flash still marks it, but reacting to a flash is unreliable (see above).");
+            Out.Line("Since 60cb8ee the charge clock runs on PlayerWorldState.RealDeltaTime, so the two columns should match.");
         }
 
         // ---------------------------------------------------------------- stamina at zero
@@ -318,7 +322,12 @@ namespace VaatusRevenge.CombatSim
         // ---------------------------------------------------------------- perfect dodge windows
         static void PerfectDodge(Options o)
         {
-            Out.Sub("Dodge timing vs each Dao Soldier attack: which leads give a perfect dodge (Fluid)");
+            bool saved = SimEnemy.NotifyStrikes;
+            foreach (bool notify in new[] { false, true })
+            {
+            SimEnemy.NotifyStrikes = notify;
+            Out.Sub("Dodge timing vs each Dao Soldier attack: which leads give a perfect dodge (Fluid, "
+                    + (notify ? "enemies call NotifyEnemyStrike: the core's WouldHaveLanded rule as designed" : "as Unity runs today: no script calls NotifyEnemyStrike") + ")");
             Out.Line("The soldier is forced to use one attack; the player stands still (not locked on) at the distance the soldier "
                      + "starts that attack from, and dodges 'lead' frames before the strike's first active frame. "
                      + "P = perfect dodge, e = evaded (i-frames), . = whiffed (out of reach), H = hit.");
@@ -343,8 +352,11 @@ namespace VaatusRevenge.CombatSim
                 }
             }
             t.Print();
-            Out.Line("Spec: perfect window 0.12 s (7 f) and i-frames 0.02–0.24 s. A dodge that carries the player out of the swing's reach before "
-                     + "the first active frame gets nothing: no hit, but no perfect-dodge reward either.");
+            Out.Line("Spec: perfect window 0.12 s (7 f) and i-frames 0.02–0.24 s. Without NotifyEnemyStrike a dodge that carries the player out of "
+                     + "the swing's reach before the first active frame gets nothing (the report-01 rule); with it, a strike that would have hit "
+                     + "where the dodge started counts.");
+            }
+            SimEnemy.NotifyStrikes = saved;
         }
 
         // Returns P, e, ., H for one trial.
@@ -384,10 +396,10 @@ namespace VaatusRevenge.CombatSim
                 if (expectedActive >= 0 && f > expectedActive - leadFrames && f < expectedActive - leadFrames + 12) pad.Move = Vector2.Zero;
                 s.Step(pad);
                 Metrics m = s.World.Metrics;
-                if (m.PerfectEvadeOutcomes > 0) result = "P";
-                else if (m.HitsTaken > 0) result = "H";
-                else if (m.Evades > 0) result = "e";
-                else if (activeFrame >= 0 && f > activeFrame + 40) result = ".";
+                // Decided once the strike is well over: a PerfectDodge event raised inside ReceiveHit (outside the player's
+                // Tick) is only delivered on the player's next frame, and a WouldHaveLanded award has no hit outcome at all.
+                if (activeFrame >= 0 && f > activeFrame + 40)
+                    result = m.PerfectDodges > 0 ? "P" : m.HitsTaken > 0 ? "H" : m.Evades > 0 ? "e" : ".";
             }
             return result ?? "?";
         }

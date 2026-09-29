@@ -114,7 +114,7 @@ namespace VaatusRevenge.CombatSim
             Metrics m = s.World.Metrics;
             // A deflect trial only counts when the hit was actually deflected; a dodge trial when nothing landed.
             bool avoided = m.HitsTaken == 0 && (mode != "deflect" || m.Deflects > 0);
-            return (avoided, m.PerfectEvadeOutcomes > 0);
+            return (avoided, m.PerfectDodges > 0);   // the event (a WouldHaveLanded award has no hit outcome)
         }
 
         static void Unavoidable(Options o)
@@ -212,19 +212,30 @@ namespace VaatusRevenge.CombatSim
         {
             Out.Sub("The platform Crossbowman (sandbox spawn Crossbow_Platform, 2.5 m up on a 6 × 6 m block)");
             Out.Line("Where is it after 20 s? The player stands still at different spots (sandbox arena geometry).");
-            var t = new Table("Player at", "Distance at start", "Crossbowman after 20 s", "Still on the platform?", "Shots fired");
+            Out.Line("60cb8ee: LeashRadius 3 m around its first position, plus EnemyFighter's ledge check (mirrored here). 'Ledge stops' = frames the "
+                     + "ledge check had to zero its step, i.e. the leash alone would have let it reach the edge.");
+            var t = new Table("Player at", "Distance at start", "Crossbowman after 20 s", "Still on the platform?", "Shots fired", "Max drift from spawn", "Ledge stops");
             foreach (var spot in new[] { (new Vector3(0f, 0f, -18f), "player spawn (south)"), (new Vector3(0f, 0f, 0f), "duel ring centre"),
-                                         (new Vector3(-13f, 0f, 3f), "5 m south of the platform"), (new Vector3(-2f, 0f, 12f), "11 m east of it") })
+                                         (new Vector3(-13f, 0f, 3f), "5 m south of the platform"), (new Vector3(-2f, 0f, 12f), "11 m east of it"),
+                                         (new Vector3(-13f, 0f, 6.5f), "right below its south edge"), (new Vector3(-13f, 2.5f, 13.5f), "up on the platform with it") })
             {
                 var s = new Session(Preset.Fluid, o.Fps, SimLevel.SandboxArena(), camera: false, playerAt: spot.Item1);
                 SimEnemy cb = s.World.AddEnemy(EnemyTuning.CreateCrossbowman(), new Vector3(-13f, 2.5f, 12f), 135f, 11);
                 float startD = Vector3.Distance(cb.Feet, s.Player.Feet);
                 int shots = 0;
                 s.World.EnemyEvent += (en, ev) => { if (ev.Type == EnemyEventType.ProjectileLaunched) shots++; };
-                for (int f = 0; f < (int)(20 * o.Fps); f++) s.Step(new Pad { Guard = true });
+                float drift = 0f;
+                bool everOff = false;
+                for (int f = 0; f < (int)(20 * o.Fps); f++)
+                {
+                    s.Step(new Pad { Guard = true });
+                    drift = Math.Max(drift, Directions.Flatten(cb.Feet - new Vector3(-13f, 2.5f, 12f)).Length());
+                    if (cb.Feet.Y < 2.4f) everOff = true;
+                }
                 Vector3 p = cb.Feet;
-                bool on = p.Y > 2.4f;
-                t.Row(spot.Item2, Out.N(startD, 1) + " m", "(" + Out.N(p.X, 1) + ", " + Out.N(p.Y, 1) + ", " + Out.N(p.Z, 1) + ")", on ? "yes" : "NO (walked off)", shots);
+                bool on = p.Y > 2.4f && !everOff;
+                t.Row(spot.Item2, Out.N(startD, 1) + " m", "(" + Out.N(p.X, 1) + ", " + Out.N(p.Y, 1) + ", " + Out.N(p.Z, 1) + ")", on ? "yes" : "NO (walked off)", shots,
+                    Out.N(drift, 2) + " m", cb.LedgeStops);
             }
             t.Print();
         }

@@ -13,6 +13,16 @@ namespace VaatusRevenge.CombatSim
     public sealed class SimEnemy : SimFighter
     {
         const float MaxCorpseFallSeconds = 3f;
+        // EnemyFighter ledge check (60cb8ee): probe the ground LedgeProbeAhead beyond the end of each step.
+        const float LedgeProbeAhead = 0.2f;
+        const float LedgeProbeRadius = 0.05f;
+        const float SkinWidth = 0.08f;        // CharacterController.skinWidth default (EnemyBuilder doesn't set it)
+
+        // PlayerCombatModel.NotifyEnemyStrike on every AttackActiveStart. The core's WouldHaveLanded perfect-dodge rule
+        // needs it, but as of 60cb8ee NO Unity script calls it (only the EditMode soak test does). Default false
+        // mirrors Unity; --notify-strikes shows what the core would do once it's wired up.
+        public static bool NotifyStrikes;
+        public int LedgeStops;
 
         readonly SimWorld world;
         readonly List<SimHitReport> reports = new List<SimHitReport>(4);
@@ -83,7 +93,18 @@ namespace VaatusRevenge.CombatSim
             if (dt > 0f)
             {
                 if (!float.IsNaN(result.FacingYaw) && !float.IsInfinity(result.FacingYaw)) yaw = result.FacingYaw;
-                if (!Planted && Controller.Enabled) Controller.Move(result.Velocity * dt, world.Level, world.Fighters, this);
+                if (!Planted && Controller.Enabled)
+                {
+                    Vector3 v = result.Velocity;
+                    // EnemyFighter.ApplyMotion: the brain's own steps stop at a ledge (knockback while staggered doesn't).
+                    if (Brain.IsAlive && Brain.State != EnemyState.Staggered && WouldStepOffLedge(new Vector3(v.X * dt, 0f, v.Z * dt)))
+                    {
+                        v.X = 0f;
+                        v.Z = 0f;
+                        LedgeStops++;
+                    }
+                    Controller.Move(v * dt, world.Level, world.Fighters, this);
+                }
             }
             bool strikeOpened = false;
             EventList<EnemyEvent> events = result.Events;
@@ -95,6 +116,8 @@ namespace VaatusRevenge.CombatSim
                 switch (e.Type)
                 {
                     case EnemyEventType.AttackActiveStart:
+                        if (NotifyStrikes && e.Move != null && !e.Move.LaunchesProjectile && world.Player != null)
+                            world.Player.Model.NotifyEnemyStrike(e.Origin, e.Direction, e.Move, Feet);
                         OpenMelee(in e);
                         strikeOpened = true;
                         break;
@@ -125,6 +148,19 @@ namespace VaatusRevenge.CombatSim
                 deadTime += dt;
                 if (Planted || Controller.IsGrounded || deadTime >= MaxCorpseFallSeconds) Controller.Enabled = false;
             }
+        }
+
+        // Mirror of EnemyFighter.WouldStepOffLedge.
+        bool WouldStepOffLedge(Vector3 step)
+        {
+            float length = step.Length();
+            if (length < 1e-5f) return false;
+            Vector3 ahead = Feet + step * ((length + LedgeProbeAhead) / length);
+            float stepHeight = Controller.StepOffset + SkinWidth;
+            Vector3 probeTop = ahead + new Vector3(0f, stepHeight, 0f);
+            // The ray down from probeTop: boxes and the ramp's height field (the ramp isn't a box here).
+            if (world.Level.GroundHeight(ahead.X, ahead.Z, ahead.Y, stepHeight) >= ahead.Y - stepHeight) return false;
+            return !world.Level.IsOverlapping(probeTop, LedgeProbeRadius);
         }
 
         EnemyWorldState BuildWorldState()

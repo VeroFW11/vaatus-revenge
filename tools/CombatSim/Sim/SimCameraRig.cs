@@ -173,7 +173,8 @@ namespace VaatusRevenge.CombatSim
             SimPlayer p = world.Player;
             if (p == null) return;
             if (snapPending) SnapBehindPlayer();
-            var camInput = new OrbitCameraInput { Look = input.Look, LookIsMouse = input.LookIsMouse, SwapShoulder = input.SwapShoulder.Pressed };
+            // ThirdPersonCameraRig (60cb8ee): held, not pressed; the model swaps after CameraTuning.ShoulderSwapHoldTime.
+            var camInput = new OrbitCameraInput { Look = input.Look, LookIsMouse = input.LookIsMouse, SwapShoulderHeld = input.SwapShoulder.Held };
             if (Target != null)
             {
                 camInput.HasLockTarget = true;

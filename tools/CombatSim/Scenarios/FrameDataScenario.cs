@@ -182,14 +182,14 @@ namespace VaatusRevenge.CombatSim
 
         static object[] MeasurePlunge(Preset p, float fps)
         {
-            int jump = 0, light = 6;
+            int jump = 0, light = 16;   // Plunge.MinAirTime 0.25 s = 15 f (60cb8ee); earlier presses are dropped
             Func<int, Pad> script = f => new Pad { Jump = f == jump, Light = f == light };
             Trace t = Trace.Run(p, script, 120, null, fps);
             int start = t.First(PlayerEventType.AttackStarted);
             int impact = t.First(PlayerEventType.PlungeImpact);
             int ended = t.First(PlayerEventType.AttackEnded, start + 1);
             PlayerEvent ev = t.FirstEvent(PlayerEventType.AttackStarted);
-            return new object[] { (ev.Move != null ? ev.Move.DisplayName : "?") + " (jump, light 6 f later)", F(impact - light, fps) + " (landing ring)", "1 f (one-shot ring)", F(ended - light, fps), "-", "-", ev.Move?.StaminaCost };
+            return new object[] { (ev.Move != null ? ev.Move.DisplayName : "?") + " (jump, light 16 f later)", F(impact - light, fps) + " (landing ring)", "1 f (one-shot ring)", F(ended - light, fps), "-", "-", ev.Move?.StaminaCost };
         }
 
         static object[] MeasureSkill(Preset p, float fps)
