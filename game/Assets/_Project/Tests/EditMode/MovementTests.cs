@@ -139,7 +139,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void GuardAndHealSlowYouDown()
         {
-            var guard = new PlayerDriver();
+            var guard = PlayerDriver.Blocking();   // a held guard only exists for blocking elements
             guard.Run(40, Pad.Guard, Up);
             Assert.That(HorizontalSpeed(guard.Last.Velocity),
                 Is.EqualTo(guard.Model.Tuning.RunSpeed * guard.Model.MoveSet.Guard.MoveSpeedMultiplier).Within(0.05f));

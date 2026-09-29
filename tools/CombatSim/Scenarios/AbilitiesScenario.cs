@@ -16,6 +16,7 @@ namespace VaatusRevenge.CombatSim
             DamageLoops(o);
             StaminaAtZero(o);
             FireBlast(o);
+            ZipStrikeAndGapClose(o);
             Momentum(o);
             PerfectDodge(o);
             StaggerImmunity(o);
@@ -262,6 +263,43 @@ namespace VaatusRevenge.CombatSim
                 }
             }
             t.Print();
+        }
+
+        // ---------------------------------------------------------------- zip strike and the free-flow lunge
+        static void ZipStrikeAndGapClose(Options o)
+        {
+            ElementMoveSet moves = ElementMoveSet.CreateFireFluid();
+            PlayerTuning tuning = PlayerTuning.CreateFluid();
+            Out.Sub("Zip strike and free-flow lunge vs a still sparring dummy (Fluid, not locked on, stick neutral)");
+            Out.Line("Zip strike reach: " + Out.N(moves.Zip.Range, 1) + " m within " + Out.N(moves.Zip.AngleDegrees, 0)
+                     + "° of the facing. Light attacks aim at a soft-lock target within " + Out.N(tuning.SoftLockRange, 1)
+                     + " m and lunge up to " + Out.N(tuning.GapCloseDistance, 1) + " m further than their own step.");
+            var t = new Table("Dummy at", "Zip strike", "First light attack");
+            foreach (float d in new[] { 2f, 4f, 6f, 8f, 10f, 13f, 16f })
+            {
+                t.Row(d + " m ahead", Outcome(o, d, 0f, zip: true), Outcome(o, d, 0f, zip: false));
+            }
+            foreach (float angle in new[] { 30f, 45f, 60f })
+            {
+                t.Row("10 m, " + angle + "° off", Outcome(o, 10f, angle, zip: true), Outcome(o, 10f, angle, zip: false));
+            }
+            t.Print();
+        }
+
+        // "hit", "whiffed" (the attack ran but missed) or "no attack" (nothing started).
+        static string Outcome(Options o, float distance, float angleDegrees, bool zip)
+        {
+            var s = new Session(Preset.Fluid, o.Fps, SimLevel.Empty());
+            float rad = angleDegrees * Directions.Deg2Rad;
+            var at = new Vector3((float)Math.Sin(rad) * distance, 0f, (float)Math.Cos(rad) * distance);
+            SimEnemy dummy = s.World.AddEnemy(EnemyTuning.CreateSparringDummy(), at, 180f, 7);
+            bool started = false;
+            s.World.PlayerEvent += e => { if (e.Type == PlayerEventType.AttackStarted) started = true; };
+            float before = dummy.Brain.Health;
+            const int pressFrame = 20;
+            for (int f = 0; f < pressFrame + 60; f++) s.Step(zip ? new Pad { ZipStrike = f == pressFrame } : new Pad { Light = f == pressFrame });
+            if (!started) return "no attack";
+            return dummy.Brain.Health < before ? "hit" : "whiffed";
         }
 
         // ---------------------------------------------------------------- momentum

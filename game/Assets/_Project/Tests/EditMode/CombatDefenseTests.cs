@@ -148,7 +148,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void GuardBlocksFromTheFrontForStaminaButNotFromBehind()
         {
-            var d = new PlayerDriver();
+            var d = PlayerDriver.Blocking();
             d.Run(12, Pad.Guard);                                // held past the deflect window
             Assert.AreEqual(PlayerState.Guarding, d.Model.State);
             float stamina = d.Model.Stamina;
@@ -171,7 +171,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void BlockingWithTooLittleStaminaBreaksTheGuard()
         {
-            var d = new PlayerDriver();
+            var d = PlayerDriver.Blocking();
             d.Run(12, Pad.Guard);
             HitResult result = d.Model.ReceiveHit(PlayerDriver.EnemyHit(30f, 0f, d.Model.Forward, true, 150f), d.Model.Forward);
             Assert.AreEqual(HitOutcome.GuardBroken, result.Outcome);
@@ -206,12 +206,12 @@ namespace VaatusRevenge.Tests
         [Test]
         public void NonParryableHitsAndLatePressesAreOnlyBlocked()
         {
-            var d = new PlayerDriver();
+            var d = PlayerDriver.Blocking();
             d.Step(Pad.Guard);
             d.Run(3, Pad.Guard);
             Assert.AreEqual(HitOutcome.Blocked, d.HitFromFront(20f, 10f, false, 15f).Outcome);
 
-            var late = new PlayerDriver();
+            var late = PlayerDriver.Blocking();
             late.Step(Pad.Guard);
             late.Run(late.FramesToReach(late.Model.MoveSet.Guard.DeflectWindow) + 1, Pad.Guard);
             Assert.AreEqual(HitOutcome.Blocked, late.HitFromFront(20f, 10f, true, 15f).Outcome);
@@ -232,7 +232,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void WhiffedDeflectLocksDeflectingOutBriefly()
         {
-            var d = new PlayerDriver();
+            var d = PlayerDriver.Blocking();
             GuardSettings guard = d.Model.MoveSet.Guard;
             d.Step(Pad.Guard);
             d.Run(d.FramesToReach(guard.DeflectWindow) + 2);    // window closes having caught nothing
@@ -268,7 +268,7 @@ namespace VaatusRevenge.Tests
         {
             // Light, a queued follow-up light, then guard pressed at the defensive cancel point: the guard is the
             // latest intention, so the queued attack must not fire and knock the guard down.
-            var d = new PlayerDriver();
+            var d = PlayerDriver.Blocking();
             MoveData jab = d.Model.MoveSet.LightChain[0];
             d.Step(Pad.Light);
             d.Run(3);

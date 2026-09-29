@@ -75,10 +75,12 @@ namespace VaatusRevenge.Core
         public float HealMoveMultiplier = 0.35f;     // share of normal speed while drinking
 
         // --- Aiming ---
-        public float SoftLockRange = 4f;             // not locked on: attacks aim at the nearest enemy this close...
+        public float SoftLockRange = 7f;             // not locked on: attacks aim at the nearest enemy this close...
         public float SoftLockAngle = 60f;            // ...and at most this many degrees off the direction you're aiming...
         public float SoftLockMaxHeightDifference = 1.5f; // ...and no more than this far above or below you (not up on a ledge)
         public float LungeStopGap = 0.3f;            // lunges stop this far from the target's body so you never run through it
+        public float GapCloseDistance = 4.5f;        // free-flow: a light attack at a soft-lock target out of reach lunges up to
+                                                     // this much further than its own LungeDistance to close the gap (0 = off)
 
         public static PlayerTuning CreateFluid()
         {

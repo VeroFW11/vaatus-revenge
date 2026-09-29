@@ -17,7 +17,8 @@ namespace VaatusRevenge.Tests
         Jump = 8,
         Guard = 16,
         Skill = 32,
-        Heal = 64
+        Heal = 64,
+        Zip = 128
     }
 
     // Drives a PlayerCombatModel the way PlayerController will: one Tick per frame at a fixed dt, then moves
@@ -46,6 +47,15 @@ namespace VaatusRevenge.Tests
             return new PlayerDriver(PlayerTuning.CreatePunishing(), ElementMoveSet.CreateFirePunishing(), fps);
         }
 
+        // Fire with a held block (GuardSettings.Style = BlockAndParry), for the tests of blocking itself: Fire is
+        // parry-only, but other elements may block, so the block rules stay covered.
+        public static PlayerDriver Blocking(float fps = 60f)
+        {
+            ElementMoveSet set = ElementMoveSet.CreateFireFluid();
+            set.Guard.Style = DefenseStyle.BlockAndParry;
+            return new PlayerDriver(null, set, fps);
+        }
+
         public PlayerInputFrame MakeInput(Pad now, Vector2 move)
         {
             var input = new PlayerInputFrame { Move = move };
@@ -56,6 +66,7 @@ namespace VaatusRevenge.Tests
             input.Guard = ButtonState.From((now & Pad.Guard) != 0, (held & Pad.Guard) != 0);
             input.Skill = ButtonState.From((now & Pad.Skill) != 0, (held & Pad.Skill) != 0);
             input.Heal = ButtonState.From((now & Pad.Heal) != 0, (held & Pad.Heal) != 0);
+            input.ZipStrike = ButtonState.From((now & Pad.Zip) != 0, (held & Pad.Zip) != 0);
             return input;
         }
 

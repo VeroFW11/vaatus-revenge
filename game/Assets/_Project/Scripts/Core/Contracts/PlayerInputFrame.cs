@@ -20,16 +20,21 @@ namespace VaatusRevenge.Core
     // which is what lets the headless playtest harness "play" the game with scripted inputs.
     // Buttons are raw: deciding tap vs hold, buffering, combos etc. is the core's job.
     //
-    // Default bindings (gamepad / keyboard + mouse):
-    //   Move      left stick / WASD            Look      right stick / mouse
-    //   Light     RB (R1) / left mouse         Heavy     RT (R2) / right mouse (hold to charge)
-    //   Dodge     B (Circle) / Left Shift      tap = dodge, hold = sprint
-    //   Jump      A (Cross) / Space            Guard     LB (L1) / Q (tap on time = deflect)
-    //   Skill     LT (L2) / E                  Heal      X (Square) / R
-    //   LockOn    R3 / middle mouse or Tab     SwitchTargetDelta  mouse wheel / Z,C (stick flicks are
-    //                                                              detected by the lock-on code from Look)
-    //   SwapShoulder  L3 (click left stick) / V   flip the over-the-shoulder camera to the other side
-    //   ElementSelect  D-pad / 1-4
+    // Default bindings, Spider-Man 2 style (Xbox / PlayStation / keyboard + mouse). The input reader turns
+    // button combinations into these plain fields, so the rules never see which physical button it was:
+    //   Move       left stick / WASD                 Look       right stick / mouse
+    //   Light      X (Square) / left mouse            attack: aims at the enemy your stick points at
+    //   ZipStrike  Y (Triangle) / F                   dash across to a far enemy and hit it
+    //   Dodge      B (Circle) / Left Shift            tap = dodge, hold = sprint
+    //   Jump       A (Cross) / Space
+    //   Guard      tap LB (L1) / Q                    parry (or block, if the element's DefenseStyle has one)
+    //   Heavy      hold LB + X (L1 + Square) / hold Q + left mouse    ability slot: charge the fa jin palm
+    //   Skill      tap RB (R1) / right mouse          Fire Blast
+    //   ElementSelect  hold RB + Y/B/A/X (R1 + face button) / 1-4
+    //   Heal       D-pad down / R
+    //   LockOn     R3 / middle mouse or Tab (optional: off unless you press it)
+    //   SwitchTargetDelta  mouse wheel / Z,C (stick flicks are detected by the lock-on code from Look)
+    //   SwapShoulder  L3 (click left stick) / V       flip the over-the-shoulder camera to the other side
     public struct PlayerInputFrame
     {
         public Vector2 Move;          // x = right, y = forward, magnitude 0..1 (keyboard is normalised)
@@ -45,6 +50,7 @@ namespace VaatusRevenge.Core
         public ButtonState Heal;
         public ButtonState LockOn;
         public ButtonState SwapShoulder; // camera only: the gameplay rules ignore it
+        public ButtonState ZipStrike;
 
         public int SwitchTargetDelta; // -1 = previous/left, +1 = next/right, 0 = none (edge-triggered)
         public ElementId ElementSelect; // None unless a direction was pressed this frame (edge-triggered)

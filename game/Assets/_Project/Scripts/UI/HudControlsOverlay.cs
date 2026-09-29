@@ -1,5 +1,6 @@
 using System.Globalization;
 using UnityEngine;
+using VaatusRevenge.Core;
 
 namespace VaatusRevenge
 {
@@ -9,7 +10,7 @@ namespace VaatusRevenge
     // The rows are built once (and rebuilt only if a name shown in them changes), so drawing allocates nothing.
     public sealed class HudControlsOverlay
     {
-        const int GameplayRows = 13;
+        const int GameplayRows = 14;
         const int SandboxRows = 7;
 
         static readonly Color PanelColor = new Color(0.035f, 0.035f, 0.045f, 0.92f);
@@ -23,16 +24,15 @@ namespace VaatusRevenge
         readonly string[] sandboxKeys = new string[SandboxRows];
         readonly string[] sandboxActions = new string[SandboxRows];
         bool built;
-        string builtSkill;
-        string builtHeal;
-        string builtElement;
+        string builtSkill, builtZip, builtHeavy, builtElement, builtHeal;
+        bool builtParryOnly;
         float builtSlowScale = -1f;
 
-        // skillName, healName and elementName come from data (the move set and the HUD's settings), so lore
-        // names never live in code. Empty names fall back to generic words.
-        public void Draw(HudPainter p, string skillName, string healName, string elementName, float slowMotionScale, Color accent)
+        // Move names come from data (the move set and the HUD's settings), so lore names never live in code. Empty
+        // names fall back to generic words. moves may be null (generic words throughout).
+        public void Draw(HudPainter p, ElementMoveSet moves, string healName, float slowMotionScale, Color accent)
         {
-            EnsureRows(skillName, healName, elementName, slowMotionScale);
+            EnsureRows(moves, healName, slowMotionScale);
 
             float margin = p.U(20f);
             float pad = p.U(26f);
@@ -96,37 +96,50 @@ namespace VaatusRevenge
                 p.SmallCenter, DimTextColor);
         }
 
-        void EnsureRows(string skillName, string healName, string elementName, float slowMotionScale)
+        void EnsureRows(ElementMoveSet moves, string healName, float slowMotionScale)
         {
-            if (built && builtSkill == skillName && builtHeal == healName && builtElement == elementName
-                && Mathf.Approximately(builtSlowScale, slowMotionScale))
+            string skillName = moves != null && moves.Skill != null ? moves.Skill.DisplayName : "";
+            string zipName = moves != null && moves.ZipStrike != null ? moves.ZipStrike.DisplayName : "";
+            string heavyName = moves != null && moves.Heavy != null ? moves.Heavy.DisplayName : "";
+            string elementName = moves != null ? moves.DisplayName : "";
+            bool parryOnly = moves == null || moves.Guard == null || moves.Guard.IsParryOnly;
+            if (built && builtSkill == skillName && builtZip == zipName && builtHeavy == heavyName && builtElement == elementName
+                && builtHeal == healName && builtParryOnly == parryOnly && Mathf.Approximately(builtSlowScale, slowMotionScale))
             {
                 return;
             }
             built = true;
             builtSkill = skillName;
-            builtHeal = healName;
+            builtZip = zipName;
+            builtHeavy = heavyName;
             builtElement = elementName;
+            builtHeal = healName;
+            builtParryOnly = parryOnly;
             builtSlowScale = slowMotionScale;
 
-            string skill = string.IsNullOrEmpty(skillName) ? "Ranged skill" : "Ranged skill (" + skillName + ")";
-            string heal = string.IsNullOrEmpty(healName) ? "Heal" : "Heal (" + healName + ")";
-            string element = string.IsNullOrEmpty(elementName) ? "D-pad" : "D-pad (Up = " + elementName + ")";
+            // Spider-Man 2's layout (see the spec's controls table and PlayerInputReader).
+            string skill = Named("Ranged skill", skillName);
+            string heal = Named("Heal", healName);
+            string zip = Named("Zip strike: dash to the enemy you aim at", zipName);
+            string heavy = string.IsNullOrEmpty(heavyName) ? "Heavy" : heavyName;
+            string element = string.IsNullOrEmpty(elementName) ? "Hold RB / R1 + a face button" : "Hold RB / R1 + a face button (Y = " + elementName + ")";
 
             int r = 0;
             Row(ref r, "Move", "Left stick", "W A S D");
             Row(ref r, "Camera", "Right stick", "Mouse");
             Row(ref r, "Swap camera shoulder (hold)", "Hold L3 (left-stick click)", "Hold V");
-            Row(ref r, "Light attack (3-hit chain)", "RB / R1", "Left mouse");
+            Row(ref r, "Attack (aims at the enemy your stick points at)", "X / Square", "Left mouse");
+            Row(ref r, zip, "Y / Triangle", "F");
             // Taught as a rhythm, not a reaction: letting go when the band lights up is usually too late
             // (playtest report HUD-01). The meter's white "get ready" mark comes just before the gold band.
-            Row(ref r, "Heavy: hold, let go as the meter fills the gold band", "RT / R2", "Right mouse");
+            Row(ref r, heavy + ": hold, let go as the meter fills the gold band", "Hold LB / L1, then hold X / Square", "Hold Q, then hold left mouse");
             Row(ref r, "Dodge (tap) / Sprint (hold)", "B / Circle", "Left Shift");
             Row(ref r, "Jump", "A / Cross", "Space");
-            Row(ref r, "Guard (hold) / Deflect (press just before a hit)", "LB / L1", "Q");
-            Row(ref r, skill, "LT / L2", "E");
-            Row(ref r, heal, "X / Square", "R");
-            Row(ref r, "Lock on / off", "R3", "Middle mouse or Tab");
+            Row(ref r, parryOnly ? "Parry (tap just before a hit lands)" : "Guard (hold) / Deflect (press just before a hit)",
+                parryOnly ? "Tap LB / L1" : "LB / L1", "Q");
+            Row(ref r, skill, "Tap RB / R1", "Right mouse");
+            Row(ref r, heal, "D-pad down", "R");
+            Row(ref r, "Lock on / off (optional)", "R3", "Middle mouse or Tab");
             Row(ref r, "Switch target", "Flick right stick while locked", "Mouse wheel, or Z / C");
             Row(ref r, "Element select", element, "1 - 4");
 
@@ -141,6 +154,11 @@ namespace VaatusRevenge
             SandboxRow(ref s, "F5 / F6", "Fluid / Punishing preset, to compare the two feels");
             SandboxRow(ref s, "T", "Reset enemies and dummies");
             SandboxRow(ref s, "Esc", "Release the mouse / pause");
+        }
+
+        static string Named(string generic, string name)
+        {
+            return string.IsNullOrEmpty(name) ? generic : generic + " (" + name + ")";
         }
 
         void Row(ref int index, string action, string pad, string keys)

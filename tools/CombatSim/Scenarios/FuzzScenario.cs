@@ -44,19 +44,19 @@ namespace VaatusRevenge.CombatSim
         sealed class RandomPad
         {
             readonly DeterministicRandom r;
-            readonly double[] until = new double[9];
+            readonly double[] until = new double[10];
             double nextStick, nextLook;
             Vector2 stick, look;
             bool lookMouse;
 
             public RandomPad(int seed) { r = new DeterministicRandom(seed); }
 
-            static readonly float[] StartChance = { 0.08f, 0.02f, 0.04f, 0.02f, 0.03f, 0.015f, 0.004f, 0.004f, 0.003f };
+            static readonly float[] StartChance = { 0.08f, 0.02f, 0.04f, 0.02f, 0.03f, 0.015f, 0.004f, 0.004f, 0.003f, 0.02f };
 
             public Pad Next(double now)
             {
                 var pad = new Pad();
-                for (int b = 0; b < 9; b++)
+                for (int b = 0; b < until.Length; b++)
                 {
                     if (now < until[b]) { Set(ref pad, b); continue; }
                     if (r.NextFloat() < StartChance[b])
@@ -103,6 +103,7 @@ namespace VaatusRevenge.CombatSim
                     case 6: p.Heal = true; break;
                     case 7: p.LockOn = true; break;
                     case 8: p.SwapShoulder = true; break;
+                    case 9: p.ZipStrike = true; break;
                 }
             }
         }

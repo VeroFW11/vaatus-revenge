@@ -369,7 +369,7 @@ namespace VaatusRevenge.Tests
             Assert.Less(ahead, angled, "same distance: the one straight ahead wins");
             Assert.IsTrue(SoftLockSelector.TryScore(self, 0f, new Vector3(1.2f, 0f, 1.6f), tuning, out float nearer));
             Assert.Less(nearer, ahead, "otherwise nearest first");
-            Assert.IsFalse(SoftLockSelector.TryScore(self, 0f, new Vector3(0f, 0f, 5f), tuning, out _), "too far");
+            Assert.IsFalse(SoftLockSelector.TryScore(self, 0f, new Vector3(0f, 0f, tuning.SoftLockRange + 1f), tuning, out _), "too far");
             Assert.IsFalse(SoftLockSelector.TryScore(self, 0f, new Vector3(3f, 0f, 0.5f), tuning, out _), "too far off the aim");
             Assert.IsTrue(SoftLockSelector.TryScore(self, 0f, self, tuning, out _), "on top of us counts (no NaN)");
 

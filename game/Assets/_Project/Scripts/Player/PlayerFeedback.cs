@@ -185,6 +185,7 @@ namespace VaatusRevenge
             MoveData move = e.Move;
             if (move == null) return;
             if (e.IsCounter) Flash(s.CounterFlashColor, s.CounterFlashTime);
+            if (e.AttackKind == PlayerAttackKind.ZipStrike) ZipDashStarted(move, s);
             PlayerStrikePoses p = s.Poses;
             if (rig == null || p == null) return;
 
@@ -215,8 +216,9 @@ namespace VaatusRevenge
                     rig.Strike(limb, PoseFor(IsFoot(limb) ? p.Kick : p.Blast, limb), move.Startup, Hold(move, p), move.Recovery);
                     rig.Lean(p.StrikeLeanDegrees, move.TotalDuration);
                     break;
-                default: // light chain and sprint attack
+                default: // light chain, sprint attack and zip strike
                 {
+                    bool flying = e.AttackKind == PlayerAttackKind.Sprint || e.AttackKind == PlayerAttackKind.ZipStrike;
                     poseLimb = limb;
                     Vector3 target = p.Punch;
                     if (IsFoot(limb))
@@ -229,11 +231,11 @@ namespace VaatusRevenge
                         }
                         else
                         {
-                            target = e.AttackKind == PlayerAttackKind.Sprint ? p.HighKick : p.Kick;
+                            target = flying ? p.HighKick : p.Kick;
                         }
                     }
                     rig.Strike(limb, PoseFor(target, limb), move.Startup, Hold(move, p), move.Recovery);
-                    rig.Lean(e.AttackKind == PlayerAttackKind.Sprint ? p.HeavyLeanDegrees : p.StrikeLeanDegrees, move.TotalDuration);
+                    rig.Lean(flying ? p.HeavyLeanDegrees : p.StrikeLeanDegrees, move.TotalDuration);
                     break;
                 }
             }
@@ -350,6 +352,17 @@ namespace VaatusRevenge
             }
             PlayerStrikePoses p = s.Poses;
             if (p != null && duration > 0f) rig.Lean(Vector3.Dot(direction, body.forward) * p.DodgeLeanDegrees, duration);
+        }
+
+        // Flame Step Strike: the same fire jets as the Flame Step dodge, burning for the whole dash to the target.
+        void ZipDashStarted(MoveData move, PlayerFeedbackSettings s)
+        {
+            FireVfx.Burst(FootPosition(s), -body.forward, s.DodgeBurstScale);
+            StopDodgeTrails();
+            if (rig == null || !s.DodgeTrails) return;
+            float dash = move.Startup + move.Active;
+            leftFootTrail = FireVfx.Trail(rig.GetAnchor(Limb.LeftFoot), dash);
+            rightFootTrail = FireVfx.Trail(rig.GetAnchor(Limb.RightFoot), dash);
         }
 
         void PerfectDodge(PlayerFeedbackSettings s)

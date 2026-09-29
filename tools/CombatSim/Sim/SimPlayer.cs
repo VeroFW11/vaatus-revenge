@@ -99,6 +99,15 @@ namespace VaatusRevenge.CombatSim
             }
             LockTarget = Usable(world.LockOn != null ? world.LockOn.Target : null);
             SoftTarget = null;
+            float aimYaw = Model.GetAimYaw(input.Move, cameraYaw);
+            SimFighter zip = FindZipTarget(aimYaw, LockTarget);   // PlayerController.FindZipTarget
+            if (zip != null)
+            {
+                ws.HasZipTarget = true;
+                ws.ZipTargetPosition = zip.Feet;
+                ws.ZipTargetAimPoint = zip.AimPoint;
+                ws.ZipTargetRadius = zip.Radius;
+            }
             if (LockTarget != null)
             {
                 ws.HasLockTarget = true;
@@ -107,7 +116,7 @@ namespace VaatusRevenge.CombatSim
                 ws.LockTargetRadius = LockTarget.Radius;
                 return ws;
             }
-            SoftTarget = FindSoftTarget(Model.GetAimYaw(input.Move, cameraYaw));
+            SoftTarget = FindSoftTarget(aimYaw);
             if (SoftTarget != null)
             {
                 ws.HasSoftTarget = true;
@@ -116,6 +125,32 @@ namespace VaatusRevenge.CombatSim
                 ws.SoftTargetRadius = SoftTarget.Radius;
             }
             return ws;
+        }
+
+        SimFighter FindZipTarget(float aimYaw, SimFighter locked)
+        {
+            ElementMoveSet moves = Model.MoveSet;
+            ZipStrikeSettings zip = moves != null ? moves.Zip : null;
+            if (zip == null || moves.ZipStrike == null) return null;
+            if (locked != null)
+            {
+                bool inReach = SoftLockSelector.TryScore(Feet, aimYaw, locked.Feet, zip.Range, 360f, zip.MaxHeightDifference, out _);
+                return inReach && !world.Level.IsBlocked(AimPoint, locked.AimPoint) ? locked : null;
+            }
+            SimFighter best = null;
+            float bestScore = float.MaxValue;
+            IReadOnlyList<SimFighter> all = world.Fighters;
+            for (int i = 0; i < all.Count; i++)
+            {
+                SimFighter c = Usable(all[i]);
+                if (c == null) continue;
+                if (!SoftLockSelector.TryScore(Feet, aimYaw, c.Feet, zip.Range, zip.AngleDegrees, zip.MaxHeightDifference, out float score)
+                    || score >= bestScore) continue;
+                if (world.Level.IsBlocked(AimPoint, c.AimPoint)) continue;
+                best = c;
+                bestScore = score;
+            }
+            return best;
         }
 
         SimFighter FindSoftTarget(float aimYaw)

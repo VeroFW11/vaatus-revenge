@@ -3,7 +3,8 @@ using System;
 namespace VaatusRevenge.Core
 {
     // Everything one element can do on the standard buttons: the light chain, the charged heavy, sprint
-    // and jump attacks, the ranged skill, the dodge, guard/deflect and the element's identity mechanic.
+    // and jump attacks, the ranged skill, the zip strike, the dodge, guard/parry (and whether this element
+    // blocks at all: Guard.Style) and the element's identity mechanic.
     // Switching element = switching move set, so the same buttons do that element's moves.
     //
     // Lives inside a MoveSetAsset (ScriptableObject). The model reads it live and never writes to it.
@@ -27,6 +28,10 @@ namespace VaatusRevenge.Core
         public MoveData PlungeAttack = CreateFirePlunge();
         public PlungeSettings Plunge = new PlungeSettings();
         public MoveData Skill = CreateFireSkill();               // ranged skill: launches Skill.Projectile when startup ends
+        // Dash to a far target and hit it (see ZipStrikeSettings). Its LungeDistance is ignored: the dash is as long
+        // as the gap to the target; it covers the startup and active frames (or the last LungeTime of them).
+        public MoveData ZipStrike = CreateFireZipStrike();
+        public ZipStrikeSettings Zip = new ZipStrikeSettings();
         public DodgeProfile Dodge = new DodgeProfile();
         public GuardSettings Guard = new GuardSettings();
         public MomentumSettings Momentum = new MomentumSettings();
@@ -43,7 +48,8 @@ namespace VaatusRevenge.Core
             var set = new ElementMoveSet();
             for (int i = 0; i < set.LightChain.Length; i++) set.LightChain[i].StaminaCost = 13f;
             set.Heavy.StaminaCost = 28f;
-            MoveData[] all = { set.LightChain[0], set.LightChain[1], set.LightChain[2], set.Heavy, set.SprintAttack, set.Skill };
+            set.ZipStrike.StaminaCost = 20f;
+            MoveData[] all = { set.LightChain[0], set.LightChain[1], set.LightChain[2], set.Heavy, set.SprintAttack, set.Skill, set.ZipStrike };
             foreach (MoveData move in all) move.DodgeCancelAt = move.ActiveEnd + move.Recovery * 0.6f;
             set.Charge.CanDodgeCancelCharge = false;
             set.PlungeAttack.DodgeCancelAt = set.PlungeAttack.Recovery;   // no dodging out of a landing
@@ -128,6 +134,21 @@ namespace VaatusRevenge.Core
                 Range = 0f, ArcDegrees = 360f, LungeDistance = 0f,
                 ComboWindowStart = 0f, ComboWindowEnd = 0f, ChainCancelAt = 0.55f, DodgeCancelAt = 0.35f,
                 StaminaCost = 20f, MomentumGain = 14f
+            };
+        }
+
+        // Flame Step Strike: fire from the feet carries the Avatar across the gap into a flying kick. A fire-assisted
+        // dash, like the Flame Step dodge (canon firebending per the spec's lore guardrails), not full jet flight.
+        static MoveData CreateFireZipStrike()
+        {
+            return new MoveData
+            {
+                DisplayName = "Flame Step Strike", Kind = HitKind.Sprint, Limb = Limb.RightFoot,
+                Startup = 0.30f, Active = 0.12f, Recovery = 0.38f,
+                Damage = 12f, PoiseDamage = 18f, GuardStaminaDamage = 12f, Knockback = 0.9f, Hitstop = 0.05f,
+                Range = 2.4f, ArcDegrees = 90f, LungeDistance = 0f, TrackingTurnRate = 1080f,
+                ComboWindowStart = 0f, ComboWindowEnd = 0f, ChainCancelAt = 0.44f, DodgeCancelAt = 0.36f,
+                StaminaCost = 14f, MomentumGain = 10f
             };
         }
 

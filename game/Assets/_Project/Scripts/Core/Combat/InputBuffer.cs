@@ -43,7 +43,8 @@ namespace VaatusRevenge.Core
 
         public static bool IsAttack(PlayerCommand command)
         {
-            return command == PlayerCommand.Light || command == PlayerCommand.Heavy || command == PlayerCommand.Skill;
+            return command == PlayerCommand.Light || command == PlayerCommand.Heavy || command == PlayerCommand.Skill
+                || command == PlayerCommand.ZipStrike;
         }
 
         // Unlocked presses expire after 'window'; locked (queued) ones never do.

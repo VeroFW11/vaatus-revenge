@@ -343,7 +343,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void GuardPressedDuringAnAttackIsBufferedAndRaisedAtTheCancelPoint()
         {
-            var d = new PlayerDriver();
+            var d = PlayerDriver.Blocking();   // held guard: a blocking element
             MoveData jab = d.Model.MoveSet.LightChain[0];
             d.Step(Pad.Light);
             d.Run(3);

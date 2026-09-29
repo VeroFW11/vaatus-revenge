@@ -119,12 +119,14 @@ namespace VaatusRevenge.Core
             if (state == PlayerState.Dead) return;
 
             // A guard press is a buffered command (it can cut an attack or dodge short and opens the deflect
-            // window); here a held guard just raises the guard from walking or sprinting.
-            if (guardHeld && (state == PlayerState.Locomotion || state == PlayerState.Sprinting) && OnGroundish)
+            // window); here a held guard just raises the guard from walking or sprinting. Parry-only elements
+            // have no held guard: the parry stance drops by itself when its window ends.
+            bool parryOnly = Guard.IsParryOnly;
+            if (!parryOnly && guardHeld && (state == PlayerState.Locomotion || state == PlayerState.Sprinting) && OnGroundish)
             {
                 EnterGuard(false, clock);
             }
-            if (state == PlayerState.Guarding && !guardHeld && clock >= guardHeldUntil)
+            if (state == PlayerState.Guarding && (parryOnly || !guardHeld) && clock >= guardHeldUntil)
             {
                 ExitAction(false);
                 state = PlayerState.Locomotion;
@@ -236,9 +238,10 @@ namespace VaatusRevenge.Core
             return stickLength < tuning.WalkStickThreshold ? tuning.WalkSpeed : fast;
         }
 
-        // Lock target, else soft-lock candidate, else the stick, else keep facing.
+        // Zip strike: its target. Otherwise lock target, else soft-lock candidate, else the stick, else keep facing.
         float AttackAimYaw(in PlayerWorldState world, bool hasStick, Vector3 stickDir, float lockYaw)
         {
+            if (attackKind == PlayerAttackKind.ZipStrike && world.HasZipTarget) return YawTowards(world.Position, world.ZipTargetPosition);
             if (world.HasLockTarget) return lockYaw;
             if (world.HasSoftTarget) return YawTowards(world.Position, world.SoftTargetPosition);
             if (hasStick) return Directions.YawOf(stickDir, facingYaw);
@@ -267,33 +270,51 @@ namespace VaatusRevenge.Core
         Vector3 LungeStep(in PlayerWorldState world)
         {
             MoveData move = currentMove;
-            if (!(move.LungeDistance > 0f)) return Vector3.Zero;
+            if (!(lungeDistance > 0f)) return Vector3.Zero;
             float end = move.ActiveEnd;
             float start = move.LungeTime > 0f ? Math.Max(0f, end - move.LungeTime) : 0f;
             float before = MotionCurves.WindowProgress(action.PreviousTime, start, end, 0f);
             float after = MotionCurves.WindowProgress(action.Time, start, end, 0f);
-            return LimitApproach(Forward * (move.LungeDistance * (after - before)), world);
+            return LimitApproach(LungeDirection(world) * (lungeDistance * (after - before)), world);
+        }
+
+        // Straight at the target for a homing lunge (so turning during startup doesn't curve the path), else forward.
+        Vector3 LungeDirection(in PlayerWorldState world)
+        {
+            if (!lungeHoming || !TryGetLungeTarget(world, out Vector3 target, out _)) return Forward;
+            return Directions.SafeNormalize(Directions.Flatten(target - world.Position), Forward);
+        }
+
+        // Whom the running attack's lunge closes on: the zip target for a zip strike, else lock, else soft lock.
+        bool TryGetLungeTarget(in PlayerWorldState world, out Vector3 target, out float targetRadius)
+        {
+            if (attackKind == PlayerAttackKind.ZipStrike && world.HasZipTarget)
+            {
+                target = world.ZipTargetPosition;
+                targetRadius = world.ZipTargetRadius;
+                return true;
+            }
+            if (world.HasLockTarget)
+            {
+                target = world.LockTargetPosition;
+                targetRadius = world.LockTargetRadius;
+                return true;
+            }
+            if (world.HasSoftTarget)
+            {
+                target = world.SoftTargetPosition;
+                targetRadius = world.SoftTargetRadius;
+                return true;
+            }
+            target = Vector3.Zero;
+            targetRadius = 0f;
+            return false;
         }
 
         // Removes the part of a step that would carry us closer than LungeStopGap to the target's body.
         Vector3 LimitApproach(Vector3 step, in PlayerWorldState world)
         {
-            Vector3 target;
-            float targetRadius;
-            if (world.HasLockTarget)
-            {
-                target = world.LockTargetPosition;
-                targetRadius = world.LockTargetRadius;
-            }
-            else if (world.HasSoftTarget)
-            {
-                target = world.SoftTargetPosition;
-                targetRadius = world.SoftTargetRadius;
-            }
-            else
-            {
-                return step;
-            }
+            if (!TryGetLungeTarget(world, out Vector3 target, out float targetRadius)) return step;
 
             Vector3 toTarget = Directions.Flatten(target - world.Position);
             float distance = toTarget.Length();

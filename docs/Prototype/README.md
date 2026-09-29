@@ -9,7 +9,19 @@ A grey-box sandbox for judging whether firebending combat is fun. Capsules and c
 3. Menu **Vaatu's Revenge ▸ Build Fire Combat Sandbox**, then press **Play**. Click the Game view to capture the mouse.
 4. Once it works, commit the generated `Assets/_Project/Scenes`, `Tuning` and `Materials` files so Jeremy gets the same tuning.
 
-**F1** shows the controls in-game. Gamepad is the intended way to play.
+**F1** shows the controls in-game. Gamepad is the intended way to play. The layout is **Spider-Man 2's** (29 Sep): X attack, Y zip strike, B dodge, A jump, tap LB parry, tap RB Fire Blast, hold LB + X fa jin, D-pad down heal. Full table in the [spec](Fire-Combat-Prototype-Spec.md#controls).
+
+**Pulled the Spider-Man controls update and you'd already built the sandbox once?** Run **Vaatu's Revenge ▸ Reset Sandbox Tuning To Defaults**, then **Build Fire Combat Sandbox** again. Your saved tuning assets still have the old 4 m auto-aim range; the reset gives the new 7 m and the rest of the new numbers.
+
+## Martial-arts animation packs (not in Git)
+
+The three free Asset Store packs (SAINDEVELOPER *Martial Art Animations - Sample* and *Brawler Animations - Free*, MAGICPOT *Fighting Motions Vol.1*) can't be committed: the repo is public and the Asset Store licence doesn't allow sharing the files. Each of us imports them from our own Unity account:
+
+1. Add the three packs to your Unity account on the Asset Store (they're free).
+2. In Unity: **Window ▸ Package Manager ▸ My Assets**, then **Download** and **Import** each pack.
+3. In the Project window, create `Assets/ThirdParty/` and drag the imported pack folders into it. Git ignores that folder.
+4. **Vaatu's Revenge ▸ Animation ▸ Set ThirdParty Rigs To Humanoid**, then **Vaatu's Revenge ▸ Animation ▸ Write Animation Catalogue**.
+5. Commit only `docs/Prototype/Animation-Catalogue.json` (clip names and timings, no animation data). Claude uses it to map the clips onto our moves.
 
 | Key | Sandbox tool |
 |---|---|

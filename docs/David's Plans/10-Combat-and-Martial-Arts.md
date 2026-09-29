@@ -38,6 +38,9 @@
 - **Perfect dodge counts in any direction** (timing is what matters, like Spider-Man 2); dashing toward the attacker gives bonus Momentum. *(David, 29 Sep)*
 - **Crossbowmen share the 2 attack slots** with melee enemies: never more than 2 attackers at once. *(David, 29 Sep)*
 - **A buffered dodge or guard beats a later attack press**, so a panicked escape is never turned into an attack. *(David, 29 Sep)*
+- **Controls: Marvel's Spider-Man 2 layout and free-flow targeting**, replacing the Elden Ring layout. X/Square attacks and aims at the enemy your stick points at (lunging to close the gap), Y/Triangle zips across to a far enemy (Fire's Flame Step Strike), B/Circle dodges, A/Cross jumps, a tapped LB/L1 parries, a tapped RB/R1 fires Fire Blast, D-pad down heals. Hold LB + a face button = abilities (LB + X = Fa Jin Palm), hold RB + a face button = pick an element. Lock-on stays on R3 but is optional. The moves themselves (light chain, fa jin, sprint and jump attacks, dodge) are unchanged. *(David, 29 Sep)* Full table: [prototype spec](../Prototype/Fire-Combat-Prototype-Spec.md#controls).
+- **Fire is parry only** (no hold-to-block), like Spider-Man 2. **Each element picks its own defence style** in its move set (`GuardSettings.Style`), so a later element such as Earth can still block. *(David, 29 Sep)*
+- **Real martial-arts animation for the prototype** comes from three free Asset Store packs (SAINDEVELOPER Martial Art Animations Sample and Brawler Animations Free, MAGICPOT Fighting Motions Vol.1). The repo is public, so the pack files stay out of Git: each of us imports them from our own Unity account into `game/Assets/ThirdParty/`. *(David, 29 Sep)*
 
 ## Things to decide
 
@@ -46,10 +49,10 @@
 - [x] ~~Does pro-bending appear?~~ **No.** Pro-bending is from Korra's era, thousands of years after ours (see [01](01-Lore-and-Universe.md)). Its acrobatic/MMA influence could still shape how some human fighters move, without the sport itself.
 - [x] **Toph's style without Toph.** Solved: it's an ancient badgermole technique. The first earthbenders learned from badgermoles, who "see" through vibration.
 - [ ] **How do we get authentic animation?** Pros and cons are in "Getting animation that matches the real styles" below.
-- [x] **Combat basics.** Light, heavy, dodge, block/parry, lock-on, **plus jump and sprint attacks**.
+- [x] **Combat basics.** Light, heavy, dodge, parry (block for elements that choose it), optional lock-on, **plus jump and sprint attacks**, on **Spider-Man 2's controls** *(David, 29 Sep)*.
 - [x] **First element to prototype.** **Fire.**
 - [x] **Souls-like or Spider-Man-fluid dodging?** **Spider-Man fluid** *(Quest Board, 28 Sep)*: dodges are nearly free and cancel into anything. Bending and attacks cost stamina, so the tension moves from dodging to how you spend stamina. *Jeremy (lead on combat feel) should try it in the prototype and confirm.*
-- [x] **Switching elements mid-fight.** **D-pad:** one direction per element, and the same buttons do the chosen element's moves. *(To be confirmed by playtesting.)*
+- [x] **Switching elements mid-fight.** **Hold RB / R1 + a face button** (Spider-Man 2's gadget chord), one button per element; number keys 1-4 on keyboard. The same buttons then do the chosen element's moves. *(David, 29 Sep; replaces the D-pad idea, since D-pad down is now heal. To be confirmed by playtesting.)*
 - [x] **Dodging.** **Each element has its own dodge.** Airbending blends into movement.
 - [x] **Dodge inputs.** **One dodge button**; the dodge changes with your element.
 - [ ] **Avatar State in combat.** A temporary power mode with a meter?

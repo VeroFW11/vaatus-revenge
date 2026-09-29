@@ -43,6 +43,20 @@
 /game/[Aa]ssets/[Ss]treamingAssets/aa/*
 
 # ---------------------------------------------------------------
+# Third-party Asset Store packs (animation packs etc.) — NEVER commit.
+# This repo is public, and the Unity Asset Store licence forbids
+# redistributing the files, even free ones. So each teammate imports
+# the packs from their OWN Unity account (Window > Package Manager >
+# My Assets > Download > Import), then moves the imported folders into
+# game/Assets/ThirdParty/. Git ignores that folder entirely.
+# What IS safe to commit is the metadata catalogue written by
+# "Vaatu's Revenge > Animation > Write Animation Catalogue"
+# (docs/Prototype/Animation-Catalogue.json): names and timings only.
+# ---------------------------------------------------------------
+/game/Assets/ThirdParty/
+/game/Assets/ThirdParty.meta
+
+# ---------------------------------------------------------------
 # Blender — autosave/backup copies (.blend1, .blend2 ...)
 # ---------------------------------------------------------------
 *.blend[0-9]

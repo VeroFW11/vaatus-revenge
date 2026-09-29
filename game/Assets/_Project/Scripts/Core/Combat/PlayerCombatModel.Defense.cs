@@ -12,10 +12,13 @@ namespace VaatusRevenge.Core
     //   i-frames are up, earns Momentum (more when you dashed toward the attacker), a counter window and a slow-motion
     //   event. With PerfectRule = WouldHaveLanded, a strike that misses because you dashed away still counts if its
     //   arc covered where you started: the enemy side reports every strike with NotifyEnemyStrike.
-    // GUARD: blocks hits from the front arc for stamina; not enough stamina = guard break (stagger).
-    // DEFLECT: a guard press within Guard.DeflectWindow before a parryable hit lands deflects it for free and
-    //   the attacker is told HitOutcome.Parried. A press that deflects nothing locks deflecting out briefly.
-    //   A quick tap still counts: the guard stays up for at least the deflect window.
+    // GUARD (Guard.Style = BlockAndParry only): blocks hits from the front arc for stamina; not enough stamina =
+    //   guard break (stagger).
+    // DEFLECT (a parry, both styles): a guard press within Guard.DeflectWindow before a parryable hit lands
+    //   deflects it for free and the attacker is told HitOutcome.Parried. A press that deflects nothing locks
+    //   deflecting out briefly. A quick tap still counts: the guard stays up for at least the deflect window.
+    // PARRY ONLY (Guard.Style = ParryOnly): a press opens the deflect window over Guard.ParryArcDegrees and the
+    //   stance drops by itself when it closes, held or not. Anything the parry doesn't catch hits you cleanly.
     // INCOMING HIT ORDER: dead/own team/already hit by this attack -> ignored; i-frames -> evade; guarding and
     //   the hit is from the front and blockable -> deflect or block; otherwise a clean hit (health, poise, death).
     public sealed partial class PlayerCombatModel
@@ -121,8 +124,10 @@ namespace VaatusRevenge.Core
             if (!CanGuardNow()) return;
             double pressTime = buffer.PressTime;
             buffer.Clear();
-            // Still wanted? Guard held, or a tap whose deflect window (timed from the real press) is still open.
-            if (!guardHeld && clock - pressTime > Guard.DeflectWindow + Epsilon) return;
+            // Still wanted? Guard held (a blocking element), or a press whose deflect window (timed from the real
+            // press) is still open.
+            bool holdCounts = guardHeld && !Guard.IsParryOnly;
+            if (!holdCounts && clock - pressTime > Guard.DeflectWindow + Epsilon) return;
             EnterGuard(true, pressTime);
         }
 
@@ -177,7 +182,9 @@ namespace VaatusRevenge.Core
 
             Vector3 forward = Directions.Flatten(facing).LengthSquared() > 1e-6f ? Directions.Flatten(facing) : Forward;
             GuardSettings guard = Guard;
-            if (state == PlayerState.Guarding && !hit.Unblockable && IsFromFront(hit.Direction, forward, guard.ArcDegrees))
+            bool parryOnly = guard.IsParryOnly;
+            float arc = parryOnly ? guard.ParryArcDegrees : guard.ArcDegrees;
+            if (state == PlayerState.Guarding && !hit.Unblockable && IsFromFront(hit.Direction, forward, arc))
             {
                 if (hit.Parryable && deflectArmed && clock - deflectPressClock <= guard.DeflectWindow + Epsilon)
                 {
@@ -186,6 +193,9 @@ namespace VaatusRevenge.Core
                     Emit(new PlayerEvent { Type = PlayerEventType.Deflected, Amount = guard.DeflectMomentumGain, Direction = hit.Direction });
                     return new HitResult { Outcome = HitOutcome.Parried };
                 }
+            }
+            if (state == PlayerState.Guarding && !parryOnly && !hit.Unblockable && IsFromFront(hit.Direction, forward, arc))
+            {
                 float cost = Math.Max(0f, hit.GuardStaminaDamage);
                 if (stamina.Current >= cost)
                 {

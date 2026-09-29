@@ -7,7 +7,7 @@ namespace VaatusRevenge.Core
     // ending them cleanly.
     //
     // WHEN CAN A BUFFERED PRESS RUN? ("the earliest legal point")
-    //   Light / Heavy / Skill: when free (Locomotion, Sprinting, Guarding); during an attack from its
+    //   Light / Heavy / Skill / ZipStrike: when free (Locomotion, Sprinting, Guarding); during an attack from its
     //     ChainCancelAt; during a dodge from Dodge.AttackCancelAt; after a plunge landing from its ChainCancelAt.
     //     In the air, Light/Heavy become the plunge once you've been off the ground for Plunge.MinAirTime
     //     (earlier presses are dropped, not saved for later). Skill waits for the ground.
@@ -23,6 +23,10 @@ namespace VaatusRevenge.Core
     //   window is queued as the next move and fires at the cancel point (or is dropped once it's older than
     //   QueuedPressMaxAge). A press after the window restarts the chain from the first move. After the last
     //   move the chain loops.
+    // FREE-FLOW LUNGE: a light attack aimed at a target (lock-on, else soft lock) that's out of reach lunges further
+    //   than the move's own LungeDistance, by up to PlayerTuning.GapCloseDistance, stopping short of the target.
+    // ZIP STRIKE: needs PlayerWorldState.HasZipTarget; without one the press is dropped and costs nothing. The dash
+    //   covers the whole gap to the target during the move's startup and active frames. Not in the air.
     // SPRINT ATTACK: light while sprinting for SprintAttackMinSprintTime, or within SprintAttackGrace after such
     //   a sprint ends while still moving at full running speed (strafe speed when locked on).
     public sealed partial class PlayerCombatModel
@@ -43,6 +47,7 @@ namespace VaatusRevenge.Core
                 case PlayerCommand.Jump: TryJump(); break;
                 case PlayerCommand.Heal: TryHeal(); break;
                 case PlayerCommand.Guard: TryGuardPress(); break;
+                case PlayerCommand.ZipStrike: TryZipStrike(world); break;
             }
         }
 
@@ -154,6 +159,14 @@ namespace VaatusRevenge.Core
             if (moveSet.Skill != null) StartAttack(moveSet.Skill, PlayerAttackKind.Skill, -1, ChargeTier.None, ConsumeCounterWindow(), true, world);
         }
 
+        void TryZipStrike(in PlayerWorldState world)
+        {
+            if (!CanStartAttack() || !stamina.CanAct) return;
+            buffer.Clear();
+            if (moveSet.ZipStrike == null || !world.HasZipTarget) return;
+            StartAttack(moveSet.ZipStrike, PlayerAttackKind.ZipStrike, -1, ChargeTier.None, ConsumeCounterWindow(), true, world);
+        }
+
         void TryPlunge(in PlayerWorldState world)
         {
             // Too soon after leaving the ground: the press does nothing, and isn't saved to plunge later either.
@@ -205,12 +218,40 @@ namespace VaatusRevenge.Core
             isCounter = counter;
             activeOpen = false;
             if (payStamina) SpendStamina(move.StaminaCost);
+            lungeDistance = PlanLunge(move, kind, world);
             currentAttackId = CombatIds.Next();
             RememberAttack(currentAttackId, tier == ChargeTier.FaJin ? Charge.FaJinMomentumGain : move.MomentumGain);
             moveVelocity = Vector3.Zero;
             action.Begin();
             EmitMoveEvent(PlayerEventType.AttackStarted);
             UpdateAttack(world);   // moments at time 0 (a move with no startup is active at once)
+        }
+
+        // How far this attack travels forward. LimitApproach still stops every step short of the target's body.
+        float PlanLunge(MoveData move, PlayerAttackKind kind, in PlayerWorldState world)
+        {
+            float own = Math.Max(0f, move.LungeDistance);
+            lungeHoming = false;
+            if (kind == PlayerAttackKind.ZipStrike)
+            {
+                lungeHoming = world.HasZipTarget;
+                return world.HasZipTarget ? GapTo(world.ZipTargetPosition, world.ZipTargetRadius, world) : 0f;
+            }
+            if (kind != PlayerAttackKind.Light || !(tuning.GapCloseDistance > 0f)) return own;
+            float gap;
+            if (world.HasLockTarget) gap = GapTo(world.LockTargetPosition, world.LockTargetRadius, world);
+            else if (world.HasSoftTarget) gap = GapTo(world.SoftTargetPosition, world.SoftTargetRadius, world);
+            else return own;
+            // Only a stretched lunge homes in; a normal step keeps following the facing as it always has.
+            lungeHoming = gap > own;
+            return Math.Max(own, Math.Min(own + tuning.GapCloseDistance, gap));
+        }
+
+        // Flat distance we could travel toward a target before reaching LungeStopGap from its body.
+        float GapTo(Vector3 target, float targetRadius, in PlayerWorldState world)
+        {
+            float distance = Directions.Flatten(target - world.Position).Length();
+            return Math.Max(0f, distance - Math.Max(0f, world.SelfRadius) - Math.Max(0f, targetRadius) - tuning.LungeStopGap);
         }
 
         void UpdateAttack(in PlayerWorldState world)

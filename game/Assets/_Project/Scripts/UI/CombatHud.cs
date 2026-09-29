@@ -526,15 +526,9 @@ namespace VaatusRevenge
 
         void DrawControls(PlayerController player)
         {
-            string skill = "";
-            string element = "";
             MoveSetAsset moves = player != null ? player.MoveSetAsset : null;
-            if (moves != null && moves.MoveSet != null)
-            {
-                if (moves.MoveSet.Skill != null) skill = moves.MoveSet.Skill.DisplayName;
-                element = moves.MoveSet.DisplayName;
-            }
-            controlsOverlay.Draw(painter, skill, healItemName, element, TimeScaleController.DebugSlowMotionScale, accentColor);
+            ElementMoveSet set = moves != null ? moves.MoveSet : null;
+            controlsOverlay.Draw(painter, set, healItemName, TimeScaleController.DebugSlowMotionScale, accentColor);
         }
 
         static string Safe(string text)

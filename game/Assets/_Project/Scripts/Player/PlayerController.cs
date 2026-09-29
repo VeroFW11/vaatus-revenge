@@ -54,6 +54,7 @@ namespace VaatusRevenge
         float fallbackCameraYaw;     // what "forward" on the stick means when there's no camera rig
         Combatant lockTarget;
         Combatant softTarget;
+        Combatant zipTarget;
         string elementMessage = "";
         float elementMessageRemaining;
         StringBuilder debugBuilder;
@@ -397,6 +398,19 @@ namespace VaatusRevenge
             LockOnController lockOn = LockOnController.Instance;
             lockTarget = UsableTarget(lockOn != null ? lockOn.Target : null);
             softTarget = null;
+            float aimYaw = model.GetAimYaw(input.Move, cameraYaw);
+
+            // The zip strike reaches much further than the soft lock. Locked on, it goes for the lock target if that's
+            // in reach; otherwise the best candidate where you aim.
+            zipTarget = FindZipTarget(position, aimYaw, lockTarget);
+            if (zipTarget != null)
+            {
+                world.HasZipTarget = true;
+                world.ZipTargetPosition = zipTarget.Feet.ToNumerics();
+                world.ZipTargetAimPoint = zipTarget.AimPoint.position.ToNumerics();
+                world.ZipTargetRadius = zipTarget.Radius;
+            }
+
             if (lockTarget != null)
             {
                 world.HasLockTarget = true;
@@ -406,7 +420,7 @@ namespace VaatusRevenge
                 return world;
             }
 
-            softTarget = FindSoftTarget(position, model.GetAimYaw(input.Move, cameraYaw));
+            softTarget = FindSoftTarget(position, aimYaw);
             if (softTarget != null)
             {
                 world.HasSoftTarget = true;
@@ -441,6 +455,36 @@ namespace VaatusRevenge
                 Combatant candidate = UsableTarget(all[i]);
                 if (candidate == null) continue;
                 if (!SoftLockSelector.TryScore(self, aimYaw, candidate.Feet.ToNumerics(), tuning, out float score) || score >= bestScore) continue;
+                if (CombatPhysics.IsBlocked(eye, candidate.AimPoint.position)) continue;
+                best = candidate;
+                bestScore = score;
+            }
+            return best;
+        }
+
+        // The zip strike's target (see ZipStrikeSettings): like the soft lock, but much further and a little narrower.
+        Combatant FindZipTarget(Vector3 position, float aimYaw, Combatant locked)
+        {
+            ElementMoveSet moves = model.MoveSet;
+            ZipStrikeSettings zip = moves != null ? moves.Zip : null;
+            if (zip == null || moves.ZipStrike == null) return null;
+            System.Numerics.Vector3 self = position.ToNumerics();
+            Vector3 eye = combatant != null ? combatant.AimPoint.position : position;
+            if (locked != null)
+            {
+                bool inReach = SoftLockSelector.TryScore(self, aimYaw, locked.Feet.ToNumerics(), zip.Range, 360f,
+                    zip.MaxHeightDifference, out _);
+                return inReach && !CombatPhysics.IsBlocked(eye, locked.AimPoint.position) ? locked : null;
+            }
+            Combatant best = null;
+            float bestScore = float.MaxValue;
+            List<Combatant> all = Combatant.All;
+            for (int i = 0; i < all.Count; i++)
+            {
+                Combatant candidate = UsableTarget(all[i]);
+                if (candidate == null) continue;
+                if (!SoftLockSelector.TryScore(self, aimYaw, candidate.Feet.ToNumerics(), zip.Range, zip.AngleDegrees,
+                        zip.MaxHeightDifference, out float score) || score >= bestScore) continue;
                 if (CombatPhysics.IsBlocked(eye, candidate.AimPoint.position)) continue;
                 best = candidate;
                 bestScore = score;
@@ -615,7 +659,7 @@ namespace VaatusRevenge
             }
         }
 
-        // D-pad / 1-4. Only the move set's own element is learned; picking another shows a message for a moment.
+        // RB + face button / 1-4. Only the move set's own element is learned; picking another shows a message for a moment.
         void UpdateElementSelect(ElementId picked, PlayerFeedbackSettings settings)
         {
             if (elementMessageRemaining > 0f)

@@ -29,7 +29,7 @@ Combat is built on the real martial arts behind each bending style: Tai Chi (wat
 ## Tools
 
 - **Engine:** **Unity 6 + URP (decided 28 Sep).** The Unity project lives in `game/`, editor version **6000.6.3f1**. Packages added beyond the URP Blank template: Cinemachine (camera), ProBuilder (grey-boxing), Pipeline (lets Claude drive a running Editor via the `unity` CLI at `%LOCALAPPDATA%\Unity\bin\unity.exe`). Our own content goes in `game/Assets/_Project/`.
-- **Combat prototype:** Fire first. Elden Ring move set plus jump and sprint attacks; one dodge button that changes with element; fluid, Spider-Man-2-like feel. Mixamo animations for the prototype.
+- **Combat prototype:** Fire first. Elden Ring-style move set plus jump and sprint attacks, on **Marvel's Spider-Man 2 controls** with free-flow targeting (decided 29 Sep: X attack, Y zip strike, B dodge, A jump, tap LB parry, tap RB ranged, LB + face = abilities, RB + face = element, lock-on optional). Defence style is per element (Fire is parry only). One dodge button that changes with element. Animations from free Asset Store packs (kept out of Git in `game/Assets/ThirdParty/`, see `docs/Prototype/README.md`) and Mixamo.
 - **3D:** Blender. Source files go in `art/`, exported FBX files go into `game/Assets/`.
 - **Budget:** free tools preferred.
 - **Hardware:** David has an RTX 4070. Jeremy's PC is still unknown, and both must be able to run the chosen engine.

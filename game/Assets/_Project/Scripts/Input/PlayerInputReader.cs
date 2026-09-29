@@ -9,7 +9,13 @@ namespace VaatusRevenge
     // which is what lets the headless harness play the game with scripted inputs.
     //
     // Bindings are defined in code (BuildActions) instead of an .inputactions asset, so they're easy to read
-    // and can't get out of sync. The mouse only counts while the cursor is captured: click the Game view to
+    // and can't get out of sync. The layout is Spider-Man 2's (see the spec's controls table): face buttons
+    // attack / zip / dodge / jump, a tapped LB parries and a tapped RB fires the ranged skill. The shoulders are
+    // also modifiers, the way Spider-Man 2 does abilities and gadgets:
+    //   hold LB + X (Q + left mouse)  = the ability slot: Heavy (charge the fa jin palm, release on the flash).
+    //                                  LB + Y / B / A are empty ability slots and still do their normal action.
+    //   hold RB + Y / B / A / X        = pick an element (Up / Right / Down / Left slot). RB then fires nothing:
+    //                                  the Fire Blast comes from a quick RB tap on its own, on release. The mouse only counts while the cursor is captured: click the Game view to
     // capture it (that click is not an attack), Esc or switching windows releases it. The gamepad and keyboard
     // work either way.
     //
@@ -21,9 +27,11 @@ namespace VaatusRevenge
         public static PlayerInputReader Instance { get; private set; }
 
         // Slots for remembering each button's held state from last frame.
-        const int LightSlot = 0, HeavySlot = 1, DodgeSlot = 2, JumpSlot = 3, GuardSlot = 4, SkillSlot = 5, HealSlot = 6, LockOnSlot = 7;
-        const int SwapShoulderSlot = 8;
-        const int SlotCount = 9;
+        const int AttackSlot = 0, ZipSlot = 1, DodgeSlot = 2, JumpSlot = 3, GuardSlot = 4, SkillPadSlot = 5, HealSlot = 6;
+        const int LockOnSlot = 7, SwapShoulderSlot = 8, SkillMouseSlot = 9;
+        const int SlotCount = 10;
+        // Face buttons, in element-slot order (Up, Right, Down, Left): Y/Triangle, B/Circle, A/Cross, X/Square.
+        const int FaceNorth = 0, FaceEast = 1, FaceSouth = 2, FaceWest = 3;
         // Mouse movement is ignored for this many frames after the cursor is captured: some platforms report the
         // cursor's jump to the window centre as one huge movement, which would whip the camera round.
         const int MouseSettleFrames = 2;
@@ -32,20 +40,28 @@ namespace VaatusRevenge
         // Right-stick tilt that counts as "the player is using the gamepad now".
         const float GamepadActivityTilt = 0.25f;
 
-        [Tooltip("Element picked by each D-pad direction / number key, in the order Up or 1, Right or 2, Down or 3, Left or 4.")]
+        [Tooltip("Element picked by RB + each face button / number key, in the order Y or 1, B or 2, A or 3, X or 4.")]
         [SerializeField] private ElementId[] elementSlots = { ElementId.Fire, ElementId.Water, ElementId.Earth, ElementId.Air };
         [Tooltip("Capture the mouse when the Game view is clicked (Esc releases it).")]
         [SerializeField] private bool lockCursorOnClick = true;
+        [Tooltip("RB (R1) held no longer than this, with no face button pressed, fires the ranged skill when let go. "
+                 + "Held longer, it's treated as a cancelled element pick and fires nothing.")]
+        [SerializeField] private float skillTapMaxTime = 0.35f;
 
         InputActionMap map;
         InputAction move, lookStick, lookMouse;
-        InputAction light, lightMouse, heavy, heavyMouse, dodge, jump, guard, skill, heal, lockOn, lockOnMouse, swapShoulder;
+        InputAction attack, attackMouse, zip, dodge, jump, guard, skillPad, skillMouse, heal, lockOn, lockOnMouse, swapShoulder;
         InputAction switchLeft, switchRight, switchScroll, releaseCursor;
         readonly InputAction[] elementActions = new InputAction[4];
         InputAction[] sharedActions;
         readonly bool[] heldLastFrame = new bool[SlotCount];
 
         PlayerInputFrame frame;
+        bool heavyChord;                                   // X was pressed while LB was held: X is the Heavy until let go
+        bool skillPadDown;                                 // RB is down (tap = skill, held with a face button = element pick)
+        float skillPadHeldTime;
+        bool skillPadChordUsed;
+        readonly bool[] faceSwallowed = new bool[4];       // a face button used for an element pick: ignored until let go
         bool gameplayEnabled = true;
         bool usingGamepad;
         bool mouseButtonsBlocked;
@@ -109,6 +125,7 @@ namespace VaatusRevenge
             if (map != null) map.Disable();
             frame = default(PlayerInputFrame);
             System.Array.Clear(heldLastFrame, 0, heldLastFrame.Length);
+            ResetChords();
             if (Instance != this) return;
             if (CursorLocked) ReleaseCursor();
             Instance = null;
@@ -139,12 +156,13 @@ namespace VaatusRevenge
 
             // Buttons are read even while gameplay is disabled, so their held state stays up to date and
             // re-enabling doesn't invent a press for a button that was already down.
-            ButtonState lightButton = ReadButton(LightSlot, light, mouseButtonsLive ? lightMouse : null);
-            ButtonState heavyButton = ReadButton(HeavySlot, heavy, mouseButtonsLive ? heavyMouse : null);
+            ButtonState attackButton = ReadButton(AttackSlot, attack, mouseButtonsLive ? attackMouse : null);
+            ButtonState zipButton = ReadButton(ZipSlot, zip, null);
             ButtonState dodgeButton = ReadButton(DodgeSlot, dodge, null);
             ButtonState jumpButton = ReadButton(JumpSlot, jump, null);
             ButtonState guardButton = ReadButton(GuardSlot, guard, null);
-            ButtonState skillButton = ReadButton(SkillSlot, skill, null);
+            ButtonState skillPadButton = ReadButton(SkillPadSlot, skillPad, null);
+            ButtonState skillMouseButton = ReadButton(SkillMouseSlot, mouseButtonsLive ? skillMouse : null, null);
             ButtonState healButton = ReadButton(HealSlot, heal, null);
             ButtonState lockOnButton = ReadButton(LockOnSlot, lockOn, mouseButtonsLive ? lockOnMouse : null);
             ButtonState swapShoulderButton = ReadButton(SwapShoulderSlot, swapShoulder, null);
@@ -154,6 +172,13 @@ namespace VaatusRevenge
             Vector2 mouseLook = mouseLookLive ? lookMouse.ReadValue<Vector2>() : Vector2.zero;
             float scroll = cursorLocked ? switchScroll.ReadValue<float>() : 0f;
             UpdateActiveDevice(stickLook, mouseLook, mouseButtonsLive && AnyMouseButtonPressedThisFrame());
+
+            // Shoulder chords (see the top of the file). Worked out even while gameplay is off, so a chord that
+            // began before a pause can't leak out as a stray press after it.
+            ElementId elementPick = ReadElementChord(ref zipButton, ref dodgeButton, ref jumpButton, ref attackButton);
+            ButtonState skillButton = ReadSkillTap(skillPadButton, Time.unscaledDeltaTime);
+            if (skillMouseButton.Pressed) skillButton.Pressed = true;
+            ButtonState heavyButton = ReadHeavyChord(ref attackButton, guardButton);
 
             if (!gameplayEnabled)
             {
@@ -170,8 +195,9 @@ namespace VaatusRevenge
                 Move = moveValue.ToNumerics(),
                 Look = (useMouse ? mouseLook : stickLook).ToNumerics(),
                 LookIsMouse = useMouse,
-                Light = lightButton,
+                Light = attackButton,
                 Heavy = heavyButton,
+                ZipStrike = zipButton,
                 Dodge = dodgeButton,
                 Jump = jumpButton,
                 Guard = guardButton,
@@ -180,8 +206,73 @@ namespace VaatusRevenge
                 LockOn = lockOnButton,
                 SwapShoulder = swapShoulderButton,
                 SwitchTargetDelta = ReadSwitchDelta(scroll),
-                ElementSelect = ReadElementSelect(),
+                ElementSelect = elementPick != ElementId.None ? elementPick : ReadElementSelect(),
             };
+        }
+
+        void ResetChords()
+        {
+            heavyChord = false;
+            skillPadDown = false;
+            skillPadHeldTime = 0f;
+            skillPadChordUsed = false;
+            System.Array.Clear(faceSwallowed, 0, faceSwallowed.Length);
+        }
+
+        // Hold LB (Q) and press X (left mouse): that press, and everything until it's let go, is the Heavy, not an
+        // attack. Returns the Heavy button; the attack button reads as untouched meanwhile.
+        ButtonState ReadHeavyChord(ref ButtonState attackButton, ButtonState guardButton)
+        {
+            if (attackButton.Pressed && guardButton.Held) heavyChord = true;
+            if (!heavyChord) return default(ButtonState);
+            ButtonState heavyButton = attackButton;
+            attackButton = default(ButtonState);
+            if (!heavyButton.Held) heavyChord = false;   // let go (or a sub-frame tap): the chord is over
+            return heavyButton;
+        }
+
+        // While RB is held, a face button picks the element in that slot instead of doing its usual action.
+        ElementId ReadElementChord(ref ButtonState north, ref ButtonState east, ref ButtonState south, ref ButtonState west)
+        {
+            ElementId picked = ElementId.None;
+            bool rbHeld = skillPad.IsPressed();
+            Swallow(FaceNorth, ref north, rbHeld, ref picked);
+            Swallow(FaceEast, ref east, rbHeld, ref picked);
+            Swallow(FaceSouth, ref south, rbHeld, ref picked);
+            Swallow(FaceWest, ref west, rbHeld, ref picked);
+            return picked;
+        }
+
+        void Swallow(int face, ref ButtonState button, bool rbHeld, ref ElementId picked)
+        {
+            if (rbHeld && button.Pressed)
+            {
+                faceSwallowed[face] = true;
+                skillPadChordUsed = true;
+                if (picked == ElementId.None && elementSlots != null && face < elementSlots.Length) picked = elementSlots[face];
+            }
+            if (!faceSwallowed[face]) return;
+            if (!button.Held) faceSwallowed[face] = false;
+            button = default(ButtonState);
+        }
+
+        // A quick RB tap on its own fires the skill as it's let go. (On release, because until then it might
+        // become an element pick.)
+        ButtonState ReadSkillTap(ButtonState pad, float realDt)
+        {
+            var skillButton = default(ButtonState);
+            if (pad.Pressed)
+            {
+                skillPadDown = true;
+                skillPadHeldTime = 0f;
+                skillPadChordUsed = false;
+            }
+            if (!skillPadDown) return skillButton;
+            skillPadHeldTime += realDt;
+            if (pad.Held) return skillButton;
+            if (!skillPadChordUsed && skillPadHeldTime <= skillTapMaxTime) skillButton.Pressed = true;
+            skillPadDown = false;
+            return skillButton;
         }
 
         void UpdateCursor()
@@ -204,11 +295,12 @@ namespace VaatusRevenge
 
         // Combines this frame's held state with the presses and releases the Input System saw between frames.
         // A tap shorter than one frame is pressed AND released with Held never true; it must still count.
+        // primary may be null (a mouse-only button while the cursor is free): it then reads as not held.
         ButtonState ReadButton(int slot, InputAction primary, InputAction mouse)
         {
-            bool held = primary.IsPressed();
-            bool pressed = primary.WasPressedThisFrame();
-            bool released = primary.WasReleasedThisFrame();
+            bool held = primary != null && primary.IsPressed();
+            bool pressed = primary != null && primary.WasPressedThisFrame();
+            bool released = primary != null && primary.WasReleasedThisFrame();
             if (mouse != null)
             {
                 held |= mouse.IsPressed();
@@ -274,12 +366,12 @@ namespace VaatusRevenge
 
         bool AnyMouseButtonHeld()
         {
-            return lightMouse.IsPressed() || heavyMouse.IsPressed() || lockOnMouse.IsPressed();
+            return attackMouse.IsPressed() || skillMouse.IsPressed() || lockOnMouse.IsPressed();
         }
 
         bool AnyMouseButtonPressedThisFrame()
         {
-            return lightMouse.WasPressedThisFrame() || heavyMouse.WasPressedThisFrame() || lockOnMouse.WasPressedThisFrame();
+            return attackMouse.WasPressedThisFrame() || skillMouse.WasPressedThisFrame() || lockOnMouse.WasPressedThisFrame();
         }
 
         // The default controls (see the table in docs/Prototype/Fire-Combat-Prototype-Spec.md, section 1).
@@ -300,16 +392,17 @@ namespace VaatusRevenge
             lookMouse = map.AddAction("LookMouse", InputActionType.Value, "<Mouse>/delta", expectedControlLayout: "Vector2");
 
             // Mouse buttons get their own actions so they can be ignored while the cursor isn't captured.
-            // Triggers work as buttons: pressed past halfway.
-            light = AddButton("Light", "<Gamepad>/rightShoulder", null);
-            lightMouse = AddButton("LightMouse", "<Mouse>/leftButton", null);
-            heavy = AddButton("Heavy", "<Gamepad>/rightTrigger", null);
-            heavyMouse = AddButton("HeavyMouse", "<Mouse>/rightButton", null);
+            // Face buttons: buttonWest = X (Square), buttonNorth = Y (Triangle), buttonEast = B (Circle),
+            // buttonSouth = A (Cross).
+            attack = AddButton("Attack", "<Gamepad>/buttonWest", null);
+            attackMouse = AddButton("AttackMouse", "<Mouse>/leftButton", null);
+            zip = AddButton("ZipStrike", "<Gamepad>/buttonNorth", "<Keyboard>/f");
             dodge = AddButton("Dodge", "<Gamepad>/buttonEast", "<Keyboard>/leftShift");
             jump = AddButton("Jump", "<Gamepad>/buttonSouth", "<Keyboard>/space");
             guard = AddButton("Guard", "<Gamepad>/leftShoulder", "<Keyboard>/q");
-            skill = AddButton("Skill", "<Gamepad>/leftTrigger", "<Keyboard>/e");
-            heal = AddButton("Heal", "<Gamepad>/buttonWest", "<Keyboard>/r");
+            skillPad = AddButton("Skill", "<Gamepad>/rightShoulder", null);
+            skillMouse = AddButton("SkillMouse", "<Mouse>/rightButton", null);
+            heal = AddButton("Heal", "<Gamepad>/dpad/down", "<Keyboard>/r");
             lockOn = AddButton("LockOn", "<Gamepad>/rightStickPress", "<Keyboard>/tab");
             lockOnMouse = AddButton("LockOnMouse", "<Mouse>/middleButton", null);
             // Camera only: held for a moment, flips the over-the-shoulder view to the other side. The hold time is
@@ -321,16 +414,17 @@ namespace VaatusRevenge
             switchRight = AddButton("SwitchTargetRight", "<Keyboard>/c", null);
             switchScroll = map.AddAction("SwitchTargetScroll", InputActionType.Value, "<Mouse>/scroll/y", expectedControlLayout: "Axis");
 
-            elementActions[0] = AddButton("ElementUp", "<Gamepad>/dpad/up", "<Keyboard>/1");
-            elementActions[1] = AddButton("ElementRight", "<Gamepad>/dpad/right", "<Keyboard>/2");
-            elementActions[2] = AddButton("ElementDown", "<Gamepad>/dpad/down", "<Keyboard>/3");
-            elementActions[3] = AddButton("ElementLeft", "<Gamepad>/dpad/left", "<Keyboard>/4");
+            // On the gamepad an element is picked with RB + a face button (ReadElementChord); these are the number keys.
+            elementActions[0] = AddButton("Element1", "<Keyboard>/1", null);
+            elementActions[1] = AddButton("Element2", "<Keyboard>/2", null);
+            elementActions[2] = AddButton("Element3", "<Keyboard>/3", null);
+            elementActions[3] = AddButton("Element4", "<Keyboard>/4", null);
 
             releaseCursor = AddButton("ReleaseCursor", "<Keyboard>/escape", null);
 
             sharedActions = new[]
             {
-                move, light, heavy, dodge, jump, guard, skill, heal, lockOn, swapShoulder, switchLeft, switchRight,
+                move, attack, zip, dodge, jump, guard, skillPad, heal, lockOn, swapShoulder, switchLeft, switchRight,
                 elementActions[0], elementActions[1], elementActions[2], elementActions[3],
             };
         }

@@ -67,7 +67,7 @@ namespace VaatusRevenge.Core
         int healCharges;
 
         // Buttons: last frame's held state, so a press is never missed even if a Pressed flag was.
-        bool lightHeld, heavyHeld, jumpHeld, guardHeld, skillHeld, healHeld;
+        bool lightHeld, heavyHeld, jumpHeld, guardHeld, skillHeld, healHeld, zipHeld;
         Vector2 moveStick;
 
         // Current action (attack, charge, plunge, dodge, heal, stagger).
@@ -76,6 +76,8 @@ namespace VaatusRevenge.Core
         int currentAttackId;
         int lastAttackId;
         int chainIndex = -1;          // light chain move running now (-1 = none)
+        float lungeDistance;          // this attack's forward travel: the move's own, stretched to close a gap, or a zip dash
+        bool lungeHoming;             // a stretched lunge or zip dash travels straight at its target, not along the facing
         double chainGraceUntil = double.NegativeInfinity;   // see UpdateAttack: chain survives a short recovery
         int chainGraceNext;
         bool activeOpen;
@@ -233,6 +235,7 @@ namespace VaatusRevenge.Core
             bool skillPressed = Pressed(input.Skill, ref skillHeld);
             bool healPressed = Pressed(input.Heal, ref healHeld);
             bool guardPressed = Pressed(input.Guard, ref guardHeld);
+            bool zipPressed = Pressed(input.ZipStrike, ref zipHeld);
 
             bool dodgePressed = input.Dodge.Pressed || (input.Dodge.Held && !dodgeButton.IsHeld);
             bool dodgeTap = dodgeButton.Update(dodgePressed, input.Dodge.Released, input.Dodge.Held, dt,
@@ -245,6 +248,7 @@ namespace VaatusRevenge.Core
             if (healPressed) buffer.Push(PlayerCommand.Heal, clock, defensiveWins);
             if (skillPressed) buffer.Push(PlayerCommand.Skill, clock, defensiveWins);
             if (heavyPressed) buffer.Push(PlayerCommand.Heavy, clock, defensiveWins);
+            if (zipPressed) buffer.Push(PlayerCommand.ZipStrike, clock, defensiveWins);
             if (lightPressed) buffer.Push(PlayerCommand.Light, clock, defensiveWins);
             if (jumpPressed) buffer.Push(PlayerCommand.Jump, clock, defensiveWins);
             if (guardPressed) buffer.Push(PlayerCommand.Guard, clock, defensiveWins);
@@ -445,6 +449,8 @@ namespace VaatusRevenge.Core
             attackKind = PlayerAttackKind.None;
             currentAttackId = 0;
             chainIndex = -1;
+            lungeDistance = 0f;
+            lungeHoming = false;
             chainGraceUntil = double.NegativeInfinity;
             activeOpen = false;
             isCounter = false;
