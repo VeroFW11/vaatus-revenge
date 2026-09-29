@@ -28,7 +28,10 @@ namespace VaatusRevenge.Core
     //   Dodge      B (Circle) / Left Shift            tap = dodge, hold = sprint
     //   Jump       A (Cross) / Space
     //   Guard      tap LB (L1) / Q                    parry (or block, if the element's DefenseStyle has one)
-    //   Heavy      hold LB + X (L1 + Square) / hold Q + left mouse    ability slot: charge the fa jin palm
+    //   Light held on the ground = launcher; Light in the air = air combo
+    //   Heavy      hold LB + X (L1 + Square) / hold Q + left mouse    ability slot: charge the fa jin palm (in the air: plunge)
+    //   AbilityNorth  hold LB + Y (L1 + Triangle) / hold Q + F        ability slot (Fire: Fire Whip, mid range)
+    //   AbilityEast   hold LB + B (L1 + Circle) / hold Q + Left Shift ability slot (Fire: Flame Wheel, close all round)
     //   Skill      tap RB (R1) / right mouse          Fire Blast
     //   ElementSelect  hold RB + Y/B/A/X (R1 + face button) / 1-4
     //   Heal       D-pad down / R
@@ -51,6 +54,8 @@ namespace VaatusRevenge.Core
         public ButtonState LockOn;
         public ButtonState SwapShoulder; // camera only: the gameplay rules ignore it
         public ButtonState ZipStrike;
+        public ButtonState AbilityNorth; // ability slot: hold LB + Y (Triangle) / hold Q + F
+        public ButtonState AbilityEast;  // ability slot: hold LB + B (Circle) / hold Q + Left Shift
 
         public int SwitchTargetDelta; // -1 = previous/left, +1 = next/right, 0 = none (edge-triggered)
         public ElementId ElementSelect; // None unless a direction was pressed this frame (edge-triggered)

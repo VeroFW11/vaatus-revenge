@@ -32,6 +32,9 @@ namespace VaatusRevenge.Core
         public int AttackId;              // CombatIds id of this swing or projectile: one attack hits a target once
         public bool Parryable;
         public bool Unblockable;
+        public float LaunchSpeed;         // MoveData.LaunchSpeed: throws a grounded target up (launchable targets only)
+        public float AirLift;             // MoveData.AirLift: keeps an airborne target up
+        public float SlamSpeed;           // MoveData.SlamSpeed: drives an airborne target down
     }
 
     public enum HitOutcome

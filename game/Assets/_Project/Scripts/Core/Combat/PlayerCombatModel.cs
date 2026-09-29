@@ -377,6 +377,9 @@ namespace VaatusRevenge.Core
             info.AttackId = attackId;
             info.Parryable = move.Parryable;
             info.Unblockable = move.Unblockable;
+            info.LaunchSpeed = move.LaunchSpeed;
+            info.AirLift = move.AirLift;
+            info.SlamSpeed = move.SlamSpeed;
             return info;
         }
 

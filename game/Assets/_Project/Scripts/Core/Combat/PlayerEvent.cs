@@ -16,7 +16,7 @@ namespace VaatusRevenge.Core
         ChargeStarted,      // Move (the heavy)
         ChargeSweetSpot,    // Move. The fa jin window just opened (see also ChargeReadyCue, which comes earlier)
         ChargeCancelled,    // Move
-        DodgeStarted,       // Direction (dash direction), Amount (distance), IsBackstep
+        DodgeStarted,       // Direction (dash direction), Amount (distance), IsBackstep, InAir (an air dash)
         DodgeEnded,
         PerfectDodge,       // TimeScale, Duration (real-time slow motion to apply), Amount (Momentum gained)
         Jumped,
@@ -58,5 +58,6 @@ namespace VaatusRevenge.Core
         public ChargeTier ChargeTier;
         public bool IsCounter;
         public bool IsBackstep;
+        public bool InAir;                // DodgeStarted / AttackStarted: it happened in the air
     }
 }

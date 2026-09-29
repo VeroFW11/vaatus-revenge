@@ -21,11 +21,12 @@ namespace VaatusRevenge.Core
 
     // Button presses the input buffer can hold. Guard is the press that raises the guard or parries (see
     // GuardSettings.Style). New commands go at the end to keep the existing numbering.
-    public enum PlayerCommand { None, Light, Heavy, Dodge, Jump, Skill, Heal, Guard, ZipStrike }
+    public enum PlayerCommand { None, Light, Heavy, Dodge, Jump, Skill, Heal, Guard, ZipStrike, AbilityNorth, AbilityEast }
 
     // How long the heavy was charged (see ChargeSettings).
     public enum ChargeTier { None, Quick, Partial, FaJin, Charged }
 
     // Which kind of attack is running while the player is Attacking or Plunging.
-    public enum PlayerAttackKind { None, Light, Heavy, Sprint, Skill, Plunge, ZipStrike }
+    // Launcher: the held-attack uppercut that throws the target up. Air: an air-combo strike. Ability: an ability-slot move.
+    public enum PlayerAttackKind { None, Light, Heavy, Sprint, Skill, Plunge, ZipStrike, Launcher, Air, Ability }
 }

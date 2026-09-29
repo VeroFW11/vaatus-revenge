@@ -28,6 +28,12 @@ namespace VaatusRevenge.Core
         public float ParriedStaggerDuration = 1.3f;  // stunned time when the player deflects this enemy's attack
         public float KnockbackTime = 0.15f;          // a clean hit's knockback distance is covered over this long
 
+        // --- Juggling (launchers and air combos) ---
+        public bool Launchable = true;               // a launcher can throw it into the air (bosses and brutes: false)
+        public float LaunchedGravity = 22f;          // gravity while launched (a little floatier than normal, so air combos connect)
+        public float MaxJuggleTime = 3.5f;           // after this long in the air, air hits stop lifting it (no infinite juggles)
+        public float KnockdownTime = 0.9f;           // time on the ground after a juggle lands, before it gets up
+
         // --- Awareness ---
         public float AggroRange = 15f;               // notices the player this close (or when hit)
         public float LoseAggroRange = 35f;           // gives up beyond this
@@ -95,13 +101,13 @@ namespace VaatusRevenge.Core
                 new EnemyAttackData
                 {
                     Telegraph = TelegraphKind.Aimed, Weight = 2f, MinRange = 2f, MaxRange = 30f, Cooldown = 1.5f,
-                    Move = Bolt("Aimed Shot", 0.8f, 0.6f, 14f, 12f)
+                    Move = Keyed(Bolt("Aimed Shot", 0.8f, 0.6f, 14f, 12f), AnimationKeys.CrossbowShot)
                 },
                 new EnemyAttackData
                 {
                     Telegraph = TelegraphKind.Aimed, Weight = 1f, MinRange = 2f, MaxRange = 20f, Cooldown = 4f,
                     HitCount = 3, HitInterval = 0.2f,
-                    Move = Bolt("Repeater Burst", 1.0f, 0.8f, 7f, 5f)
+                    Move = Keyed(Bolt("Repeater Burst", 1.0f, 0.8f, 7f, 5f), AnimationKeys.CrossbowBurst)
                 }
             };
             return t;
@@ -132,7 +138,7 @@ namespace VaatusRevenge.Core
                 new EnemyAttackData
                 {
                     Telegraph = TelegraphKind.Normal, MinRange = 0f, MaxRange = SwordReach,
-                    Move = Melee("Practice Swing", 0.6f, 0.12f, 0.5f, 5f, 5f, SwordReach, 120f, 0f, 240f)
+                    Move = Keyed(Melee("Practice Swing", 0.6f, 0.12f, 0.5f, 5f, 5f, SwordReach, 120f, 0f, 240f), AnimationKeys.PracticeSwing)
                 }
             };
             return t;
@@ -148,6 +154,7 @@ namespace VaatusRevenge.Core
         {
             MoveData heavy = Melee("Heavy Overhead", 0.95f, 0.14f, 0.95f, 26f, 40f, SwordReach, 60f, 0.6f, 180f);
             heavy.Kind = HitKind.Heavy;
+            heavy.AnimationKey = AnimationKeys.SwordOverhead;
             heavy.HyperArmor = true;                 // from halfway through the wind-up: mash into it and you get hit
             heavy.HyperArmorFrom = heavy.Startup * 0.5f;
             heavy.Knockback = 1.2f;
@@ -155,6 +162,7 @@ namespace VaatusRevenge.Core
             heavy.GuardStaminaDamage = 35f;
             MoveData thrust = Melee("Delayed Thrust", 1.15f, 0.12f, 0.7f, 18f, 20f, ThrustReach, 30f, 1.0f, 240f);
             thrust.Kind = HitKind.Heavy;
+            thrust.AnimationKey = AnimationKeys.SwordThrust;
             thrust.HyperArmor = true;
             thrust.HyperArmorFrom = thrust.Startup * 0.5f;
             return new[]
@@ -162,7 +170,7 @@ namespace VaatusRevenge.Core
                 new EnemyAttackData
                 {
                     Telegraph = TelegraphKind.Normal, Weight = 3f, MaxRange = SwordReach,    // no armour: jab it out of the wind-up
-                    Move = Melee("Quick Slash", 0.50f, 0.12f, 0.55f, 12f, 15f, SwordReach, 100f, 0.5f, 300f)
+                    Move = Keyed(Melee("Quick Slash", 0.50f, 0.12f, 0.55f, 12f, 15f, SwordReach, 100f, 0.5f, 300f), AnimationKeys.SwordSlash)
                 },
                 new EnemyAttackData
                 {
@@ -173,7 +181,7 @@ namespace VaatusRevenge.Core
                 {
                     Telegraph = TelegraphKind.Normal, Weight = 2f, MaxRange = SwordReach, Cooldown = 2f,
                     HitCount = 2, HitInterval = 0.35f,
-                    Move = Melee("Double Slash", 0.50f, 0.12f, 0.60f, 10f, 12f, SwordReach, 100f, 0.5f, 300f)
+                    Move = Keyed(Melee("Double Slash", 0.50f, 0.12f, 0.60f, 10f, 12f, SwordReach, 100f, 0.5f, 300f), AnimationKeys.SwordDoubleSlash)
                 },
                 new EnemyAttackData
                 {
@@ -195,6 +203,7 @@ namespace VaatusRevenge.Core
         {
             MoveData shove = Melee("Break-Out Shove", 0.60f, 0.12f, 0.35f, 30f, 35f, SwordReach, 160f, 0.3f, 360f);
             shove.Kind = HitKind.Heavy;
+            shove.AnimationKey = AnimationKeys.Shove;
             shove.HyperArmor = true;
             shove.HyperArmorFrom = 0f;
             shove.Knockback = 2.0f;
@@ -216,6 +225,12 @@ namespace VaatusRevenge.Core
                     Move = shove
                 }
             };
+        }
+
+        static MoveData Keyed(MoveData move, string animationKey)
+        {
+            move.AnimationKey = animationKey;
+            return move;
         }
 
         // reach = distance from the enemy's centre to the weapon tip (Range is measured from the strike origin).

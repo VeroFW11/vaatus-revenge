@@ -17,7 +17,10 @@ namespace VaatusRevenge.Core
         StaggerEnded,
         Died,
         HealthRefilled,     // training dummy topped itself up
-        Reset               // Reset() was called
+        Reset,              // Reset() was called
+        Launched,           // Amount (upward speed): a launcher threw it up; it's helpless until it lands
+        Juggled,            // Amount (new vertical speed): an air hit kept it up (or slammed it down if negative)
+        KnockedDown,        // Duration (time on the ground): a juggle ended with it landing; a StaggerEnded follows when it's up
     }
 
     public struct EnemyEvent

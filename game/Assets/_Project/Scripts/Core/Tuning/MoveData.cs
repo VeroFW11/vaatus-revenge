@@ -17,6 +17,10 @@ namespace VaatusRevenge.Core
         public HitKind Kind = HitKind.Light;
         public Limb Limb = Limb.RightFist;           // which fist/foot/weapon the visuals animate
 
+        // --- Presentation (ids looked up in data, never code paths) ---
+        public string AnimationKey = "";             // which body animation plays (AnimationKeys; a pack clip mapped to this key wins)
+        public string EffectKey = "";                // which fire effect plays when the strike goes active (EffectKeys; "" = default burst)
+
         // --- Frame data ---
         public float Startup = 0.12f;
         public float Active = 0.10f;
@@ -49,6 +53,12 @@ namespace VaatusRevenge.Core
         public float ComboWindowEnd = 0.40f;
         public float ChainCancelAt = 0.24f;          // "cancel point": earliest the next attack (buffered or chained) can start
         public float DodgeCancelAt = 0.22f;          // earliest a dodge, jump or guard can cut the move short
+
+        // --- Air: launching and juggling (Spider-Man-style aerial combat) ---
+        public float LaunchSpeed = 0f;               // > 0: a clean hit on a grounded, launchable target throws it upward at this speed (m/s)
+        public float AirLift = 0f;                   // > 0: a clean hit on an airborne target sets its upward speed to at least this (keeps it juggled)
+        public float SlamSpeed = 0f;                 // > 0: a clean hit on an airborne target drives it down at this speed (ends the juggle)
+        public float SelfLift = 0f;                  // > 0: the attacker's own upward speed when the move starts (a launcher's jump, hanging in the air)
 
         // --- Costs and rewards ---
         public float StaminaCost = 9f;
