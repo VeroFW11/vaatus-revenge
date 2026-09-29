@@ -56,7 +56,19 @@ namespace VaatusRevenge.CombatSim
                 s.Step(bot.NextPad());
                 int attacking = s.World.Enemies.Count(e => e.Brain.State == EnemyState.Attacking);
                 if (attacking > maxAtt) maxAtt = attacking;
-                if (!s.Model.IsAlive) { result.Died = true; break; }
+                if (!s.Model.IsAlive)
+                {
+                    // The killing hit lands during the enemies' update, after the player's, so the model queues its
+                    // Damaged and Died events for its next Tick (Unity ticks a dead player every frame and gets them
+                    // then). Step one idle frame so they reach the recorder and metrics; the time stays the death time.
+                    result.Died = true;
+                    double deathTime = s.World.GameTime;
+                    s.Step(default(Pad));
+                    result.Seconds = deathTime;
+                    result.Metrics = s.World.Metrics;
+                    result.MaxSimultaneousAttackers = maxAtt;
+                    return result;
+                }
                 if (stopWhenEnemiesDead && s.World.AllEnemiesDead) { result.Won = true; break; }
             }
             result.Seconds = s.World.GameTime;

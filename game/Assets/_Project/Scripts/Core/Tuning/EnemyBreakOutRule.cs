@@ -28,9 +28,11 @@ namespace VaatusRevenge.Core
         public bool WaitsForOtherAttackers = true;   // only breaks out while no other enemy is attacking (holds a token), so in a group it
                                                      // never adds a second blade to a fight that already has one swinging
         public bool CutsWindUp = true;               // may drop its own wind-up (one with no armour yet) to break out at once
-        public float Cooldown = 5f;
+        public float Cooldown = 5f;                  // seconds from the START of a break-out before the next one can arm. Always holds:
+                                                     // hits on the break-out itself (wind-up, shove, recovery) never count, and hits after
+                                                     // it ends are banked but only arm once the cooldown is over (if still inside HitWindow)
         public float FollowUpDelay = 0f;             // if the break-out LANDED, its next normal attack may start this soon (instead of the
-                                                     // usual AttackIntervalMin-Max pause). Dodge, block or deflect it and the pause is normal                  // seconds after a break-out starts before hits count towards the next one
+                                                     // usual AttackIntervalMin-Max pause). Dodge, block or deflect it and the pause is normal
         public EnemyAttackData Attack = new EnemyAttackData();   // the counter itself (Telegraph = BreakOut for its own glow). It only
                                                                  // starts when the player is within Attack.MaxRange; Weight is ignored
 

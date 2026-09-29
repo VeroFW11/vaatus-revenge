@@ -211,6 +211,86 @@ namespace VaatusRevenge.Tests
             }
         }
 
+        // Frames on which a break-out telegraph started.
+        static System.Collections.Generic.List<int> BreakOutStarts(EnemyDriver d)
+        {
+            var frames = new System.Collections.Generic.List<int>();
+            for (int i = 0; i < d.Log.Count; i++)
+                if (d.Log[i].Type == EnemyEventType.TelegraphStarted && d.Log[i].Telegraph == TelegraphKind.BreakOut) frames.Add(d.LogFrames[i]);
+            return frames;
+        }
+
+        [Test]
+        public void HitsIntoTheBreakOutItselfDoNotArmTheNextOne()
+        {
+            // The seed-4 masher replay: hits landed into the violet wind-up re-armed the next shove, so break-outs
+            // chained ~1.5 s apart. Now nothing on the break-out counts: wind-up, shove or recovery.
+            EnemyDriver d = CirclingSoldier();
+            Hits(d, 3, 0.2f);
+            CloseUntil(d, BreakingOut, 5);
+            Hits(d, 3, 0.1f);                                                      // into the wind-up
+            Assert.IsTrue(d.Brain.IsTelegraphing);
+            CloseUntil(d, x => x.Brain.Phase == AttackPhase.Recovery, 120);
+            Hits(d, 3, 0.05f);                                                     // into its recovery
+            Assert.IsTrue(d.Brain.IsBreakingOut, "still the same break-out");
+            Assert.IsFalse(d.Brain.IsBreakOutArmed);
+            Close(d, (int)((d.Brain.Tuning.BreakOut.Cooldown + 1f) / d.Dt));
+            Assert.AreEqual(1, BreakOutStarts(d).Count, "no second break-out from hits on the first");
+        }
+
+        [Test]
+        public void TheCooldownAlwaysHoldsAgainstNonStopMashing()
+        {
+            // A masher that eats every shove (so the soldier follows up at once) and never stops pressing light.
+            EnemyTuning t = EnemyTuning.CreateDaoSoldier();
+            t.MaxHealth = 1e6f;
+            t.HealthRefillDelay = 0f;
+            EnemyDriver d = CirclingSoldier(t);
+            int gap = (int)System.Math.Round(0.25f / d.Dt);
+            for (int f = 0; f < (int)(12f / d.Dt); f++)
+            {
+                if (f % gap == 0) d.Brain.ReceiveHit(PlayerHit(0f), Vector3.Zero);   // no poise damage: never staggers
+                Close(d, 1);
+                if (d.FrameHas(EnemyEventType.AttackActiveStart)) d.Brain.OnStrikeLanded();
+            }
+            System.Collections.Generic.List<int> starts = BreakOutStarts(d);
+            Assert.GreaterOrEqual(starts.Count, 3, "the masher keeps getting shoved");
+            float cooldown = t.BreakOut.Cooldown;
+            for (int i = 1; i < starts.Count; i++)
+                Assert.GreaterOrEqual((starts[i] - starts[i - 1]) * d.Dt, cooldown - 1e-3f, "break-out " + i + " came inside the cooldown");
+        }
+
+        [Test]
+        public void HitsAfterTheShoveCountButArmOnlyWhenTheCooldownEnds()
+        {
+            EnemyDriver d = CirclingSoldier();
+            float cooldown = d.Brain.Tuning.BreakOut.Cooldown;
+            Hits(d, 3, 0.2f);
+            CloseUntil(d, BreakingOut, 5);
+            int start = d.Frame;
+            CloseUntil(d, x => !x.Brain.IsBreakingOut, 120);
+            int left = (int)(cooldown / d.Dt) - (d.Frame - start);
+            Assert.Greater(left, 30, "the break-out is shorter than its cooldown");
+            Close(d, left - 30);
+            Hits(d, 3, 0.1f);                                                      // a full combo inside the cooldown
+            Assert.IsFalse(d.Brain.IsBreakOutArmed, "not during the cooldown");
+            CloseUntil(d, x => x.Brain.IsBreakOutArmed || x.Brain.IsBreakingOut, 30);
+            Assert.GreaterOrEqual((d.Frame - start) * d.Dt, cooldown - 1e-3f, "armed right as the cooldown ended");
+
+            // Stop pressing well before the cooldown ends and the banked hits age out instead. (With the default
+            // 2 s cooldown a combo right after the shove is always still inside the window, so use a longer one.)
+            EnemyTuning longer = EnemyTuning.CreateDaoSoldier();
+            longer.BreakOut.Cooldown = 4f;
+            cooldown = longer.BreakOut.Cooldown;
+            EnemyDriver e = CirclingSoldier(longer);
+            Hits(e, 3, 0.2f);
+            CloseUntil(e, BreakingOut, 5);
+            CloseUntil(e, x => !x.Brain.IsBreakingOut, 120);
+            Hits(e, 3, 0.1f);
+            Close(e, (int)((cooldown + e.Brain.Tuning.BreakOut.HitWindow) / e.Dt));
+            Assert.AreEqual(1, BreakOutStarts(e).Count, "the combo had left the window by the time the cooldown ended");
+        }
+
         [Test]
         public void ResetClearsABreakOutInTheMaking()
         {

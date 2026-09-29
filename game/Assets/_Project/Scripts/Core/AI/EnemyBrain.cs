@@ -68,7 +68,7 @@ namespace VaatusRevenge.Core
         readonly double[] breakOutHitTimes = new double[EnemyBreakOutRule.MaxTrackedHits];   // ring of recent clean-hit times
         int breakOutHitCursor;
         float breakOutArmed;          // > 0: the break-out has triggered and waits (this many seconds) for a free moment
-        float breakOutCooldown;       // > 0: hits don't count towards a break-out yet
+        float breakOutCooldown;       // > 0: hits don't count towards a break-out yet (runs from the break-out's start)
         bool strikeLanded;            // a strike of the current attack hit the player (OnStrikeLanded)
 
         protected EnemyBrain(EnemyTuning tuning, AttackTokenPool tokens, int ownerId, int seed, float facingYaw)
@@ -172,6 +172,7 @@ namespace VaatusRevenge.Core
                 {
                     UpdateAwareness(world);
                     AdvanceAction(dt, world);
+                    if (breakOutArmed <= 0f) TryArmBreakOut();   // hits banked during the cooldown arm as soon as it ends
                     if (breakOutArmed > 0f) TryStartBreakOut(world);
                     if (IsFree) Think(dt, world);
                 }
@@ -409,16 +410,28 @@ namespace VaatusRevenge.Core
         // Called for every clean hit that didn't stagger or kill. Counts it; enough of them inside the window arm
         // the break-out. Hits during a stagger never get here, and hits on its recovery only count when its swing
         // landed on the player first (a trade; after a dodge, block or deflect the punish is earned).
+        // Hits on the break-out itself (its wind-up, shove or recovery) never count, so pressing through the glow
+        // can't re-arm the next shove. Hits after it ends do count, but nothing arms until the cooldown (Cooldown
+        // seconds from the break-out's START) is over: see TryArmBreakOut.
         void CountHitForBreakOut()
         {
             EnemyBreakOutRule rule = tuning.BreakOut;
             if (rule == null || !rule.Enabled || rule.Attack == null || rule.Attack.Move == null) return;
-            // Hitting into the break-out itself (its armoured wind-up) is mashing for sure, so those hits count even
-            // during the cooldown: keep pressing through the glow and it shoves again straight after.
-            if (breakOutArmed > 0f || (breakOutCooldown > 0f && !IsBreakingOut)) return;
+            if (breakOutArmed > 0f || IsBreakingOut) return;
             if (Phase == AttackPhase.Recovery && !(rule.CountsTradedRecoveryHits && strikeLanded)) return;   // an earned punish
             breakOutHitTimes[breakOutHitCursor] = clock;
             breakOutHitCursor = (breakOutHitCursor + 1) % breakOutHitTimes.Length;
+            TryArmBreakOut();
+        }
+
+        // Arms the break-out if enough counted hits fall inside HitWindow (measured back from now) and the cooldown
+        // is over. Also checked every frame while hits are waiting, so a combo that filled up during the cooldown
+        // arms the moment it ends if it's still inside the window (and not at all if the player stopped in time).
+        void TryArmBreakOut()
+        {
+            EnemyBreakOutRule rule = tuning.BreakOut;
+            if (rule == null || !rule.Enabled || rule.Attack == null || rule.Attack.Move == null) return;
+            if (breakOutArmed > 0f || breakOutCooldown > 0f || IsBreakingOut || state == EnemyState.Staggered || state == EnemyState.Dead) return;
             int needed = Math.Min(Math.Max(1, rule.HitsToTrigger), breakOutHitTimes.Length);
             int recent = 0;
             for (int i = 0; i < breakOutHitTimes.Length; i++)
