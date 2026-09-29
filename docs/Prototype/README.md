@@ -30,7 +30,7 @@ The human checklist is in [Playtest Report 01, section 6](Playtest-Report-01.md)
 - Fluid vs Punishing (F5/F6): which dodge feel is right?
 - Is fa jin (hold heavy, let go in the gold band) satisfying as the timing reward?
 - Does the over-the-shoulder camera feel like Spider-Man? Shoulder offset 0 in `Camera.asset` gives the centred Elden Ring view.
-- Perfect dodge: currently timing-based in any direction, with bonus Momentum for dashing in.
+- Decided by David (29 Sep): perfect dodge in any direction, crossbowmen share the 2 attack slots, buffered dodge beats a later attack press. Jeremy should still say if any feel wrong.
 
 ## Documents
 

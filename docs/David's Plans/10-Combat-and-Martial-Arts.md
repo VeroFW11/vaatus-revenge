@@ -35,7 +35,9 @@
 **From the Fire combat prototype (28-29 Sep, [prototype docs](../Prototype/README.md)):**
 - **Stagger immunity on normal enemies:** a full combo earns one stagger, then about 1.5 s where they can't be staggered again, so they always swing back. *(David, 28 Sep)*
 - **Camera: third-person over the shoulder, like Spider-Man 2**, not the centred Elden Ring view. It pulls back in fights and swaps shoulders near walls. *(David, 28 Sep)*
-- Prototype defaults still to confirm by playing: timing-based perfect dodge in any direction (bonus Momentum for dashing in), crossbowmen share the 2 attack slots, a buffered dodge beats a later attack press.
+- **Perfect dodge counts in any direction** (timing is what matters, like Spider-Man 2); dashing toward the attacker gives bonus Momentum. *(David, 29 Sep)*
+- **Crossbowmen share the 2 attack slots** with melee enemies: never more than 2 attackers at once. *(David, 29 Sep)*
+- **A buffered dodge or guard beats a later attack press**, so a panicked escape is never turned into an attack. *(David, 29 Sep)*
 
 ## Things to decide
 
