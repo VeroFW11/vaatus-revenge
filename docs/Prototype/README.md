@@ -21,7 +21,13 @@ The three free Asset Store packs (SAINDEVELOPER *Martial Art Animations - Sample
 2. In Unity: **Window ▸ Package Manager ▸ My Assets**, then **Download** and **Import** each pack.
 3. In the Project window, create `Assets/ThirdParty/` and drag the imported pack folders into it. Git ignores that folder.
 4. **Vaatu's Revenge ▸ Animation ▸ Set ThirdParty Rigs To Humanoid**, then **Vaatu's Revenge ▸ Animation ▸ Write Animation Catalogue**.
-5. Commit only `docs/Prototype/Animation-Catalogue.json` (clip names and timings, no animation data). Claude uses it to map the clips onto our moves.
+5. **Vaatu's Revenge ▸ Animation ▸ Build Animation Set From ThirdParty**. The Console prints a table of which clip went to which move, with its impact time.
+6. **Vaatu's Revenge ▸ Build Fire Combat Sandbox** again, so the fighters pick up the clips.
+7. Commit `docs/Prototype/Animation-Catalogue.json` and the two sets in `Assets/_Project/Animations/` (`FireFighterAnimations.asset`, `EnemyFighterAnimations.asset`). They hold clip names, timings and references only, with no animation data.
+
+What step 5 does: wherever a pack clip matches one of our moves by name (a jab, a front kick, a hit reaction, an idle...), the fighters play that real motion-capture clip instead of the procedural animation. Moves with no match stay procedural. Each clip is sped up or slowed down around its "fully extended" frame, so the fist or foot lands exactly on the frame the hit becomes live in our frame data, and hitstop and slow motion freeze and slow it like everything else.
+
+The builder guesses the clip names and the impact frames. Check each strike in the Animation preview. If a guess is wrong, fix it in the set asset: pick another clip, drag the impact time, or tick Mirror to swap left and right. The builder never overwrites an entry you've edited. To start over, delete the asset and run step 5 again. Without the packs nothing changes: every move stays procedural and nothing errors.
 
 | Key | Sandbox tool |
 |---|---|

@@ -57,6 +57,7 @@ namespace VaatusRevenge
         bool avatarFailed;
         Animator animator;
         bool addedAnimator;
+        Transform boundHips;         // the Hips the avatar was built for; if the body is rebuilt, rebuild too
         PlayableGraph graph;
         AnimationMixerPlayable mixer;
         HumanoidMirrorJob.Tables mirrorTables;
@@ -171,6 +172,7 @@ namespace VaatusRevenge
             if (animationSet == null) return;
             if (state == State.Waiting && !TryInitialise()) return;
             if (!graph.IsValid() || animator == null) { TeardownGraph(); state = State.Waiting; return; }
+            if (rig.GetBone(HumanBodyBones.Hips) != boundHips) { ForgetAvatar(); return; } // body rebuilt: new bones
 
             AnimationCue actionCue = rig.CurrentActionCue;
             AnimationCue locoCue = rig.CurrentLocomotionCue;
@@ -393,9 +395,20 @@ namespace VaatusRevenge
                 animator.Rebind();
             }
 
+            boundHips = rig.GetBone(HumanBodyBones.Hips);
             BuildGraph();
             state = State.Ready;
             return true;
+        }
+
+        void ForgetAvatar()
+        {
+            TeardownGraph();
+            if (animator != null) animator.avatar = null;
+            if (avatar != null) Destroy(avatar);
+            avatar = null;
+            boundHips = null;
+            state = State.Waiting;
         }
 
         void BuildGraph()
