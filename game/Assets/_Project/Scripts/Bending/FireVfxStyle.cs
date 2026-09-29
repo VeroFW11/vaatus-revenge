@@ -61,9 +61,31 @@ namespace VaatusRevenge
         public float ChargeFlickerRate = 20f;
         public float ChargeStopTime = 0.1f;
 
+        [Header("Move effects (sizes scale with each move's reach, so what you see is what can hit)")]
+        public float ConeLifetime = 0.34f;
+        public float PillarLifetime = 0.6f;
+        public int PillarBlobs = 10;
+        public float PillarRingRadius = 1.1f;
+        public int WheelBlobs = 14;
+        [Tooltip("Width of the Fire Whip's lash, in metres.")]
+        public float WhipWidth = 0.32f;
+
+        [Header("Emitters (fire on the fists and feet, jets, embers)")]
+        public float LimbFlameRate = 45f;
+        public float LimbFlameSize = 0.16f;
+        public float LimbFlameLifetime = 0.16f;
+        public float JetRate = 70f;
+        public float JetSize = 0.24f;
+        public float JetSpeed = 6f;
+        public float JetLifetime = 0.18f;
+        public float EmberRate = 30f;
+        public float EmberTrailLifetime = 0.55f;
+
         [Header("Pools")]
         [Tooltip("Most effect primitives alive at once; the oldest is recycled beyond this.")]
         public int MaxPieces = 160;
         public int MaxTrails = 24;
+        public int MaxEmitters = 16;
+        public int MaxWhips = 4;
     }
 }

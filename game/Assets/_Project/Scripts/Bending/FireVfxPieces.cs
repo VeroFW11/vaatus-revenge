@@ -81,4 +81,37 @@ namespace VaatusRevenge
         public float Lifetime;
         public float PeakIntensity;
     }
+
+    public enum FireVfxEmitterKind { LimbFlame, FootJet, Embers }
+
+    // Spawns small flames at a moving point for a while (fire on a fist, jets from the feet, embers).
+    internal sealed class FireVfxEmitter
+    {
+        public bool Active;
+        public int Generation;
+        public Transform Follow;
+        public FireVfxEmitterKind Kind;
+        public Vector3 Direction;
+        public bool Timed;
+        public float Remaining;
+        public float Accumulator;
+    }
+
+    // A lash of flame drawn as a line that sweeps across an arc (Fire Whip).
+    internal sealed class FireVfxWhip
+    {
+        public const int Points = 20;
+
+        public GameObject GameObject;
+        public LineRenderer Line;
+        public bool Active;
+        public int Generation;
+        public Transform Hand;
+        public Vector3 Origin;
+        public float Yaw;
+        public float Range;
+        public float Arc;
+        public float Duration;
+        public float Age;
+    }
 }

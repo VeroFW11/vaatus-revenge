@@ -45,6 +45,7 @@ namespace VaatusRevenge.CombatSim
             { "fuzz", ("Long random-input runs at 30/60/144 fps with dt spikes; invariants", FuzzScenario.Run) },
             { "camera", ("Camera and lock-on: circling, overhead, elevated target, retarget, switching, walls, shoulder swap, pull-back", CameraScenario.Run) },
             { "all", ("Everything above except 'duel' (use --quick for fewer seeds)", RunAll) },
+            { "anim", ("Animation: a scripted fight through the real core and procedural animator, frames as JSON to --out (render with tools/render/render_fight.py)", AnimationScenario.Run) },
         };
 
         public static int Main(string[] args)

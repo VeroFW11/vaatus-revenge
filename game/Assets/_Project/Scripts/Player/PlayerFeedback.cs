@@ -3,37 +3,42 @@ using VaatusRevenge.Core;
 
 namespace VaatusRevenge
 {
-    // Everything the player sees and feels that isn't a rule: grey-box poses, fire effects, flashes, screen
-    // shake, gamepad rumble and the sprint FOV kick. Nothing here changes the fight.
+    // Everything the player sees and feels that isn't a rule or a pose: fire effects, flashes, screen shake,
+    // gamepad rumble and the sprint FOV kick. Nothing here changes the fight. (The body's martial-arts motion
+    // comes from the procedural animator: PlayerController feeds it through PlayerAnimationFeed.)
     //
-    // PlayerController owns one. It passes in the combat model's events (moments: a strike starts, a guard
-    // goes up, a hit lands) and calls Tick every frame for looks that simply follow a state (i-frame tint,
-    // stagger wobble, charge glow, death). Following the state for those means a look can never get stuck on,
+    // PlayerController owns one. It passes in the combat model's events (moments: a strike goes active, a guard
+    // goes up, a hit lands) and calls Tick every frame for looks that simply follow a state (i-frame shimmer,
+    // stagger dimming, charge glow, death). Following the state for those means a look can never get stuck on,
     // whatever order things happened in. All the numbers come from PlayerFeedbackSettings, read live.
+    //
+    // Fire follows each move's EffectKey (data): a burst from the fist, a cone for Phoenix Palm, a column for
+    // the launcher, a lash for the Fire Whip, a ring for the Flame Wheel, a slam for the tornado and axe kicks,
+    // with flames on the striking limb and a trail through the active frames. Every effect is sized from the
+    // move's Range and ArcDegrees, so what you see is what can hit.
     public sealed class PlayerFeedback
     {
-        // GreyboxRig.Strike needs a finite hold time, so a raised guard is re-held every half of this (seconds).
-        const float GuardHoldChunk = 1f;
-
         readonly Transform body;
-        readonly GreyboxRig rig;
+        readonly HumanoidBody rig;
         readonly Combatant fighter;
         readonly PlayerRumble rumble = new PlayerRumble();
 
         FireVfxHandle chargeGlow;
         FireVfxHandle strikeTrail;
+        FireVfxHandle limbFlame;
+        FireVfxHandle whip;
         FireVfxHandle leftFootTrail;
         FireVfxHandle rightFootTrail;
-        Limb poseLimb = Limb.RightFist;   // the limb(s) the current move's pose uses, eased back when it ends
+        FireVfxHandle leftJet;
+        FireVfxHandle rightJet;
+        Limb strikeLimb = Limb.RightFist;  // the current move's striking limb
         bool charging;
         bool readyCueDone;                // the "get ready" cue has played (or been skipped) for the charge in progress
-        bool guardRaised;
-        float guardHoldTimer;
         bool plungeLandedThisFrame;
         ThirdPersonCameraRig fovCamera;
         float fovBoost;
 
-        public PlayerFeedback(Transform body, GreyboxRig rig, Combatant fighter)
+        public PlayerFeedback(Transform body, HumanoidBody rig, Combatant fighter)
         {
             this.body = body;
             this.rig = rig;
@@ -68,26 +73,24 @@ namespace VaatusRevenge
                 case PlayerEventType.PlungeImpact: PlungeImpact(in e, s); break;
                 case PlayerEventType.AttackEnded:
                     StopStrikeTrail();
-                    Release(poseLimb, s);
+                    StopLimbFlame();
+                    StopJets();
                     break;
-                case PlayerEventType.ChargeStarted: ChargeStarted(in e, model, s); break;
-                case PlayerEventType.ChargeSweetSpot: Pulse(s.SweetSpot); break; // the rig flashes itself (see Tick)
-                case PlayerEventType.ChargeCancelled: Release(poseLimb, s); break;
+                case PlayerEventType.ChargeSweetSpot: Pulse(s.SweetSpot); break; // the body flashes itself (see Tick)
                 case PlayerEventType.DodgeStarted: DodgeStarted(in e, model, s); break;
-                case PlayerEventType.DodgeEnded: StopDodgeTrails(); break;
+                case PlayerEventType.DodgeEnded:
+                    StopDodgeTrails();
+                    StopJets();
+                    break;
                 case PlayerEventType.PerfectDodge: PerfectDodge(s); break;
                 case PlayerEventType.Jumped: FireVfx.Burst(FootPosition(s), Vector3.down, s.JumpBurstScale); break;
                 case PlayerEventType.Landed:
                     if (!plungeLandedThisFrame && e.Amount >= s.HardLandingSpeed) Pulse(s.HardLanding);
                     break;
-                case PlayerEventType.GuardStarted: RaiseGuard(s); break;
-                case PlayerEventType.GuardEnded: LowerGuard(s); break;
                 case PlayerEventType.Blocked: Blocked(in e, s); break;
                 case PlayerEventType.GuardBroken: GuardBroken(in e, s); break;
                 case PlayerEventType.Deflected: Deflected(in e, s); break;
-                case PlayerEventType.HealStarted: HealStarted(model, s); break;
                 case PlayerEventType.HealApplied: HealApplied(s); break;
-                case PlayerEventType.HealInterrupted: Release(Limb.BothFists, s); break;
                 case PlayerEventType.HealFailed: Flash(s.EmptyFlaskFlashColor, s.EmptyFlaskFlashTime); break;
                 case PlayerEventType.Damaged: Damaged(in e, s); break;
                 case PlayerEventType.Parried: GotParried(s); break;
@@ -142,7 +145,6 @@ namespace VaatusRevenge
                 rig.SetTelegraph(s.CounterGlowColor, !dead && model.IsCounterWindowOpen ? s.CounterGlowIntensity : 0f);
             }
             UpdateCharge(model, s);
-            UpdateGuardHold(dt, s);
             UpdateFov(!dead && s.SprintFovBoost && model.IsSprinting);
         }
 
@@ -152,7 +154,6 @@ namespace VaatusRevenge
         {
             rumble.Stop();
             StopEffects();
-            guardRaised = false;
             ClearFov();
             if (rig != null) rig.SetDead(true);
         }
@@ -161,16 +162,13 @@ namespace VaatusRevenge
         {
             rumble.Stop();
             StopEffects();
-            guardRaised = false;
-            guardHoldTimer = 0f;
-            poseLimb = Limb.RightFist;
+            strikeLimb = Limb.RightFist;
             ClearFov();
-            if (rig != null) rig.ResetPose();
+            if (rig != null) rig.ResetLook();
         }
 
-        // Disabled or quitting: stop everything that could outlive us (rumble above all). Poses are left alone:
-        // if the player is switched back on mid-guard, the guard carries on. A running charge glow comes back
-        // by itself through Tick.
+        // Disabled or quitting: stop everything that could outlive us (rumble above all). A running charge glow
+        // comes back by itself through Tick.
         public void Shutdown()
         {
             rumble.Stop();
@@ -185,77 +183,73 @@ namespace VaatusRevenge
             MoveData move = e.Move;
             if (move == null) return;
             if (e.IsCounter) Flash(s.CounterFlashColor, s.CounterFlashTime);
-            if (e.AttackKind == PlayerAttackKind.ZipStrike) ZipDashStarted(move, s);
+            strikeLimb = move.Limb == Limb.Weapon ? Limb.RightFist : move.Limb;
             PlayerStrikePoses p = s.Poses;
-            if (rig == null || p == null) return;
-
-            // The limb shoots out during startup, holds through the active frames and comes back during recovery,
-            // so the pose shows the move's real timing.
-            Limb limb = move.Limb;
-            switch (e.AttackKind)
-            {
-                case PlayerAttackKind.Plunge:
-                {
-                    PlungeSettings plunge = model.MoveSet != null ? model.MoveSet.Plunge : null;
-                    float hang = plunge != null ? plunge.HangTime : 0f;
-                    float fall = plunge != null ? plunge.MaxFallTime : 0f;
-                    poseLimb = IsFoot(limb) ? limb : Limb.RightFoot;
-                    // Foot up above the head for the drop; PlungeImpact slams it down.
-                    rig.Strike(poseLimb, PoseFor(p.AxeKickRaise, poseLimb), hang, fall, p.InterruptRetractTime);
-                    StartStrikeTrail(poseLimb, fall, s);
-                    break;
-                }
-                case PlayerAttackKind.Heavy:
-                    // A heavy thrown with the hands is a two-handed palm strike.
-                    poseLimb = IsFoot(limb) ? limb : Limb.BothFists;
-                    rig.Strike(poseLimb, PoseFor(IsFoot(limb) ? p.Kick : p.Palm, poseLimb), move.Startup, Hold(move, p), move.Recovery);
-                    rig.Lean(p.HeavyLeanDegrees, move.TotalDuration);
-                    break;
-                case PlayerAttackKind.Skill:
-                    poseLimb = limb;
-                    rig.Strike(limb, PoseFor(IsFoot(limb) ? p.Kick : p.Blast, limb), move.Startup, Hold(move, p), move.Recovery);
-                    rig.Lean(p.StrikeLeanDegrees, move.TotalDuration);
-                    break;
-                default: // light chain, sprint attack and zip strike
-                {
-                    bool flying = e.AttackKind == PlayerAttackKind.Sprint || e.AttackKind == PlayerAttackKind.ZipStrike;
-                    poseLimb = limb;
-                    Vector3 target = p.Punch;
-                    if (IsFoot(limb))
-                    {
-                        if (move.ArcDegrees >= p.SpinKickMinArc)
-                        {
-                            // A wide kick is a spinning kick: the body turns under the foot as it sweeps round.
-                            target = p.SpinKick;
-                            rig.Spin(IsLeft(limb) ? -p.SpinDegrees : p.SpinDegrees, move.Startup + move.Active);
-                        }
-                        else
-                        {
-                            target = flying ? p.HighKick : p.Kick;
-                        }
-                    }
-                    rig.Strike(limb, PoseFor(target, limb), move.Startup, Hold(move, p), move.Recovery);
-                    rig.Lean(flying ? p.HeavyLeanDegrees : p.StrikeLeanDegrees, move.TotalDuration);
-                    break;
-                }
-            }
+            if (e.AttackKind == PlayerAttackKind.ZipStrike) ZipDashStarted(move, s);
+            if (rig == null || p == null || !p.LimbFlames || e.AttackKind == PlayerAttackKind.Plunge) return;
+            // The striking fist or foot catches fire as it winds up and burns until the strike is over. Moves with a
+            // big effect of their own keep it shorter.
+            float duration = move.Startup + move.Active;
+            if (HasBigEffect(move)) duration *= p.BigEffectLimbFlameShare;
+            StopLimbFlame();
+            if (duration > 0f) limbFlame = FireVfx.LimbFlame(rig.GetAnchor(strikeLimb), duration);
         }
 
-        // The strike can hit now: flame bursts from the strike along the facing, sized by the move's reach.
+        // The strike can hit now: fire in the shape of the move's EffectKey, sized by its reach, and a flame trail
+        // on the striking limb through the active frames.
         void ActiveStarted(in PlayerEvent e, PlayerFeedbackSettings s)
         {
             MoveData move = e.Move;
             if (move == null) return;
             bool faJin = e.ChargeTier == ChargeTier.FaJin;
-            float scale = move.Range * s.BurstScalePerMetre * (faJin ? s.FaJinBurstMultiplier : 1f);
-            FireVfx.Burst(e.Origin.ToUnity(), e.Direction.ToUnity(), scale);
+            Vector3 origin = e.Origin.ToUnity();
+            Vector3 direction = e.Direction.ToUnity();
+            Transform limb = rig != null ? rig.GetAnchor(strikeLimb) : body;
             PlayerStrikePoses p = s.Poses;
-            if (p != null && move.ArcDegrees >= p.SpinKickMinArc && s.WideArcRingShare > 0f)
+            switch (move.EffectKey)
             {
-                FireVfx.Ring(body.position, move.Range * s.WideArcRingShare);
+                case EffectKeys.Cone:
+                    FireVfx.Cone(origin, direction, move.Range * (faJin ? 1.15f : 1f), move.ArcDegrees);
+                    break;
+                case EffectKeys.Pillar:
+                {
+                    Vector3 flat = new Vector3(direction.x, 0f, direction.z).normalized;
+                    float share = p != null ? p.PillarReachShare : 0.6f;
+                    FireVfx.Pillar(body.position + flat * (move.Range * share), p != null ? p.PillarHeight : 2.6f);
+                    break;
+                }
+                case EffectKeys.Whip:
+                    StopWhip();
+                    if (rig != null)
+                        whip = FireVfx.Whip(rig.GetAnchor(Limb.RightFist), origin, direction, move.Range, move.ArcDegrees,
+                            move.Active + (p != null ? p.WhipLinger : 0.1f));
+                    break;
+                case EffectKeys.Wheel:
+                    FireVfx.Wheel(body.position, move.Range);
+                    break;
+                case EffectKeys.Slam:
+                    FireVfx.Slam(limb.position, move.Range);
+                    break;
+                case EffectKeys.Trail:
+                    FireVfx.Burst(limb.position, direction, move.Range * s.BurstScalePerMetre * 0.5f);
+                    // A wide spinning kick also throws a low ring of fire.
+                    if (move.ArcDegrees >= 180f && s.WideArcRingShare > 0f) FireVfx.Ring(body.position, move.Range * s.WideArcRingShare);
+                    break;
+                default:
+                {
+                    float scale = move.Range * s.BurstScalePerMetre * (faJin ? s.FaJinBurstMultiplier : 1f);
+                    FireVfx.Burst(origin, direction, scale);
+                    break;
+                }
             }
-            StartStrikeTrail(poseLimb, move.Active, s);
+            StartStrikeTrail(strikeLimb, move.Active, s);
             if (faJin) Pulse(s.FaJinRelease);
+        }
+
+        static bool HasBigEffect(MoveData move)
+        {
+            string key = move.EffectKey;
+            return key == EffectKeys.Cone || key == EffectKeys.Whip || key == EffectKeys.Wheel || key == EffectKeys.Pillar;
         }
 
         void PlungeImpact(in PlayerEvent e, PlayerFeedbackSettings s)
@@ -264,24 +258,9 @@ namespace VaatusRevenge
             StopStrikeTrail();
             Vector3 feet = e.Origin.ToUnity();
             FireVfx.Ring(feet, e.Radius);
+            if (rig != null) FireVfx.Burst(rig.GetAnchor(Limb.RightFoot).position, Vector3.down, Mathf.Max(0.5f, e.Radius * 0.3f));
             if (s.PlungeExplosionShare > 0f) FireVfx.Explosion(feet + Vector3.up * s.EffectFootHeight, e.Radius * s.PlungeExplosionShare);
             Pulse(s.PlungeLanding);
-            PlayerStrikePoses p = s.Poses;
-            if (rig == null || p == null || e.Move == null) return;
-            rig.Strike(poseLimb, PoseFor(p.AxeKickDrop, poseLimb), p.AxeKickDropTime, p.AxeKickDropHold, e.Move.Recovery);
-            rig.Lean(p.HeavyLeanDegrees, e.Move.Recovery);
-        }
-
-        void ChargeStarted(in PlayerEvent e, PlayerCombatModel model, PlayerFeedbackSettings s)
-        {
-            MoveData move = e.Move;
-            PlayerStrikePoses p = s.Poses;
-            if (move == null || rig == null || p == null) return;
-            // Pull the striking fist back to the hip while the power builds; the release shoots it out from there.
-            poseLimb = ChamberLimb(move.Limb);
-            ChargeSettings charge = model.MoveSet != null ? model.MoveSet.Charge : null;
-            float hold = charge != null ? charge.MaxChargeTime : 0f;
-            rig.Strike(poseLimb, PoseFor(p.Chamber, poseLimb), p.ChamberTime, hold, p.InterruptRetractTime);
         }
 
         void UpdateCharge(PlayerCombatModel model, PlayerFeedbackSettings s)
@@ -301,7 +280,7 @@ namespace VaatusRevenge
                 }
                 chargeGlow.SetLevel(level);
                 UpdateReadyCue(model, s);
-                // The rig flashes white-gold the moment InSweetSpot turns true: the sweet spot is open.
+                // The body flashes white-gold the moment InSweetSpot turns true: the sweet spot is open.
                 if (rig != null) rig.SetCharge(level, model.InSweetSpot);
             }
             else if (charging)
@@ -334,7 +313,7 @@ namespace VaatusRevenge
             Flash(s.ReadyCueFlashColor, s.ReadyCueFlashTime);
         }
 
-        // ---------------------------------------------------------------- defence
+        // ---------------------------------------------------------------- defence and movement
 
         void DodgeStarted(in PlayerEvent e, PlayerCombatModel model, PlayerFeedbackSettings s)
         {
@@ -345,24 +324,34 @@ namespace VaatusRevenge
             float duration = dodge != null ? dodge.Duration : 0f;
             StopDodgeTrails();
             if (rig == null) return;
+            if (e.InAir)
+            {
+                AerialSettings aerial = model.MoveSet != null ? model.MoveSet.Aerial : null;
+                StartJets(-direction, aerial != null ? aerial.AirDashDuration : duration, s);
+                return;
+            }
             if (s.DodgeTrails)
             {
                 leftFootTrail = FireVfx.Trail(rig.GetAnchor(Limb.LeftFoot), duration);
                 rightFootTrail = FireVfx.Trail(rig.GetAnchor(Limb.RightFoot), duration);
             }
-            PlayerStrikePoses p = s.Poses;
-            if (p != null && duration > 0f) rig.Lean(Vector3.Dot(direction, body.forward) * p.DodgeLeanDegrees, duration);
         }
 
-        // Flame Step Strike: the same fire jets as the Flame Step dodge, burning for the whole dash to the target.
+        // Flame Step Strike: jets of fire from both feet carry you across the gap for the whole dash.
         void ZipDashStarted(MoveData move, PlayerFeedbackSettings s)
         {
             FireVfx.Burst(FootPosition(s), -body.forward, s.DodgeBurstScale);
             StopDodgeTrails();
-            if (rig == null || !s.DodgeTrails) return;
-            float dash = move.Startup + move.Active;
-            leftFootTrail = FireVfx.Trail(rig.GetAnchor(Limb.LeftFoot), dash);
-            rightFootTrail = FireVfx.Trail(rig.GetAnchor(Limb.RightFoot), dash);
+            StartJets(-body.forward, move.Startup + move.Active, s);
+        }
+
+        void StartJets(Vector3 direction, float duration, PlayerFeedbackSettings s)
+        {
+            StopJets();
+            PlayerStrikePoses p = s.Poses;
+            if (rig == null || !(duration > 0f) || (p != null && !p.FootJets)) return;
+            leftJet = FireVfx.FootJet(rig.GetAnchor(Limb.LeftFoot), direction, duration);
+            rightJet = FireVfx.FootJet(rig.GetAnchor(Limb.RightFoot), direction, duration);
         }
 
         void PerfectDodge(PlayerFeedbackSettings s)
@@ -374,41 +363,9 @@ namespace VaatusRevenge
             Pulse(s.PerfectDodge);
         }
 
-        void RaiseGuard(PlayerFeedbackSettings s)
-        {
-            guardRaised = true;
-            guardHoldTimer = 0f;
-            PlayerStrikePoses p = s.Poses;
-            if (rig != null && p != null)
-            {
-                rig.Strike(Limb.BothFists, PoseFor(p.Guard, Limb.BothFists), p.GuardRaiseTime, GuardHoldChunk, p.GuardLowerTime);
-            }
-        }
-
-        void LowerGuard(PlayerFeedbackSettings s)
-        {
-            if (!guardRaised) return;
-            guardRaised = false;
-            PlayerStrikePoses p = s.Poses;
-            Release(Limb.BothFists, p != null ? p.GuardLowerTime : 0f);
-        }
-
-        void UpdateGuardHold(float dt, PlayerFeedbackSettings s)
-        {
-            if (!guardRaised || rig == null || !(dt > 0f)) return;
-            guardHoldTimer += dt;
-            if (guardHoldTimer < GuardHoldChunk * 0.5f) return;
-            guardHoldTimer = 0f;
-            PlayerStrikePoses p = s.Poses;
-            // The fists are already up: an instant re-strike to the same spot simply keeps them there.
-            if (p != null) rig.Strike(Limb.BothFists, PoseFor(p.Guard, Limb.BothFists), 0f, GuardHoldChunk, p.GuardLowerTime);
-        }
-
         void Blocked(in PlayerEvent e, PlayerFeedbackSettings s)
         {
             FireVfx.HitSpark(ContactPoint(e.Direction), s.BlockSparkColor);
-            PlayerStrikePoses p = s.Poses;
-            if (rig != null && p != null) rig.Lean(-p.BlockLeanDegrees, p.ReactionLeanTime);
             Pulse(s.GuardBlock);
         }
 
@@ -433,27 +390,14 @@ namespace VaatusRevenge
         {
             FireVfx.HitSpark(ContactPoint(e.Direction), s.HurtSparkColor);
             Flash(s.HurtFlashColor, s.HurtFlashTime);
-            PlayerStrikePoses p = s.Poses;
-            if (rig != null && p != null) rig.Lean(-p.HurtLeanDegrees, p.ReactionLeanTime);
             Pulse(s.Hurt);
         }
 
         // An enemy deflected our strike (a stagger follows, drawn by Tick).
         void GotParried(PlayerFeedbackSettings s)
         {
-            if (rig != null) FireVfx.HitSpark(rig.GetAnchor(poseLimb).position, s.DeflectSparkColor);
+            if (rig != null) FireVfx.HitSpark(rig.GetAnchor(strikeLimb).position, s.DeflectSparkColor);
             Pulse(s.GotParried);
-        }
-
-        // ---------------------------------------------------------------- healing
-
-        void HealStarted(PlayerCombatModel model, PlayerFeedbackSettings s)
-        {
-            PlayerStrikePoses p = s.Poses;
-            if (rig == null || p == null) return;
-            float duration = model.Tuning != null ? model.Tuning.HealDuration : 0f;
-            float hold = Mathf.Max(0f, duration - p.DrinkRaiseTime - p.DrinkLowerTime);
-            rig.Strike(Limb.BothFists, PoseFor(p.Drink, Limb.BothFists), p.DrinkRaiseTime, hold, p.DrinkLowerTime);
         }
 
         void HealApplied(PlayerFeedbackSettings s)
@@ -477,32 +421,17 @@ namespace VaatusRevenge
             if (rig != null) rig.Flash(color, duration);
         }
 
-        // Eases a limb back to rest from wherever it is right now (a strike cut short, a guard lowered).
-        void Release(Limb limb, PlayerFeedbackSettings s)
-        {
-            PlayerStrikePoses p = s.Poses;
-            Release(limb, p != null ? p.InterruptRetractTime : 0f);
-        }
-
-        void Release(Limb limb, float time)
-        {
-            if (rig == null || !rig.IsBuilt) return;
-            if (limb == Limb.BothFists)
-            {
-                Release(Limb.RightFist, time);
-                Release(Limb.LeftFist, time);
-                return;
-            }
-            if (limb == Limb.Weapon) limb = Limb.RightFist; // the player is unarmed: the rig moves the right hand
-            Transform root = rig.transform;
-            Vector3 current = root.InverseTransformPoint(rig.GetAnchor(limb).position);
-            rig.Strike(limb, current, 0f, 0f, time);
-        }
-
         void StartStrikeTrail(Limb limb, float duration, PlayerFeedbackSettings s)
         {
             StopStrikeTrail();
             if (!s.StrikeTrails || !(duration > 0f) || rig == null) return;
+            if (limb == Limb.BothFists)
+            {
+                // Both palms: a trail on each hand.
+                strikeTrail = FireVfx.Trail(rig.GetAnchor(Limb.RightFist), duration);
+                FireVfx.Trail(rig.GetAnchor(Limb.LeftFist), duration);
+                return;
+            }
             strikeTrail = FireVfx.Trail(rig.GetAnchor(limb), duration);
         }
 
@@ -510,6 +439,26 @@ namespace VaatusRevenge
         {
             strikeTrail.Stop();
             strikeTrail = FireVfxHandle.None;
+        }
+
+        void StopLimbFlame()
+        {
+            limbFlame.Stop();
+            limbFlame = FireVfxHandle.None;
+        }
+
+        void StopWhip()
+        {
+            whip.Stop();
+            whip = FireVfxHandle.None;
+        }
+
+        void StopJets()
+        {
+            leftJet.Stop();
+            rightJet.Stop();
+            leftJet = FireVfxHandle.None;
+            rightJet = FireVfxHandle.None;
         }
 
         void StopDodgeTrails()
@@ -531,6 +480,9 @@ namespace VaatusRevenge
         void StopEffects()
         {
             StopStrikeTrail();
+            StopLimbFlame();
+            StopWhip();
+            StopJets();
             StopDodgeTrails();
             StopChargeGlow();
         }
@@ -579,34 +531,11 @@ namespace VaatusRevenge
             return ChestPosition() + ToAttacker(hitDirection) * BodyRadius;
         }
 
-        static float Hold(MoveData move, PlayerStrikePoses p)
-        {
-            return Mathf.Max(move.Active, p.MinStrikeHold);
-        }
-
-        static bool IsFoot(Limb limb)
-        {
-            return limb == Limb.RightFoot || limb == Limb.LeftFoot;
-        }
-
-        static bool IsLeft(Limb limb)
-        {
-            return limb == Limb.LeftFist || limb == Limb.LeftFoot;
-        }
-
-        // The single limb that winds up a charged move: its foot, or the lead fist for hand moves.
+        // The single limb that winds up a charged move: its foot, or the striking fist.
         static Limb ChamberLimb(Limb limb)
         {
-            if (IsFoot(limb) || limb == Limb.LeftFist) return limb;
+            if (limb == Limb.RightFoot || limb == Limb.LeftFoot || limb == Limb.LeftFist) return limb;
             return Limb.RightFist;
-        }
-
-        // Poses are written for the right side: left limbs mirror across the body, both fists centre on it.
-        static Vector3 PoseFor(Vector3 pose, Limb limb)
-        {
-            if (IsLeft(limb)) pose.x = -pose.x;
-            else if (limb == Limb.BothFists) pose.x = 0f;
-            return pose;
         }
     }
 }

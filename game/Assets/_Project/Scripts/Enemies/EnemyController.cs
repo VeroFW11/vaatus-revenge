@@ -7,13 +7,13 @@ namespace VaatusRevenge
     // A real enemy: the Dao Soldier (sword) or the Crossbowman, depending on its tuning's archetype. The brain
     // (MeleeEnemyBrain or RangedEnemyBrain) decides; EnemyFighter moves it, shows every wind-up (glow + pose)
     // and delivers its swings and bolts. Hits it lands freeze the frame briefly and shake the camera; hits it
-    // takes flash, poise breaks stagger it, and at zero health it topples and stops blocking the way.
+    // takes flash, poise breaks stagger it, and at zero health it collapses and stops blocking the way.
     //
     // Make one with EnemyController.Spawn (edit mode or runtime). Every enemy registers in EnemyController.All,
     // so the sandbox director can reset them all without searching the scene.
     [DefaultExecutionOrder(10)] // after the player (0), before projectiles (20)
     [DisallowMultipleComponent]
-    [RequireComponent(typeof(CharacterController), typeof(Combatant), typeof(GreyboxRig))]
+    [RequireComponent(typeof(CharacterController), typeof(Combatant), typeof(HumanoidBody))]
     public class EnemyController : EnemyFighter
     {
         static readonly List<EnemyController> all = new List<EnemyController>();
@@ -22,8 +22,7 @@ namespace VaatusRevenge
         public static IReadOnlyList<EnemyController> All => all;
 
         // Builds a complete enemy at position/yaw: layer Enemy, CharacterController, Combatant (Team.Enemy, named
-        // from the tuning), grey-box body in its archetype's colour with a dao for melee or a crossbow for ranged,
-        // and a health bar. Works in edit mode (for the sandbox builder) and at runtime. Its spawn point for
+        // from the tuning), a jointed body dressed for its archetype (dao soldier or crossbowman), and a health bar. Works in edit mode (for the sandbox builder) and at runtime. Its spawn point for
         // ResetEnemy is wherever it stands when play starts.
         public static EnemyController Spawn(Transform parent, Vector3 position, float yaw, EnemyTuningAsset tuning)
         {
@@ -31,12 +30,8 @@ namespace VaatusRevenge
             EnemyArchetype archetype = data != null ? data.Archetype : EnemyArchetype.Melee;
             EnemyFeedbackSettings feedback = tuning != null ? tuning.Feedback : null;
             string displayName = EnemyBuilder.NameFor(data, EnemyTuning.CreateDaoSoldier());
-            bool melee = archetype != EnemyArchetype.Ranged;
-
-            GameObject go = EnemyBuilder.Create(parent, position, yaw, displayName, EnemyBuilder.ColorFor(archetype, feedback), melee,
-                EnemyBuilder.WeaponLengthFor(feedback));
+            GameObject go = EnemyBuilder.Create(parent, position, yaw, displayName, EnemyBuilder.LookFor(archetype, feedback));
             EnemyController enemy = go.AddComponent<EnemyController>();
-            if (!melee) enemy.SetCrossbow(EnemyBuilder.AddCrossbow(go.GetComponent<GreyboxRig>()));
             enemy.Configure(tuning);
             EnemyBuilder.Finish(go);
             return enemy;

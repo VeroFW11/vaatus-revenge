@@ -158,6 +158,9 @@ namespace VaatusRevenge.EditorTools
                 PlayerController player = PlayerController.Spawn(null, playerSpawn.position, layout.GetSpawnYaw(ArenaLayout.PlayerSpawn),
                     tuning.PlayerFluid, tuning.MovesFluid);
                 if (player == null) throw new InvalidOperationException("PlayerController.Spawn returned nothing.");
+                // Martial-arts pack clips (if imported and mapped with Build Animation Set From ThirdParty) replace the
+                // procedural moves they match; without them this does nothing.
+                MecanimPoseSource.AttachIfAvailable(player.gameObject, AnimationSetBuilder.LoadFireSet());
                 Undo.RegisterCreatedObjectUndo(player.gameObject, UndoName);
                 Combatant playerFighter = player.GetComponent<Combatant>();
 
@@ -260,6 +263,7 @@ namespace VaatusRevenge.EditorTools
             Transform point = RequireSpawn(layout, pointName);
             TrainingDummy dummy = TrainingDummy.Spawn(parent, point.position, layout.GetSpawnYaw(pointName), tuning, swings);
             if (dummy == null) throw new InvalidOperationException("TrainingDummy.Spawn returned nothing for spawn point '" + pointName + "'.");
+            MecanimPoseSource.AttachIfAvailable(dummy.gameObject, AnimationSetBuilder.LoadEnemySet());
             dummy.gameObject.name += " (" + pointName + ")"; // tells identical fighters apart in the Hierarchy
             director.RegisterDummy(dummy);
         }
@@ -269,6 +273,7 @@ namespace VaatusRevenge.EditorTools
             Transform point = RequireSpawn(layout, pointName);
             EnemyController enemy = EnemyController.Spawn(parent, point.position, layout.GetSpawnYaw(pointName), tuning);
             if (enemy == null) throw new InvalidOperationException("EnemyController.Spawn returned nothing for spawn point '" + pointName + "'.");
+            MecanimPoseSource.AttachIfAvailable(enemy.gameObject, AnimationSetBuilder.LoadEnemySet());
             enemy.gameObject.name += " (" + pointName + ")";
             director.RegisterEnemy(enemy);
         }

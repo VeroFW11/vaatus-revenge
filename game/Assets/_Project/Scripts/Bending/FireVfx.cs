@@ -11,6 +11,8 @@ namespace VaatusRevenge
     // frozen, like in fighting games) and slow down with slow motion.
     public static class FireVfx
     {
+        const float EmberTrailFallbackSeconds = 1.5f;   // an open-ended ember trail's flame ribbon stops by itself after this
+
         static FireVfxRunner runner;
         static FireVfxStyle style;
         static bool quitting;
@@ -72,6 +74,64 @@ namespace VaatusRevenge
         {
             FireVfxRunner r = GetRunner();
             if (r != null) r.Muzzle(position, direction);
+        }
+
+        // A wide fan of fire from origin along direction, reaching range metres across arcDegrees (Phoenix Palm).
+        public static void Cone(Vector3 origin, Vector3 direction, float range, float arcDegrees)
+        {
+            FireVfxRunner r = GetRunner();
+            if (r != null) r.Cone(origin, direction, range, arcDegrees);
+        }
+
+        // A column of fire rising height metres from feet (a launched enemy).
+        public static void Pillar(Vector3 feet, float height)
+        {
+            FireVfxRunner r = GetRunner();
+            if (r != null) r.Pillar(feet, height);
+        }
+
+        // A ring of fire racing out along the ground to radius (Flame Wheel).
+        public static void Wheel(Vector3 center, float radius)
+        {
+            FireVfxRunner r = GetRunner();
+            if (r != null) r.Wheel(center, radius);
+        }
+
+        // A downward burst from position and a ring on the floor below it (tornado kick, axe kick).
+        public static void Slam(Vector3 position, float radius)
+        {
+            FireVfxRunner r = GetRunner();
+            if (r != null) r.Slam(position, radius);
+        }
+
+        // A lash of flame from the hand sweeping right to left across the arc at range (Fire Whip), for duration seconds.
+        public static FireVfxHandle Whip(Transform hand, Vector3 origin, Vector3 direction, float range, float arcDegrees, float duration)
+        {
+            FireVfxRunner r = GetRunner();
+            return r != null ? r.Whip(hand, origin, direction, range, arcDegrees, duration) : FireVfxHandle.None;
+        }
+
+        // Flames licking off a fist or foot for duration seconds (a chain strike's fire).
+        public static FireVfxHandle LimbFlame(Transform limb, float duration)
+        {
+            FireVfxRunner r = GetRunner();
+            return r != null ? r.Emit(limb, FireVfxEmitterKind.LimbFlame, Vector3.up, duration) : FireVfxHandle.None;
+        }
+
+        // A jet of fire from a foot along direction (world) for duration seconds: air dashes and the zip strike.
+        public static FireVfxHandle FootJet(Transform foot, Vector3 direction, float duration)
+        {
+            FireVfxRunner r = GetRunner();
+            return r != null ? r.Emit(foot, FireVfxEmitterKind.FootJet, direction, duration) : FireVfxHandle.None;
+        }
+
+        // Embers and a smoky flame trail following a point (a launched enemy). duration <= 0 = until stopped.
+        public static FireVfxHandle EmberTrail(Transform follow, float duration)
+        {
+            FireVfxRunner r = GetRunner();
+            if (r == null) return FireVfxHandle.None;
+            r.Trail(follow, duration > 0f ? duration : EmberTrailFallbackSeconds);
+            return r.Emit(follow, FireVfxEmitterKind.Embers, Vector3.up, duration);
         }
 
         // Ends every running effect at once (e.g. on a sandbox reset). Extra to the spec.

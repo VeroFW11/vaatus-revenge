@@ -1,0 +1,865 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Numerics;
+using System.Text;
+using VaatusRevenge.Core;
+
+namespace VaatusRevenge.CombatSim
+{
+    // `anim`: plays a scripted fight through the real combat core and the real procedural animator (the same
+    // PlayerAnimationFeed / EnemyAnimationFeed / FighterAnimator the Unity game uses) and writes every frame's
+    // joint positions, states, animation keys and fire effects to JSON (--out). tools/render/render_fight.py turns
+    // that into a video or a contact sheet, so the animation can be checked without Unity.
+    //
+    // The script covers stance and footwork, the 5-hit chain, launcher -> air string -> slam and axe kick, air
+    // dash, zip strike, fire whip, flame wheel, fire blast, fa jin, parry, dodge, getting hit, the soldier's sword
+    // attacks, an enemy launched / knocked down / getting up, deaths, and finally a gallery of any animation key
+    // the fight didn't reach. The console gets a short report: coverage, strike extension at the first active
+    // frame, and whether each sword strike's blade tip lands on the edge of its reach.
+    public static class AnimationScenario
+    {
+        const float Dt = 1f / 60f;
+
+        public static void Run(Options o)
+        {
+            string path = string.IsNullOrEmpty(o.OutFile) ? "anim.json" : o.OutFile;
+            Out.Close();   // --out is this scenario's JSON, not the markdown report (that goes to the console)
+            var rec = new AnimRecorder();
+
+            Stance(rec);
+            Chain(rec);
+            Aerial(rec);
+            AirDashAndZip(rec);
+            Abilities(rec);
+            Defence(rec);
+            Finisher(rec);
+            PlayerDeath(rec);
+            Gallery(rec);
+
+            string dir = Path.GetDirectoryName(Path.GetFullPath(path));
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            File.WriteAllText(path, rec.ToJson(), new UTF8Encoding(false));
+
+            Out.Heading("Animation scenario");
+            Out.Line("Wrote " + rec.FrameCount + " frames (" + Out.N(rec.FrameCount / 60.0, 1) + " s at 60 fps) to " + path);
+            rec.Report();
+        }
+
+        // ------------------------------------------------------------------ scenes
+
+        static void Stance(AnimRecorder rec)
+        {
+            var s = new Scene(rec, "Stance and footwork");
+            s.AddDummy(new Vector3(-3f, 0f, 9f), 180f);
+            s.Run(StanceScript(s));
+        }
+
+        static IEnumerable<int> StanceScript(Scene s)
+        {
+            foreach (int f in s.Idle(70)) yield return f;
+            foreach (int f in s.Move(new Vector2(0f, 0.35f), 55)) yield return f;
+            foreach (int f in s.Move(new Vector2(0f, 1f), 60)) yield return f;
+            s.Pad.Dodge = true;   // hold to sprint
+            foreach (int f in s.Move(new Vector2(0f, 1f), 65)) yield return f;
+            s.Pad.Dodge = false;
+            foreach (int f in s.Idle(30)) yield return f;
+            foreach (int f in s.Move(new Vector2(0.6f, 0f), 45)) yield return f;
+            foreach (int f in s.Idle(20)) yield return f;
+            foreach (int f in s.Tap(Btn.Jump, 6)) yield return f;
+            foreach (int f in s.Idle(55)) yield return f;
+            foreach (int f in s.Tap(Btn.Dodge, 3)) yield return f;   // backstep (no stick)
+            foreach (int f in s.Idle(40)) yield return f;
+        }
+
+        static void Chain(AnimRecorder rec)
+        {
+            var s = new Scene(rec, "Five-strike chain (Northern Shaolin)");
+            s.AddDummy(new Vector3(0f, 0f, 2.3f), 180f);
+            s.Run(ChainScript(s, 5));
+        }
+
+        static IEnumerable<int> ChainScript(Scene s, int hits)
+        {
+            foreach (int f in s.Idle(30)) yield return f;
+            MoveData[] chain = s.Model.MoveSet.LightChain;
+            for (int i = 0; i < hits && i < chain.Length; i++)
+            {
+                foreach (int f in s.Tap(Btn.Light, 3)) yield return f;
+                MoveData move = chain[i];
+                // Next press inside this move's combo window.
+                int guard = 0;
+                while (guard++ < 90 && !(s.Model.CurrentMove == move && s.Model.ActionTime >= move.ComboWindowStart + 0.02f))
+                {
+                    s.Frame();
+                    yield return 0;
+                }
+            }
+            foreach (int f in s.Idle(60)) yield return f;
+        }
+
+        static void Aerial(AnimRecorder rec)
+        {
+            var s = new Scene(rec, "Launcher, air string, axe kick");
+            s.AddSoldier(new Vector3(0f, 0f, 2.1f), 180f, passive: true);
+            s.Run(AerialScript(s));
+        }
+
+        static IEnumerable<int> AerialScript(Scene s)
+        {
+            foreach (int f in s.Idle(30)) yield return f;
+            // Hold attack on the ground: the first chain hit turns into the Rising Dragon Kick.
+            foreach (int f in s.Hold(Btn.Light, 22)) yield return f;
+            foreach (int f in s.WaitUntil(() => s.Model.CurrentAttackKind == PlayerAttackKind.Launcher && s.Model.ActionTime > 0.3f, 60)) yield return f;
+            MoveData[] air = s.Model.MoveSet.AirChain;
+            for (int i = 0; i < air.Length; i++)
+            {
+                foreach (int f in s.Tap(Btn.Light, 3)) yield return f;
+                MoveData move = air[i];
+                foreach (int f in s.WaitUntil(() => (s.Model.CurrentMove == move && s.Model.ActionTime >= move.ComboWindowStart + 0.04f)
+                                                     || (s.Model.CurrentMove == move && i == air.Length - 1 && s.Model.ActionTime >= move.ActiveEnd), 60)) yield return f;
+            }
+            foreach (int f in s.WaitUntil(() => s.Model.CurrentMove == null, 60)) yield return f;
+            // Still airborne? Falling axe kick; otherwise jump and do it.
+            if (s.Model.IsGrounded)
+            {
+                foreach (int f in s.Tap(Btn.Jump, 5)) yield return f;
+                foreach (int f in s.Idle(22)) yield return f;
+            }
+            foreach (int f in s.Tap(Btn.Heavy, 4)) yield return f;
+            foreach (int f in s.Idle(120)) yield return f;
+        }
+
+        static void AirDashAndZip(AnimRecorder rec)
+        {
+            var s = new Scene(rec, "Air dash and Flame Step Strike");
+            s.AddCrossbowman(new Vector3(0f, 0f, 11f), 180f, passive: true);
+            s.Run(AirDashScript(s));
+        }
+
+        static IEnumerable<int> AirDashScript(Scene s)
+        {
+            foreach (int f in s.Idle(20)) yield return f;
+            foreach (int f in s.Tap(Btn.Jump, 5)) yield return f;
+            foreach (int f in s.Idle(12)) yield return f;
+            s.Pad.Move = new Vector2(0f, 1f);
+            foreach (int f in s.Tap(Btn.Dodge, 3)) yield return f;
+            s.Pad.Move = Vector2.Zero;
+            foreach (int f in s.Idle(50)) yield return f;
+            s.Pad.Move = new Vector2(0f, 1f);
+            foreach (int f in s.Tap(Btn.Zip, 3)) yield return f;
+            s.Pad.Move = Vector2.Zero;
+            foreach (int f in s.Idle(70)) yield return f;
+        }
+
+        static void Abilities(AnimRecorder rec)
+        {
+            var s = new Scene(rec, "Fire Whip, Flame Wheel, Fire Blast, Fa Jin");
+            s.AddDummy(new Vector3(-1.2f, 0f, 3.2f), 180f);
+            s.AddDummy(new Vector3(1.8f, 0f, 2.6f), 200f);
+            s.Run(AbilitiesScript(s));
+        }
+
+        static IEnumerable<int> AbilitiesScript(Scene s)
+        {
+            foreach (int f in s.Idle(25)) yield return f;
+            foreach (int f in s.Hold(Btn.AbilityNorth, 5)) yield return f;
+            foreach (int f in s.WaitUntil(() => s.Model.CurrentMove == null, 90)) yield return f;
+            foreach (int f in s.Idle(20)) yield return f;
+            foreach (int f in s.Hold(Btn.AbilityEast, 5)) yield return f;
+            foreach (int f in s.WaitUntil(() => s.Model.CurrentMove == null, 90)) yield return f;
+            foreach (int f in s.Idle(20)) yield return f;
+            foreach (int f in s.Tap(Btn.Skill, 6)) yield return f;
+            foreach (int f in s.WaitUntil(() => s.Model.CurrentMove == null, 90)) yield return f;
+            foreach (int f in s.Idle(20)) yield return f;
+            // Fa jin: hold the heavy into the middle of the sweet spot, then let go.
+            ChargeSettings charge = s.Model.MoveSet.Charge;
+            int hold = (int)MathF.Round((charge.SweetSpotStart + charge.SweetSpotEnd) * 0.5f * 60f);
+            foreach (int f in s.Hold(Btn.Heavy, hold)) yield return f;
+            foreach (int f in s.WaitUntil(() => s.Model.CurrentMove == null, 120)) yield return f;
+            foreach (int f in s.Idle(40)) yield return f;
+        }
+
+        static void Defence(AnimRecorder rec)
+        {
+            var s = new Scene(rec, "Defence vs Dao Soldier: parry, dodge, hit");
+            SimEnemy soldier = s.AddSoldier(new Vector3(0f, 0f, 3.0f), 180f, passive: false);
+            s.Run(DefenceScript(s, soldier));
+        }
+
+        static IEnumerable<int> DefenceScript(Scene s, SimEnemy soldier)
+        {
+            // React to the soldier's telegraphs: the first swing is parried, the second dodged, the third taken.
+            int handled = 0;
+            int frames = 0;
+            while (frames++ < 60 * 12 && handled < 4)
+            {
+                if (soldier.Brain.State == EnemyState.Attacking && soldier.Brain.CurrentAttack != null && s.EnemyAttackStartedThisFrame(soldier))
+                {
+                    EnemyAttackData attack = soldier.Brain.CurrentAttack;
+                    float strikeIn = attack.Move.Startup;
+                    int waitFrames = Math.Max(0, (int)MathF.Round((strikeIn - 0.08f) * 60f) - 1);
+                    for (int w = 0; w < waitFrames; w++)
+                    {
+                        s.Frame();
+                        yield return 0;
+                    }
+                    if (handled == 0) foreach (int f in s.Tap(Btn.Guard, 4)) yield return f;
+                    else if (handled == 1)
+                    {
+                        s.Pad.Move = new Vector2(-1f, 0f);
+                        foreach (int f in s.Tap(Btn.Dodge, 3)) yield return f;
+                        s.Pad.Move = Vector2.Zero;
+                    }
+                    else if (handled == 2) foreach (int f in s.Idle(3)) yield return f;   // take the hit
+                    else
+                    {
+                        // Punish the recovery with the first two chain hits.
+                        foreach (int f in s.WaitUntil(() => soldier.Brain.Phase == AttackPhase.Recovery, 60)) yield return f;
+                        foreach (int f in ChainScript(s, 2)) yield return f;
+                    }
+                    handled++;
+                }
+                s.Frame();
+                yield return 0;
+            }
+            foreach (int f in s.Idle(40)) yield return f;
+        }
+
+        static void Finisher(AnimRecorder rec)
+        {
+            var s = new Scene(rec, "Take down a crossbowman");
+            SimEnemy bowman = s.AddCrossbowman(new Vector3(0f, 0f, 2.2f), 180f, passive: true);
+            s.Run(FinisherScript(s, bowman));
+        }
+
+        static IEnumerable<int> FinisherScript(Scene s, SimEnemy bowman)
+        {
+            foreach (int f in s.Idle(15)) yield return f;
+            int rounds = 0;
+            while (bowman.Brain.IsAlive && rounds++ < 6)
+            {
+                foreach (int f in ChainScript(s, 5)) yield return f;
+                s.Pad.Move = new Vector2(0f, 0.5f);
+                foreach (int f in s.Idle(10)) yield return f;
+                s.Pad.Move = Vector2.Zero;
+            }
+            foreach (int f in s.Idle(80)) yield return f;
+        }
+
+        static void PlayerDeath(AnimRecorder rec)
+        {
+            var s = new Scene(rec, "The Avatar falls", playerHealth: 25f);
+            s.AddSoldier(new Vector3(0f, 0f, 2.4f), 180f, passive: false);
+            s.Run(DeathScript(s));
+        }
+
+        static IEnumerable<int> DeathScript(Scene s)
+        {
+            foreach (int f in s.WaitUntil(() => !s.Model.IsAlive, 60 * 12)) yield return f;
+            foreach (int f in s.Idle(90)) yield return f;
+        }
+
+        // Any animation key the fight above never showed, played on its own so every key can be looked at.
+        static void Gallery(AnimRecorder rec)
+        {
+            var keys = typeof(AnimationKeys).GetFields().Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()).ToList();
+            ElementMoveSet moves = ElementMoveSet.CreateFireFluid();
+            var timings = new Dictionary<string, MoveData>();
+            foreach (MoveData m in AllMoves(moves)) if (!string.IsNullOrEmpty(m.AnimationKey)) timings[m.AnimationKey] = m;
+            foreach (EnemyTuning t in new[] { EnemyTuning.CreateDaoSoldier(), EnemyTuning.CreateCrossbowman(), EnemyTuning.CreateSparringDummy() })
+            {
+                foreach (EnemyAttackData a in t.Attacks) if (a.Move != null && !string.IsNullOrEmpty(a.Move.AnimationKey)) timings[a.Move.AnimationKey] = a.Move;
+                if (t.BreakOut != null && t.BreakOut.Attack != null && t.BreakOut.Attack.Move != null) timings[t.BreakOut.Attack.Move.AnimationKey] = t.BreakOut.Attack.Move;
+            }
+            var enemyKinds = new Dictionary<string, string>
+            {
+                { AnimationKeys.SwordSlash, "soldier" }, { AnimationKeys.SwordOverhead, "soldier" }, { AnimationKeys.SwordDoubleSlash, "soldier" },
+                { AnimationKeys.SwordThrust, "soldier" }, { AnimationKeys.Shove, "soldier" }, { AnimationKeys.CrossbowShot, "crossbow" },
+                { AnimationKeys.CrossbowBurst, "crossbow" }, { AnimationKeys.PracticeSwing, "dummy" },
+            };
+            foreach (string key in keys)
+            {
+                if (rec.Covered.Contains(key)) continue;
+                string kind = enemyKinds.TryGetValue(key, out string k) ? k : "player";
+                timings.TryGetValue(key, out MoveData move);
+                rec.GalleryClip(key, kind, move);
+            }
+        }
+
+        internal static IEnumerable<MoveData> AllMoves(ElementMoveSet m)
+        {
+            foreach (MoveData x in m.LightChain) yield return x;
+            foreach (MoveData x in m.AirChain) yield return x;
+            yield return m.Launcher;
+            yield return m.AbilityNorth;
+            yield return m.AbilityEast;
+            yield return m.Heavy;
+            yield return m.SprintAttack;
+            yield return m.PlungeAttack;
+            yield return m.Skill;
+            yield return m.ZipStrike;
+        }
+
+        // ------------------------------------------------------------------ one scene: a world, fighters, a script
+
+        internal enum Btn { Light, Heavy, Dodge, Jump, Guard, Skill, Zip, AbilityNorth, AbilityEast }
+
+        internal struct AnimPad
+        {
+            public bool Light, Heavy, Dodge, Jump, Guard, Skill, Zip, AbilityNorth, AbilityEast;
+            public Vector2 Move;
+
+            public void Set(Btn b, bool down)
+            {
+                switch (b)
+                {
+                    case Btn.Light: Light = down; break;
+                    case Btn.Heavy: Heavy = down; break;
+                    case Btn.Dodge: Dodge = down; break;
+                    case Btn.Jump: Jump = down; break;
+                    case Btn.Guard: Guard = down; break;
+                    case Btn.Skill: Skill = down; break;
+                    case Btn.Zip: Zip = down; break;
+                    case Btn.AbilityNorth: AbilityNorth = down; break;
+                    case Btn.AbilityEast: AbilityEast = down; break;
+                }
+            }
+        }
+
+        internal sealed class Scene
+        {
+            readonly AnimRecorder rec;
+            public readonly string Title;
+            public readonly SimWorld World;
+            public readonly List<AnimRig> Rigs = new List<AnimRig>();
+            public AnimPad Pad;
+            AnimPad last;
+
+            public Scene(AnimRecorder rec, string title, float playerHealth = 0f)
+            {
+                this.rec = rec;
+                Title = title;
+                World = new SimWorld(SimLevel.Empty());
+                Session.MakePreset(Preset.Fluid, out PlayerTuning tuning, out ElementMoveSet moves);
+                if (playerHealth > 0f) tuning.MaxHealth = playerHealth;
+                World.AddPlayer(tuning, moves, Vector3.Zero, 0f);
+                World.FixedCameraYaw = 0f;
+                Rigs.Add(new AnimRig(World.Player, "player", 1f));
+            }
+
+            public PlayerCombatModel Model => World.Player.Model;
+
+            public SimEnemy AddDummy(Vector3 at, float yaw)
+            {
+                SimEnemy e = World.AddEnemy(EnemyTuning.CreateSparringDummy(), at, yaw, 11 + Rigs.Count);
+                Rigs.Add(new AnimRig(e, "dummy", 1f));
+                return e;
+            }
+
+            // passive: slow to attack, so a scripted combo isn't interrupted (it still turns, flinches, falls, gets up).
+            public SimEnemy AddSoldier(Vector3 at, float yaw, bool passive)
+            {
+                EnemyTuning t = EnemyTuning.CreateDaoSoldier();
+                if (passive) Passive(t);
+                t.AttackIntervalMin = Math.Min(t.AttackIntervalMin, passive ? 99f : 0.7f);
+                t.AttackIntervalMax = passive ? 99f : 1.1f;
+                SimEnemy e = World.AddEnemy(t, at, yaw, 21 + Rigs.Count);
+                Rigs.Add(new AnimRig(e, "soldier", 1.04f));
+                return e;
+            }
+
+            public SimEnemy AddCrossbowman(Vector3 at, float yaw, bool passive)
+            {
+                EnemyTuning t = EnemyTuning.CreateCrossbowman();
+                if (passive) Passive(t);
+                SimEnemy e = World.AddEnemy(t, at, yaw, 31 + Rigs.Count);
+                Rigs.Add(new AnimRig(e, "crossbow", 1f));
+                return e;
+            }
+
+            static void Passive(EnemyTuning t)
+            {
+                t.AttackIntervalMin = 99f;
+                t.AttackIntervalMax = 99f;
+                t.BreakOut.Enabled = false;
+                t.ChaseSpeed = 0.5f;
+                t.WalkSpeed = 0.5f;
+                t.StrafeSpeed = 0.3f;
+                t.RetreatSpeed = 0.5f;
+            }
+
+            public void Run(IEnumerable<int> script)
+            {
+                rec.BeginScene(Title);
+                foreach (int _ in script)
+                {
+                }
+            }
+
+            public bool EnemyAttackStartedThisFrame(SimEnemy e)
+            {
+                for (int i = 0; i < e.FrameEvents.Count; i++) if (e.FrameEvents[i].Type == EnemyEventType.TelegraphStarted) return true;
+                return false;
+            }
+
+            // One rendered frame: input -> the combat world -> the animation feeds -> the animators -> the recorder.
+            public void Frame()
+            {
+                var input = new PlayerInputFrame
+                {
+                    Move = Pad.Move,
+                    Light = ButtonState.From(Pad.Light, last.Light),
+                    Heavy = ButtonState.From(Pad.Heavy, last.Heavy),
+                    Dodge = ButtonState.From(Pad.Dodge, last.Dodge),
+                    Jump = ButtonState.From(Pad.Jump, last.Jump),
+                    Guard = ButtonState.From(Pad.Guard, last.Guard),
+                    Skill = ButtonState.From(Pad.Skill, last.Skill),
+                    ZipStrike = ButtonState.From(Pad.Zip, last.Zip),
+                    AbilityNorth = ButtonState.From(Pad.AbilityNorth, last.AbilityNorth),
+                    AbilityEast = ButtonState.From(Pad.AbilityEast, last.AbilityEast),
+                };
+                last = Pad;
+                World.Step(input, Dt);
+                float dt = World.LastGameDt;
+                for (int i = 0; i < Rigs.Count; i++) Rigs[i].Update(World, dt);
+                rec.Capture(this);
+            }
+
+            public IEnumerable<int> Idle(int frames)
+            {
+                for (int i = 0; i < frames; i++)
+                {
+                    Frame();
+                    yield return 0;
+                }
+            }
+
+            public IEnumerable<int> Move(Vector2 stick, int frames)
+            {
+                Pad.Move = stick;
+                foreach (int f in Idle(frames)) yield return f;
+                Pad.Move = Vector2.Zero;
+            }
+
+            public IEnumerable<int> Tap(Btn b, int frames)
+            {
+                Pad.Set(b, true);
+                foreach (int f in Idle(frames)) yield return f;
+                Pad.Set(b, false);
+            }
+
+            public IEnumerable<int> Hold(Btn b, int frames)
+            {
+                return Tap(b, frames);
+            }
+
+            public IEnumerable<int> WaitUntil(Func<bool> done, int maxFrames)
+            {
+                for (int i = 0; i < maxFrames && !done(); i++)
+                {
+                    Frame();
+                    yield return 0;
+                }
+            }
+        }
+
+        // One fighter's animation: its feed, animator and forward kinematics.
+        internal sealed class AnimRig
+        {
+            public readonly SimFighter Fighter;
+            public readonly string Kind;
+            public readonly FighterAnimator Animator;
+            public readonly ForwardKinematics Fk;
+            public readonly PlayerAnimationFeed PlayerFeed;
+            public readonly EnemyAnimationFeed EnemyFeed;
+            public readonly int Id;
+            static int nextId;
+            public FighterAnimInput LastInput;
+
+            public AnimRig(SimFighter fighter, string kind, float scale)
+            {
+                Fighter = fighter;
+                Kind = kind;
+                Id = nextId++;
+                HumanoidSkeleton skeleton = HumanoidSkeleton.Create(null, scale);
+                Animator = new FighterAnimator(PoseLibrary.Default, skeleton, StyleOf(kind));
+                Fk = new ForwardKinematics(skeleton);
+                if (fighter is SimPlayer) PlayerFeed = new PlayerAnimationFeed();
+                else EnemyFeed = new EnemyAnimationFeed();
+            }
+
+            public static string StyleOf(string kind)
+            {
+                switch (kind)
+                {
+                    case "soldier": return "sword";
+                    case "crossbow": return "crossbow";
+                    case "dummy": return "dummy";
+                    default: return "";
+                }
+            }
+
+            public void Update(SimWorld world, float dt)
+            {
+                if (Fighter is SimPlayer p)
+                {
+                    for (int i = 0; i < p.FrameEvents.Count; i++) PlayerFeed.OnEvent(p.FrameEvents[i]);
+                    LastInput = PlayerFeed.Build(p.Model, dt);
+                }
+                else if (Fighter is SimEnemy e)
+                {
+                    for (int i = 0; i < e.FrameEvents.Count; i++) EnemyFeed.OnEvent(e.FrameEvents[i]);
+                    float aim = 0f;
+                    if (world.Player != null)
+                    {
+                        Vector3 to = world.Player.AimPoint - (e.Feet + new Vector3(0f, 1.42f, 0f));
+                        aim = Directions.PitchOf(to);
+                    }
+                    LastInput = EnemyFeed.Build(e.Brain, dt, e.Planted || e.Controller.IsGrounded, aim);
+                }
+                Animator.Update(LastInput);
+                Fk.Compute(Animator.Pose, Fighter.Feet, Fighter.Yaw);
+            }
+        }
+
+        // ------------------------------------------------------------------ recording and the JSON file
+
+        internal sealed class AnimRecorder
+        {
+            readonly StringBuilder frames = new StringBuilder(1 << 22);
+            public int FrameCount;
+            string scene = "";
+            double time;
+            public readonly HashSet<string> Covered = new HashSet<string>();
+            readonly List<string> fx = new List<string>();
+            readonly List<(string move, float ext)> extensions = new List<(string, float)>();
+            readonly List<(string move, float tip, float reach)> swordReach = new List<(string, float, float)>();
+            static readonly CultureInfo C = CultureInfo.InvariantCulture;
+
+            public void BeginScene(string title)
+            {
+                scene = title;
+            }
+
+            public void Capture(Scene s)
+            {
+                fx.Clear();
+                string caption = CaptionFor(s);
+                foreach (AnimRig rig in s.Rigs)
+                {
+                    if (rig.Fighter is SimPlayer p)
+                    {
+                        foreach (PlayerEvent e in p.FrameEvents) PlayerEffect(rig, e);
+                    }
+                    else if (rig.Fighter is SimEnemy en)
+                    {
+                        foreach (EnemyEvent e in en.FrameEvents) EnemyEffect(rig, en, e);
+                    }
+                }
+                var sb = frames;
+                if (FrameCount > 0) sb.Append(",\n");
+                sb.Append("{\"t\":").Append(F(time)).Append(",\"scene\":").Append(Q(scene)).Append(",\"caption\":").Append(Q(caption));
+                sb.Append(",\"fighters\":[");
+                for (int i = 0; i < s.Rigs.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    AppendFighter(sb, s.Rigs[i]);
+                }
+                sb.Append("],\"fx\":[").Append(string.Join(",", fx)).Append("],\"proj\":[");
+                bool first = true;
+                foreach (SimProjectiles.Projectile pr in s.World.Projectiles.Flying)
+                {
+                    if (!first) sb.Append(',');
+                    first = false;
+                    sb.Append('[').Append(F(pr.Position.X)).Append(',').Append(F(pr.Position.Y)).Append(',').Append(F(pr.Position.Z)).Append(',').Append(pr.IsFire ? 1 : 0).Append(']');
+                }
+                sb.Append("]}");
+                FrameCount++;
+                time += Dt;
+            }
+
+            void AppendFighter(StringBuilder sb, AnimRig rig)
+            {
+                AnimationCue action = rig.Animator.ActionCue;
+                AnimationCue loco = rig.Animator.LocomotionCue;
+                string key = action.IsValid ? action.Key : loco.Key;
+                Covered.Add(key);
+                if (loco.IsValid) Covered.Add(loco.Key);
+                string state = rig.Fighter is SimPlayer p ? p.Model.State.ToString() : ((SimEnemy)rig.Fighter).Brain.State.ToString();
+                sb.Append("{\"id\":").Append(rig.Id).Append(",\"kind\":").Append(Q(rig.Kind)).Append(",\"state\":").Append(Q(state));
+                sb.Append(",\"key\":").Append(Q(key)).Append(",\"alive\":").Append(rig.Fighter.IsAlive ? "true" : "false");
+                sb.Append(",\"yaw\":").Append(F(rig.Fighter.Yaw));
+                Vector3 feet = rig.Fighter.Feet;
+                sb.Append(",\"pos\":[").Append(F(feet.X)).Append(',').Append(F(feet.Y)).Append(',').Append(F(feet.Z)).Append(']');
+                sb.Append(",\"j\":[");
+                for (int j = 0; j < BodyJoints.Count; j++)
+                {
+                    if (j > 0) sb.Append(',');
+                    Vector3 v = rig.Fk.Positions[j];
+                    sb.Append(F(v.X)).Append(',').Append(F(v.Y)).Append(',').Append(F(v.Z));
+                }
+                sb.Append(']');
+                if (rig.Kind != "player")
+                {
+                    rig.Fk.Prop(rig.Animator.Pose, out Vector3 grip, out Vector3 dir);
+                    sb.Append(",\"prop\":[").Append(F(grip.X)).Append(',').Append(F(grip.Y)).Append(',').Append(F(grip.Z)).Append(',')
+                        .Append(F(dir.X)).Append(',').Append(F(dir.Y)).Append(',').Append(F(dir.Z)).Append(',').Append(F(PropLength(rig.Kind))).Append(']');
+                }
+                sb.Append('}');
+            }
+
+            public static float PropLength(string kind)
+            {
+                switch (kind)
+                {
+                    case "soldier": return SwordLength;
+                    case "dummy": return 1.1f;
+                    case "crossbow": return 0.55f;
+                    default: return 0f;
+                }
+            }
+
+            // The dao's hand-to-tip length (EnemyPoseSettings.WeaponLength in Unity).
+            public const float SwordLength = EnemyPoseSettingsWeaponLength;
+            const float EnemyPoseSettingsWeaponLength = 1.3f;   // keep equal to EnemyPoseSettings.DefaultWeaponLength (Unity side)
+
+            void PlayerEffect(AnimRig rig, in PlayerEvent e)
+            {
+                switch (e.Type)
+                {
+                    case PlayerEventType.AttackActiveStart:
+                    {
+                        MoveData m = e.Move;
+                        if (m == null) break;
+                        string key = string.IsNullOrEmpty(m.EffectKey) ? EffectKeys.Burst : m.EffectKey;
+                        Vector3 dir = e.Direction;
+                        float duration = Math.Max(0.2f, m.Active + 0.15f);
+                        fx.Add(Fx(key, e.Origin, dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id));
+                        if (key != EffectKeys.Burst && key != EffectKeys.Trail)
+                            fx.Add(Fx(EffectKeys.Trail, e.Origin, dir, m.Range, m.ArcDegrees, m.Active + 0.05f, LimbJoint(m.Limb), rig.Id));
+                        float ext = StrikeExtension(rig, m.Limb);
+                        extensions.Add((m.DisplayName, ext));
+                        break;
+                    }
+                    case PlayerEventType.ProjectileLaunched:
+                        fx.Add(Fx("muzzle", e.Origin, e.Direction, 1f, 0f, 0.15f, (int)BodyJoint.RightHand, rig.Id));
+                        extensions.Add((e.Move != null ? e.Move.DisplayName : "projectile", StrikeExtension(rig, e.Move != null ? e.Move.Limb : Limb.BothFists)));
+                        break;
+                    case PlayerEventType.PlungeImpact:
+                        fx.Add(Fx(EffectKeys.Slam, e.Origin, -Vector3.UnitY, e.Radius, 360f, 0.45f, (int)BodyJoint.RightFoot, rig.Id));
+                        break;
+                    case PlayerEventType.DodgeStarted:
+                        fx.Add(Fx("jet", rig.Fighter.Feet, -e.Direction, 1f, 0f, 0.3f, (int)BodyJoint.RightFoot, rig.Id));
+                        break;
+                    case PlayerEventType.AttackStarted:
+                        if (e.AttackKind == PlayerAttackKind.ZipStrike && e.Move != null)
+                            fx.Add(Fx("jet", rig.Fighter.Feet, -Directions.FromYaw(rig.Fighter.Yaw), 1f, 0f, e.Move.Startup + e.Move.Active, (int)BodyJoint.RightFoot, rig.Id));
+                        break;
+                    case PlayerEventType.Deflected:
+                        fx.Add(Fx("spark", rig.Fighter.AimPoint, Vector3.UnitZ, 0.5f, 0f, 0.2f, (int)BodyJoint.RightHand, rig.Id));
+                        break;
+                }
+            }
+
+            void EnemyEffect(AnimRig rig, SimEnemy enemy, in EnemyEvent e)
+            {
+                switch (e.Type)
+                {
+                    case EnemyEventType.Launched:
+                        fx.Add(Fx(EffectKeys.Pillar, enemy.Feet, Vector3.UnitY, 3f, 0f, 0.6f, (int)BodyJoint.Hips, rig.Id));
+                        fx.Add(Fx("embers", enemy.Feet, Vector3.UnitY, 1f, 0f, 1.2f, (int)BodyJoint.Chest, rig.Id));
+                        break;
+                    case EnemyEventType.Damaged:
+                        fx.Add(Fx("spark", enemy.AimPoint, Vector3.UnitZ, 0.4f, 0f, 0.16f, (int)BodyJoint.Chest, rig.Id));
+                        break;
+                    case EnemyEventType.AttackActiveStart:
+                        if (e.Move != null && !e.Move.LaunchesProjectile)
+                        {
+                            rig.Fk.Prop(rig.Animator.Pose, out Vector3 grip, out Vector3 dir);
+                            Vector3 tip = grip + dir * SwordLength;
+                            Vector3 flat = new Vector3(tip.X - enemy.Feet.X, 0f, tip.Z - enemy.Feet.Z);
+                            if (rig.Kind == "soldier") swordReach.Add((e.Move.DisplayName, flat.Length(), e.Move.Range + e.Move.OriginForward));
+                        }
+                        break;
+                }
+            }
+
+            // How straight the striking limb is right now: 1 = fully extended.
+            static float StrikeExtension(AnimRig rig, Limb limb)
+            {
+                HumanoidSkeleton sk = rig.Animator.Skeleton;
+                Vector3[] j = rig.Fk.Positions;
+                float Arm(BodySide side) => Vector3.Distance(j[(int)BodyJoints.UpperArm(side)], j[(int)BodyJoints.Hand(side)]) / sk.ArmLength;
+                float Leg(BodySide side) => Vector3.Distance(j[(int)BodyJoints.UpperLeg(side)], j[(int)BodyJoints.Foot(side)]) / sk.LegLength;
+                switch (limb)
+                {
+                    case Limb.LeftFist: return Arm(BodySide.Left);
+                    case Limb.RightFoot: return Leg(BodySide.Right);
+                    case Limb.LeftFoot: return Leg(BodySide.Left);
+                    case Limb.BothFists: return Math.Min(Arm(BodySide.Left), Arm(BodySide.Right));
+                    default: return Arm(BodySide.Right);
+                }
+            }
+
+            static int LimbJoint(Limb limb)
+            {
+                switch (limb)
+                {
+                    case Limb.LeftFist: return (int)BodyJoint.LeftHand;
+                    case Limb.RightFoot: return (int)BodyJoint.RightFoot;
+                    case Limb.LeftFoot: return (int)BodyJoint.LeftFoot;
+                    default: return (int)BodyJoint.RightHand;
+                }
+            }
+
+            static string Fx(string key, Vector3 o, Vector3 d, float range, float arc, float duration, int joint, int fighter)
+            {
+                return "{\"key\":" + Q(key) + ",\"o\":[" + F(o.X) + "," + F(o.Y) + "," + F(o.Z) + "],\"d\":[" + F(d.X) + "," + F(d.Y) + "," + F(d.Z)
+                       + "],\"range\":" + F(range) + ",\"arc\":" + F(arc) + ",\"dur\":" + F(duration) + ",\"joint\":" + joint + ",\"fighter\":" + fighter + "}";
+            }
+
+            static string CaptionFor(Scene s)
+            {
+                PlayerCombatModel m = s.Model;
+                MoveData move = m.CurrentMove;
+                if (move != null) return move.DisplayName;
+                switch (m.State)
+                {
+                    case PlayerState.Dodging: return m.IsAirDashing ? "Air Dash" : m.MoveSet.Dodge.DisplayName;
+                    case PlayerState.Guarding: return "Parry";
+                    case PlayerState.Staggered: return "Staggered";
+                    case PlayerState.Dead: return "Defeated";
+                    case PlayerState.Healing: return "Spirit Water";
+                    case PlayerState.Sprinting: return "Sprint";
+                    case PlayerState.Airborne: return "Jump";
+                }
+                return "";
+            }
+
+            // A clip on its own, on a fighter standing at the origin: 0.3 s of guard, the clip, 0.4 s of guard.
+            public void GalleryClip(string key, string kind, MoveData move)
+            {
+                BeginScene("Gallery: " + key);
+                var rig = new GalleryRig(kind);
+                ClipTiming timing = move != null ? ClipTiming.FromMove(move) : default;
+                bool frameData = move != null;
+                float length = frameData ? Math.Max(0.6f, timing.Total + 0.2f) : 1.6f;
+                if (key == AnimationKeys.CrossbowBurst) timing = new ClipTiming { Startup = move.Startup, Active = move.Active, Recovery = move.Recovery, HitCount = 3, HitInterval = 0.3f };
+                if (key == AnimationKeys.SwordDoubleSlash) timing = new ClipTiming { Startup = move.Startup, Active = move.Active, Recovery = move.Recovery, HitCount = 2, HitInterval = 0.35f };
+                int serial = 1;
+                int total = (int)(length * 60f) + 45;
+                for (int f = 0; f < total; f++)
+                {
+                    float t = (f - 18) / 60f;
+                    var input = new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionSerial = serial };
+                    if (t >= 0f && t < length)
+                    {
+                        input.ActionKey = key;
+                        input.ActionTime = t;
+                        input.HasFrameData = frameData;
+                        input.Timing = timing;
+                        input.ActionDuration = frameData ? 0f : 1.2f;
+                        if (key == AnimationKeys.Charge) input.ChargeLevel = Math.Min(1f, t / 1.2f);
+                    }
+                    rig.Animator.Update(input);
+                    rig.Fk.Compute(rig.Animator.Pose, Vector3.Zero, 0f);
+                    var sb = frames;
+                    if (FrameCount > 0) sb.Append(",\n");
+                    sb.Append("{\"t\":").Append(F(time)).Append(",\"scene\":").Append(Q(scene)).Append(",\"caption\":").Append(Q(key));
+                    sb.Append(",\"fighters\":[");
+                    AppendGallery(sb, rig, key);
+                    sb.Append("],\"fx\":[],\"proj\":[]}");
+                    FrameCount++;
+                    time += Dt;
+                }
+                Covered.Add(key);
+            }
+
+            void AppendGallery(StringBuilder sb, GalleryRig rig, string key)
+            {
+                AnimationCue action = rig.Animator.ActionCue;
+                sb.Append("{\"id\":").Append(900).Append(",\"kind\":").Append(Q(rig.Kind)).Append(",\"state\":\"Gallery\"");
+                sb.Append(",\"key\":").Append(Q(action.IsValid ? action.Key : rig.Animator.LocomotionCue.Key)).Append(",\"alive\":true,\"yaw\":0,\"pos\":[0,0,0],\"j\":[");
+                for (int j = 0; j < BodyJoints.Count; j++)
+                {
+                    if (j > 0) sb.Append(',');
+                    Vector3 v = rig.Fk.Positions[j];
+                    sb.Append(F(v.X)).Append(',').Append(F(v.Y)).Append(',').Append(F(v.Z));
+                }
+                sb.Append(']');
+                if (rig.Kind != "player")
+                {
+                    rig.Fk.Prop(rig.Animator.Pose, out Vector3 grip, out Vector3 dir);
+                    sb.Append(",\"prop\":[").Append(F(grip.X)).Append(',').Append(F(grip.Y)).Append(',').Append(F(grip.Z)).Append(',')
+                        .Append(F(dir.X)).Append(',').Append(F(dir.Y)).Append(',').Append(F(dir.Z)).Append(',').Append(F(PropLength(rig.Kind))).Append(']');
+                }
+                sb.Append('}');
+            }
+
+            sealed class GalleryRig
+            {
+                public readonly string Kind;
+                public readonly FighterAnimator Animator;
+                public readonly ForwardKinematics Fk;
+
+                public GalleryRig(string kind)
+                {
+                    Kind = kind;
+                    HumanoidSkeleton skeleton = HumanoidSkeleton.Create(null, kind == "soldier" ? 1.04f : 1f);
+                    Animator = new FighterAnimator(PoseLibrary.Default, skeleton, AnimRig.StyleOf(kind));
+                    Fk = new ForwardKinematics(skeleton);
+                }
+            }
+
+            public string ToJson()
+            {
+                var sb = new StringBuilder(frames.Length + 4096);
+                sb.Append("{\"fps\":60,\"joints\":[");
+                for (int j = 0; j < BodyJoints.Count; j++)
+                {
+                    if (j > 0) sb.Append(',');
+                    sb.Append(Q(BodyJoints.Name((BodyJoint)j)));
+                }
+                sb.Append("],\"parents\":[");
+                for (int j = 0; j < BodyJoints.Count; j++)
+                {
+                    if (j > 0) sb.Append(',');
+                    sb.Append(BodyJoints.Parent(j));
+                }
+                sb.Append("],\"frames\":[\n").Append(frames).Append("\n]}");
+                return sb.ToString();
+            }
+
+            public void Report()
+            {
+                Out.Sub("Strike extension at the first active frame (1.00 = limb fully straight)");
+                var t = new Table("Move", "Times", "Min", "Mean");
+                foreach (var g in extensions.GroupBy(x => x.move))
+                    t.Row(g.Key, g.Count(), Out.N(g.Min(x => x.ext), 3), Out.N(g.Average(x => x.ext), 3));
+                t.Print();
+                Out.Sub("Dao blade tip at each strike vs the attack's reach (" + Out.N(SwordLength, 2) + " m blade)");
+                var t2 = new Table("Strike", "Times", "Tip distance (m)", "Reach (m)");
+                foreach (var g in swordReach.GroupBy(x => x.move))
+                    t2.Row(g.Key, g.Count(), Out.N(g.Average(x => x.tip), 2), Out.N(g.First().reach, 2));
+                t2.Print();
+                var keys = typeof(AnimationKeys).GetFields().Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()).ToList();
+                Out.Line("Animation keys shown: " + keys.Count(k => Covered.Contains(k)) + " / " + keys.Count
+                         + (keys.All(k => Covered.Contains(k)) ? "" : " (missing: " + string.Join(", ", keys.Where(k => !Covered.Contains(k))) + ")"));
+            }
+
+            static string F(double v)
+            {
+                if (double.IsNaN(v) || double.IsInfinity(v)) return "0";
+                return v.ToString("0.###", C);
+            }
+
+            static string Q(string s)
+            {
+                return "\"" + (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+            }
+        }
+    }
+}

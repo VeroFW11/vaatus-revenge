@@ -9,7 +9,8 @@ namespace VaatusRevenge
     //   1. tells the brain about the world (where the player is, whether a wall hides them),
     //   2. ticks the brain,
     //   3. moves the CharacterController once and turns to the brain's facing,
-    //   4. turns the brain's events into visuals (EnemyRigPresenter) and attacks (EnemyStrikes).
+    //   4. turns the brain's events into attacks (EnemyStrikes) and glows and effects (EnemyRigPresenter),
+    //   5. tells the body's animator what the enemy is doing (EnemyAnimationFeed -> BodyAnimatorDriver).
     // Incoming hits go through ReceiveHit (IDamageReceiver) straight to the brain; their effects arrive as events
     // on the next tick, which for melee hits is later in the same frame (enemies update after the player).
     //
@@ -17,7 +18,7 @@ namespace VaatusRevenge
     // OnEnable, so the scene's EnemyEncounter is found whatever order things load in. Configure only stores
     // references, so the sandbox builder can call it at edit time.
     [DisallowMultipleComponent]
-    [RequireComponent(typeof(CharacterController), typeof(Combatant), typeof(GreyboxRig))]
+    [RequireComponent(typeof(CharacterController), typeof(Combatant), typeof(HumanoidBody))]
     public abstract class EnemyFighter : MonoBehaviour, IDamageReceiver
     {
         // A corpse stops blocking once it lands; this is the longest it may keep falling (e.g. off the world).
@@ -29,6 +30,7 @@ namespace VaatusRevenge
         const float LedgeProbeAhead = 0.2f;
         const float LedgeProbeRadius = 0.05f;
         const float MinStepLength = 1e-5f;
+        const float LaunchPillarHeight = 3.2f;       // the column of fire under a launched enemy (visual only)
 
         static readonly string[] StateNames = System.Enum.GetNames(typeof(EnemyState));
         static AttackTokenPool fallbackTokens;
@@ -36,16 +38,16 @@ namespace VaatusRevenge
 
         [Tooltip("This enemy type's rules and feel. Empty = built-in defaults, with a warning.")]
         [SerializeField] private EnemyTuningAsset tuningAsset;
-        [Tooltip("The crossbow model on the right hand, for ranged enemies (built by Spawn). Tilts to aim.")]
-        [SerializeField] private Transform crossbow;
 
         readonly EnemyRigPresenter presenter = new EnemyRigPresenter();
         readonly EnemyStrikes strikes = new EnemyStrikes();
         readonly EnemyFeedbackSettings fallbackFeedback = new EnemyFeedbackSettings();
+        readonly EnemyAnimationFeed animationFeed = new EnemyAnimationFeed();
 
         CharacterController controller;
         Combatant combatant;
-        GreyboxRig rig;
+        HumanoidBody body;
+        BodyAnimatorDriver animatorDriver;
         EnemyHealthBar healthBar;
         EnemyBrain brain;
         AttackTokenPool brainTokens;
@@ -158,12 +160,6 @@ namespace VaatusRevenge
             if (changed && brain != null) DropBrain();
         }
 
-        // For the Spawn factories (edit mode and runtime).
-        internal void SetCrossbow(Transform model)
-        {
-            crossbow = model;
-        }
-
         // Builds the brain for this kind of fighter. tokens may be null (no limit on simultaneous attackers).
         protected abstract EnemyBrain CreateBrain(EnemyTuning tuning, AttackTokenPool tokens, int ownerId, int seed, float yaw);
 
@@ -251,7 +247,8 @@ namespace VaatusRevenge
             bool strikeOpened = HandleEvents(result.Events, b);
             // Keep sweeping an open swing each frame (not on the frame it opened: that query already ran).
             if (dt > 0f && !strikeOpened && b.IsAttackActive) strikes.ContinueMelee(b, transform.position, Feedback);
-            presenter.Tick(dt, in world, Feedback);
+            presenter.Tick(dt, b, Feedback);
+            UpdateAnimation(b, in world, dt);
             if (!b.IsAlive) SettleCorpse(dt);
         }
 
@@ -352,6 +349,15 @@ namespace VaatusRevenge
             return !CombatPhysics.IsOverlapping(probeTop, LedgeProbeRadius);
         }
 
+        // Hands the body's animator this frame's picture of the enemy (state, attack timing, hits, movement).
+        void UpdateAnimation(EnemyBrain b, in EnemyWorldState world, float dt)
+        {
+            if (animatorDriver == null) return;
+            bool grounded = Planted || controller == null || !controller.enabled || controller.isGrounded;
+            float aim = world.HasTarget ? presenter.AimPitch(EyePosition(), world.TargetAimPoint.ToUnity(), Feedback) : 0f;
+            animatorDriver.SetInput(animationFeed.Build(b, dt, grounded, aim));
+        }
+
         bool HandleEvents(in EventList<EnemyEvent> events, EnemyBrain b)
         {
             bool strikeOpened = false;
@@ -359,6 +365,7 @@ namespace VaatusRevenge
             for (int i = 0; i < events.Count; i++)
             {
                 EnemyEvent e = events[i];
+                animationFeed.OnEvent(in e);
                 switch (e.Type)
                 {
                     case EnemyEventType.Aggroed:
@@ -381,10 +388,16 @@ namespace VaatusRevenge
                         strikes.LaunchBolt(in e, b, this);
                         break;
                     case EnemyEventType.AttackEnded:
-                        presenter.OnAttackEnded(feedback);
+                        presenter.OnAttackEnded();
+                        break;
+                    case EnemyEventType.Launched:
+                        presenter.OnLaunched(transform.position, LaunchPillarHeight);
+                        break;
+                    case EnemyEventType.KnockedDown:
+                        presenter.OnKnockedDown(transform.position);
                         break;
                     case EnemyEventType.Damaged:
-                        presenter.OnDamaged(e.Direction, transform.forward, b.State == EnemyState.Attacking, feedback);
+                        presenter.OnDamaged(feedback);
                         if (healthBar != null) healthBar.Show(feedback.HealthBarShowTime);
                         break;
                     case EnemyEventType.Staggered:
@@ -427,12 +440,14 @@ namespace VaatusRevenge
             if (Planted || controller.isGrounded || deadTime >= MaxCorpseFallSeconds) controller.enabled = false;
         }
 
-        // Alive again: collision back on, rest pose, no effects, health bar hidden.
+        // Alive again: collision back on, guard stance, no effects, health bar hidden.
         void ReviveVisuals()
         {
             deadTime = 0f;
             if (controller != null) controller.enabled = true;
             presenter.OnReset();
+            animationFeed.Reset();
+            if (animatorDriver != null) animatorDriver.ResetPose();
             if (healthBar != null) healthBar.Hide();
         }
 
@@ -457,7 +472,7 @@ namespace VaatusRevenge
         void BindPresenter()
         {
             CacheComponents();
-            presenter.Bind(rig, crossbow, Feedback);
+            presenter.Bind(body, Feedback);
             bound = true;
         }
 
@@ -465,7 +480,8 @@ namespace VaatusRevenge
         {
             if (controller == null) controller = GetComponent<CharacterController>();
             if (combatant == null) combatant = GetComponent<Combatant>();
-            if (rig == null) rig = GetComponent<GreyboxRig>();
+            if (body == null) body = GetComponent<HumanoidBody>();
+            if (animatorDriver == null) animatorDriver = GetComponent<BodyAnimatorDriver>();
             if (healthBar == null) healthBar = GetComponent<EnemyHealthBar>();
         }
 

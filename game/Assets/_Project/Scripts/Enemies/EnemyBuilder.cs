@@ -5,7 +5,8 @@ namespace VaatusRevenge
 {
     // Builds the GameObject behind EnemyController.Spawn and TrainingDummy.Spawn, following the fighter
     // conventions every fighter shares: a 1.8 m CharacterController with its pivot at the feet, a Combatant
-    // (Team.Enemy) with an aim point at chest height, a grey-box body in the archetype's colour, the Enemy layer.
+    // (Team.Enemy) with an aim point at chest height, a jointed HumanoidBody dressed for the archetype (dao
+    // soldier, crossbowman, straw dummy) animated by a BodyAnimatorDriver, on the Enemy layer.
     // Works in edit mode (the sandbox builder saves the result into the scene) and at runtime.
     //
     // The object is built inactive and switched on at the end (Finish), so Awake/OnEnable only run once
@@ -18,23 +19,20 @@ namespace VaatusRevenge
         const float StepOffset = 0.3f;
         const float SlopeLimit = 50f;
         const float AimHeight = 1.3f;
-        const string CrossbowName = "Crossbow";
-        const float MinBuiltWeaponLength = 1e-3f;
 
-        // Archetype colours (spec section 9), used unless the tuning asset's feedback picks a custom one.
-        static readonly Color SoldierColor = new Color(0.44f, 0.52f, 0.62f);     // steel blue-grey
-        static readonly Color CrossbowmanColor = new Color(0.42f, 0.5f, 0.2f);   // olive green
-        static readonly Color DummyColor = new Color(0.84f, 0.72f, 0.46f);       // straw tan
-
-        public static Color ColorFor(EnemyArchetype archetype, EnemyFeedbackSettings feedback)
+        // The body for each kind of enemy (BodyLook presets), with the tuning asset's custom colour if it picks one.
+        public static BodyLook LookFor(EnemyArchetype archetype, EnemyFeedbackSettings feedback)
         {
-            if (feedback != null && feedback.UseCustomColor) return feedback.CustomColor;
+            BodyLook look;
             switch (archetype)
             {
-                case EnemyArchetype.Ranged: return CrossbowmanColor;
-                case EnemyArchetype.Dummy: return DummyColor;
-                default: return SoldierColor;
+                case EnemyArchetype.Ranged: look = BodyLook.Crossbowman(); break;
+                case EnemyArchetype.Dummy: look = BodyLook.Dummy(); break;
+                default: look = BodyLook.Soldier(); break;
             }
+            if (feedback != null && feedback.UseCustomColor) look.Cloth = feedback.CustomColor;
+            if (look.Weapon == BodyWeapon.Dao || look.Weapon == BodyWeapon.PracticeStick) look.WeaponLength = WeaponLengthFor(feedback);
+            return look;
         }
 
         // Display names are data: the tuning's, or else the default tuning's for this kind of fighter.
@@ -50,26 +48,8 @@ namespace VaatusRevenge
             return feedback != null && feedback.Poses != null ? feedback.Poses.WeaponLength : EnemyPoseSettings.DefaultWeaponLength;
         }
 
-        // Stretches the rig's weapon along the blade so its tip is 'length' metres from the hand. GreyboxRig builds
-        // every weapon the same length; the tip anchor (and anything on it, like the sword trail) moves with the
-        // stretch. Does nothing for a rig without a weapon. Safe to call every time (e.g. after live edits).
-        public static void SetWeaponLength(GreyboxRig rig, float length)
-        {
-            if (rig == null || !rig.HasWeapon || !(length > 0f)) return;
-            Transform tip = rig.GetAnchor(Limb.Weapon);
-            if (tip == rig.GetAnchor(Limb.RightFist)) return;  // no tip anchor (it falls back to the hand): nothing to stretch
-            Transform weapon = tip.parent;                     // the weapon's pivot sits in the hand, blade along +Z
-            float builtLength = tip.localPosition.z;
-            if (weapon == null || !(builtLength > MinBuiltWeaponLength)) return;
-            Vector3 scale = weapon.localScale;
-            float stretch = length / builtLength;
-            if (!Mathf.Approximately(scale.z, stretch)) weapon.localScale = new Vector3(scale.x, scale.y, stretch);
-        }
-
-        // Creates the fighter, still inactive: CharacterController, Combatant with aim point, built GreyboxRig
-        // (with its weapon stretched to weaponLength).
-        public static GameObject Create(Transform parent, Vector3 position, float yaw, string displayName, Color bodyColor, bool withWeapon,
-            float weaponLength)
+        // Creates the fighter, still inactive: CharacterController, Combatant with aim point, built HumanoidBody.
+        public static GameObject Create(Transform parent, Vector3 position, float yaw, string displayName, BodyLook look)
         {
             var go = new GameObject(string.IsNullOrEmpty(displayName) ? "Enemy" : displayName);
             go.SetActive(false);
@@ -91,23 +71,10 @@ namespace VaatusRevenge
             Combatant combatant = go.AddComponent<Combatant>();
             combatant.Configure(Team.Enemy, aim, BodyRadius, BodyHeight, displayName);
 
-            GreyboxRig rig = go.AddComponent<GreyboxRig>();
-            rig.Build(bodyColor, withWeapon);
-            SetWeaponLength(rig, weaponLength);
+            HumanoidBody body = go.AddComponent<HumanoidBody>();
+            go.AddComponent<BodyAnimatorDriver>();
+            body.Build(look);
             return go;
-        }
-
-        // A small repeating crossbow (stock, magazine, bow arms) held in the right hand, pointing forward.
-        // It shares the rig's limb material, so it glows with the aiming telegraph. Returns its pivot.
-        public static Transform AddCrossbow(GreyboxRig rig)
-        {
-            Transform hand = rig.GetAnchor(Limb.RightFist);
-            Transform pivot = GreyboxShapes.CreatePivot(CrossbowName, hand, Vector3.zero);
-            Material material = rig.LimbMaterial;
-            AddPart("Stock", pivot, new Vector3(0f, -0.01f, 0.12f), new Vector3(0.055f, 0.07f, 0.46f), material);
-            AddPart("Magazine", pivot, new Vector3(0f, 0.075f, 0.13f), new Vector3(0.06f, 0.09f, 0.2f), material);
-            AddPart("Prod", pivot, new Vector3(0f, 0f, 0.33f), new Vector3(0.6f, 0.035f, 0.045f), material);
-            return pivot;
         }
 
         // Last step of a Spawn: the health bar, the Enemy layer on every part, then switch it on.
@@ -116,13 +83,6 @@ namespace VaatusRevenge
             if (go.GetComponent<EnemyHealthBar>() == null) go.AddComponent<EnemyHealthBar>();
             Layers.SetRecursively(go, Layers.Enemy);
             go.SetActive(true);
-        }
-
-        static void AddPart(string partName, Transform parent, Vector3 localPosition, Vector3 localScale, Material material)
-        {
-            GameObject part = GreyboxShapes.CreateVisual(partName, PrimitiveType.Cube, parent, material, true);
-            part.transform.localPosition = localPosition;
-            part.transform.localScale = localScale;
         }
     }
 }

@@ -175,9 +175,10 @@ namespace VaatusRevenge.Core
                 case PoseEase.InOut: return u * u * (3f - 2f * u);
                 case PoseEase.Snap:
                 {
-                    // ease-out quart: most of the distance in the first third, a soft arrival
+                    // ease-out cubic: fast out of the chamber, arriving crisply (a softer quart would look
+                    // "already there" several frames before the hit)
                     float inv = 1f - u;
-                    return 1f - inv * inv * inv * inv;
+                    return 1f - inv * inv * inv;
                 }
                 case PoseEase.Back:
                 {

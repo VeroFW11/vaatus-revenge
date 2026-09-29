@@ -115,7 +115,7 @@ namespace VaatusRevenge
         [Tooltip("Message for a locked element; {0} is replaced by the element's name.")]
         public string ElementLockedMessage = "{0} isn't learned yet";
 
-        [Header("Grey-box poses")]
+        [Header("Fire on the martial arts (flames on the limbs, the launcher column, the whip, foot jets)")]
         public PlayerStrikePoses Poses = new PlayerStrikePoses();
     }
 }

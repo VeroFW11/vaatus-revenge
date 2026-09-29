@@ -18,6 +18,9 @@ namespace VaatusRevenge
         readonly List<FireVfxPiece> pieces = new List<FireVfxPiece>();
         readonly List<FireVfxTrail> trails = new List<FireVfxTrail>();
         readonly List<FireVfxLight> lights = new List<FireVfxLight>();
+        readonly List<FireVfxEmitter> emitters = new List<FireVfxEmitter>();
+        readonly List<FireVfxWhip> whips = new List<FireVfxWhip>();
+        readonly Vector3[] whipPoints = new Vector3[FireVfxWhip.Points];
         readonly List<Material> ownedMaterials = new List<Material>();
         Shader pieceShader;
         Material trailMaterial;
@@ -180,8 +183,119 @@ namespace VaatusRevenge
             return new FireVfxHandle(FireVfxHandle.PieceKind, index, glow.Generation);
         }
 
+        // A wide fan of flame thrown forward (Phoenix Palm): tongues of fire spread across the arc and reach exactly
+        // the move's range, so what you see is what can hit.
+        internal void Cone(Vector3 origin, Vector3 direction, float range, float arcDegrees)
+        {
+            FireVfxStyle s = FireVfx.Style;
+            Vector3 dir = SafeDirection(direction, Vector3.forward);
+            float life = Mathf.Max(0.05f, s.ConeLifetime);
+            float speed = Mathf.Max(0.1f, range) / life;
+            int count = Mathf.Clamp(Mathf.RoundToInt(arcDegrees / 8f), 6, 16);
+            float half = Mathf.Clamp(arcDegrees, 10f, 180f) * 0.5f;
+            for (int i = 0; i < count; i++)
+            {
+                float yaw = Mathf.Lerp(-half, half, count > 1 ? i / (count - 1f) : 0.5f) + Random.Range(-3f, 3f);
+                Vector3 d = Quaternion.AngleAxis(yaw, Vector3.up) * dir;
+                float peak = s.BurstSize * Random.Range(0.8f, 1.2f) * (0.6f + range * 0.12f);
+                FireVfxPiece blob = SpawnBlob(origin, d * (speed * Random.Range(0.85f, 1f)), 0f, peak * 0.3f, peak, peak * 0.2f, 0.45f,
+                    life * Random.Range(0.9f, 1.05f), s.FlameColor, s.EmberColor);
+                Stretch(blob, d, 1.8f);
+            }
+            SpawnBlob(origin, dir * 2f, 4f, s.BurstSize * 0.4f, s.BurstSize * 1.4f, 0f, 0.25f, life * 0.6f, s.CoreColor, s.FlameColor);
+            SpawnLight(origin + dir * (range * 0.4f), range * 1.5f, s.LightIntensity, s.LightLifetime * 1.5f);
+        }
+
+        // A column of fire bursting up from the ground (under a launched enemy).
+        internal void Pillar(Vector3 feet, float height)
+        {
+            FireVfxStyle s = FireVfx.Style;
+            height = Mathf.Max(0.5f, height);
+            float life = Mathf.Max(0.05f, s.PillarLifetime);
+            Vector3 ground = feet + Vector3.up * GroundOffset;
+            int count = Mathf.Clamp(s.PillarBlobs, 3, 20);
+            for (int i = 0; i < count; i++)
+            {
+                float up = height / life * Random.Range(0.45f, 1f);
+                Vector3 v = new Vector3(Random.Range(-0.4f, 0.4f), up, Random.Range(-0.4f, 0.4f));
+                float size = s.BurstSize * Random.Range(0.9f, 1.4f);
+                FireVfxPiece blob = SpawnBlob(ground, v, 0.5f, size * 0.4f, size, size * 0.3f, 0.3f, life * Random.Range(0.8f, 1.1f), s.FlameColor, s.EmberColor);
+                Stretch(blob, Vector3.up, 1.6f);
+            }
+            Ring(feet, s.PillarRingRadius);
+        }
+
+        // A spinning sweep's ring of fire: a shockwave plus flames racing outward along the ground to the radius.
+        internal void Wheel(Vector3 center, float radius)
+        {
+            FireVfxStyle s = FireVfx.Style;
+            radius = Mathf.Max(0.3f, radius);
+            Ring(center, radius);
+            float life = Mathf.Max(0.05f, s.RingLifetime);
+            int count = Mathf.Clamp(s.WheelBlobs, 4, 24);
+            for (int i = 0; i < count; i++)
+            {
+                float a = (i + Random.value * 0.4f) * Mathf.PI * 2f / count;
+                var d = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
+                Vector3 start = center + d * 0.4f + Vector3.up * 0.3f;
+                FireVfxPiece blob = SpawnBlob(start, d * ((radius - 0.4f) / life), 0f, s.BurstSize * 0.3f, s.BurstSize * 0.9f, s.BurstSize * 0.2f, 0.4f,
+                    life, s.FlameColor, s.EmberColor);
+                Stretch(blob, d, 2f);
+            }
+        }
+
+        // Driving something into the floor: a burst straight down from the strike, and a ring where it hits the ground.
+        internal void Slam(Vector3 position, float radius)
+        {
+            Burst(position, Vector3.down, Mathf.Max(0.6f, radius * 0.4f));
+            Vector3 ground = GroundBelow(position);
+            Ring(ground, Mathf.Max(0.5f, radius));
+            Explosion(ground + Vector3.up * 0.3f, Mathf.Max(0.3f, radius * 0.3f));
+        }
+
+        // A long lash of flame from the hand that sweeps across the move's arc (right to left) at its full range.
+        internal FireVfxHandle Whip(Transform hand, Vector3 origin, Vector3 direction, float range, float arcDegrees, float duration)
+        {
+            if (hand == null) return FireVfxHandle.None;
+            FireVfxWhip whip = AcquireWhip(out int index);
+            if (whip == null) return FireVfxHandle.None;
+            Vector3 dir = SafeDirection(new Vector3(direction.x, 0f, direction.z), Vector3.forward);
+            whip.Active = true;
+            whip.Generation = nextGeneration++;
+            whip.Hand = hand;
+            whip.Origin = origin;
+            whip.Yaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg;
+            whip.Range = Mathf.Max(0.5f, range);
+            whip.Arc = Mathf.Clamp(arcDegrees, 0f, 300f);
+            whip.Duration = Mathf.Max(0.05f, duration);
+            whip.Age = 0f;
+            whip.GameObject.SetActive(true);
+            UpdateWhip(whip, 0f);
+            return new FireVfxHandle(FireVfxHandle.WhipKind, index, whip.Generation);
+        }
+
+        // Keeps spawning small flames at a moving point: fire on a striking fist or foot, jets from the feet during
+        // a dash, embers trailing a launched enemy. duration <= 0 runs until the handle is stopped.
+        internal FireVfxHandle Emit(Transform follow, FireVfxEmitterKind kind, Vector3 worldDirection, float duration)
+        {
+            if (follow == null) return FireVfxHandle.None;
+            FireVfxEmitter emitter = AcquireEmitter(out int index);
+            if (emitter == null) return FireVfxHandle.None;
+            emitter.Active = true;
+            emitter.Generation = nextGeneration++;
+            emitter.Follow = follow;
+            emitter.Kind = kind;
+            emitter.Direction = worldDirection;
+            emitter.Timed = duration > 0f;
+            emitter.Remaining = duration;
+            emitter.Accumulator = 1f;   // the first flame appears at once
+            return new FireVfxHandle(FireVfxHandle.EmitterKind, index, emitter.Generation);
+        }
+
         internal void StopAll()
         {
+            for (int i = 0; i < emitters.Count; i++) emitters[i].Active = false;
+            for (int i = 0; i < whips.Count; i++) ReleaseWhip(whips[i]);
             for (int i = 0; i < pieces.Count; i++)
             {
                 if (pieces[i].Active) ReleasePiece(pieces[i]);
@@ -197,6 +311,18 @@ namespace VaatusRevenge
 
         internal void Stop(FireVfxHandle handle)
         {
+            if (handle.Kind == FireVfxHandle.EmitterKind)
+            {
+                if (handle.Index >= 0 && handle.Index < emitters.Count && emitters[handle.Index].Generation == handle.Generation)
+                    emitters[handle.Index].Active = false;
+                return;
+            }
+            if (handle.Kind == FireVfxHandle.WhipKind)
+            {
+                if (handle.Index >= 0 && handle.Index < whips.Count && whips[handle.Index].Generation == handle.Generation)
+                    ReleaseWhip(whips[handle.Index]);
+                return;
+            }
             if (TryGetPiece(handle, out FireVfxPiece piece)) piece.Stopping = true;
             else if (TryGetTrail(handle, out FireVfxTrail trail) && trail.Emitting) StopTrail(trail);
         }
@@ -209,6 +335,10 @@ namespace VaatusRevenge
 
         internal bool IsAlive(FireVfxHandle handle)
         {
+            if (handle.Kind == FireVfxHandle.EmitterKind)
+                return handle.Index >= 0 && handle.Index < emitters.Count && emitters[handle.Index].Active && emitters[handle.Index].Generation == handle.Generation;
+            if (handle.Kind == FireVfxHandle.WhipKind)
+                return handle.Index >= 0 && handle.Index < whips.Count && whips[handle.Index].Active && whips[handle.Index].Generation == handle.Generation;
             return TryGetPiece(handle, out _) || TryGetTrail(handle, out _);
         }
 
@@ -251,6 +381,14 @@ namespace VaatusRevenge
             {
                 if (lights[i].Active) UpdateLight(lights[i], dt);
             }
+            for (int i = 0; i < emitters.Count; i++)
+            {
+                if (emitters[i].Active) UpdateEmitter(emitters[i], dt);
+            }
+            for (int i = 0; i < whips.Count; i++)
+            {
+                if (whips[i].Active) UpdateWhip(whips[i], dt);
+            }
         }
 
         // Effects keep playing in real time during hitstop, so the impact burst blooms while the fighters are
@@ -280,7 +418,7 @@ namespace VaatusRevenge
         static void ApplyPiece(FireVfxPiece piece, float u)
         {
             Vector3 scale = u < piece.PeakAt
-                ? Vector3.LerpUnclamped(piece.StartScale, piece.PeakScale, GreyboxLimbMotion.EaseOutCubic(u / piece.PeakAt))
+                ? Vector3.LerpUnclamped(piece.StartScale, piece.PeakScale, EaseOutCubic(u / piece.PeakAt))
                 : Vector3.LerpUnclamped(piece.PeakScale, piece.EndScale, EaseIn((u - piece.PeakAt) / (1f - piece.PeakAt)));
             piece.Transform.SetPositionAndRotation(piece.Position, piece.Rotation);
             piece.Transform.localScale = scale;
@@ -646,9 +784,197 @@ namespace VaatusRevenge
             return trailMaterial;
         }
 
+        // ---- Emitters and whips ------------------------------------------------------------------------
+
+        void UpdateEmitter(FireVfxEmitter e, float dt)
+        {
+            if (e.Follow == null || !e.Follow.gameObject.activeInHierarchy)
+            {
+                e.Active = false;
+                return;
+            }
+            if (e.Timed)
+            {
+                e.Remaining -= dt;
+                if (e.Remaining <= 0f)
+                {
+                    e.Active = false;
+                    return;
+                }
+            }
+            FireVfxStyle s = FireVfx.Style;
+            float rate;
+            switch (e.Kind)
+            {
+                case FireVfxEmitterKind.FootJet: rate = s.JetRate; break;
+                case FireVfxEmitterKind.Embers: rate = s.EmberRate; break;
+                default: rate = s.LimbFlameRate; break;
+            }
+            e.Accumulator += rate * dt;
+            Vector3 at = e.Follow.position;
+            while (e.Accumulator >= 1f)
+            {
+                e.Accumulator -= 1f;
+                switch (e.Kind)
+                {
+                    case FireVfxEmitterKind.FootJet:
+                    {
+                        Vector3 d = SafeDirection(e.Direction, Vector3.down);
+                        Vector3 v = (d + Random.insideUnitSphere * 0.25f).normalized * (s.JetSpeed * Random.Range(0.7f, 1.1f));
+                        FireVfxPiece blob = SpawnBlob(at, v, 6f, s.JetSize * 0.4f, s.JetSize, 0f, 0.25f, s.JetLifetime, s.CoreColor, s.EmberColor);
+                        Stretch(blob, d, 1.8f);
+                        break;
+                    }
+                    case FireVfxEmitterKind.Embers:
+                    {
+                        Vector3 v = Random.insideUnitSphere * 0.8f + Vector3.up * 0.5f;
+                        SpawnBlob(at + Random.insideUnitSphere * 0.15f, v, 1f, s.EmberSize * 0.5f, s.EmberSize, 0f, 0.2f, s.EmberTrailLifetime, s.FlameColor, s.EmberColor);
+                        break;
+                    }
+                    default:
+                    {
+                        Vector3 v = Vector3.up * 0.8f + Random.insideUnitSphere * 0.3f;
+                        SpawnBlob(at, v, 3f, s.LimbFlameSize * 0.5f, s.LimbFlameSize, 0f, 0.3f, s.LimbFlameLifetime, s.CoreColor, s.FlameColor);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // The whip is a curve from the hand to a far end that sweeps across the arc; its middle trails behind the
+        // sweep, so it reads as a lash rather than a stick. It lashes out fast, sweeps, then thins away.
+        void UpdateWhip(FireVfxWhip whip, float dt)
+        {
+            if (whip.Hand == null || whip.Line == null)
+            {
+                ReleaseWhip(whip);
+                return;
+            }
+            whip.Age += dt;
+            float u = whip.Age / whip.Duration;
+            if (u >= 1.35f)
+            {
+                ReleaseWhip(whip);
+                return;
+            }
+            float sweep = Mathf.Clamp01(u);
+            float extend = Mathf.Clamp01(u / 0.2f);
+            float thin = u > 1f ? 1f - (u - 1f) / 0.35f : 1f;
+            float angle = whip.Yaw + whip.Arc * 0.5f - whip.Arc * sweep;
+            float lag = whip.Arc * 0.18f;
+            Vector3 hand = whip.Hand.position;
+            float height = whip.Origin.y;
+            Vector3 far = new Vector3(whip.Origin.x, height, whip.Origin.z)
+                          + Quaternion.AngleAxis(angle, Vector3.up) * Vector3.forward * (whip.Range * extend);
+            Vector3 mid = new Vector3(whip.Origin.x, height, whip.Origin.z)
+                          + Quaternion.AngleAxis(angle + lag, Vector3.up) * Vector3.forward * (whip.Range * 0.55f * extend);
+            for (int i = 0; i < FireVfxWhip.Points; i++)
+            {
+                float t = i / (FireVfxWhip.Points - 1f);
+                float a = 1f - t;
+                // Quadratic Bezier hand -> mid -> far, with a little ripple so it looks alive.
+                Vector3 p = a * a * hand + 2f * a * t * mid + t * t * far;
+                p.y += Mathf.Sin((t * 3f - whip.Age * 12f) * Mathf.PI) * 0.06f * t;
+                whipPoints[i] = p;
+            }
+            whip.Line.positionCount = FireVfxWhip.Points;
+            whip.Line.SetPositions(whipPoints);
+            whip.Line.widthMultiplier = FireVfx.Style.WhipWidth * Mathf.Max(0f, thin);
+        }
+
+        FireVfxWhip AcquireWhip(out int index)
+        {
+            index = -1;
+            for (int i = 0; i < whips.Count; i++)
+            {
+                if (!whips[i].Active)
+                {
+                    index = i;
+                    break;
+                }
+            }
+            if (index < 0)
+            {
+                if (whips.Count < Mathf.Max(1, FireVfx.Style.MaxWhips))
+                {
+                    whips.Add(new FireVfxWhip());
+                    index = whips.Count - 1;
+                }
+                else
+                {
+                    index = 0;
+                    ReleaseWhip(whips[0]);
+                }
+            }
+            FireVfxWhip whip = whips[index];
+            if (whip.GameObject == null)
+            {
+                Material material = TrailMaterial();
+                if (material == null) return null;
+                var go = new GameObject("FireWhip");
+                go.transform.SetParent(transform, false);
+                go.SetActive(false);
+                LineRenderer line = go.AddComponent<LineRenderer>();
+                line.sharedMaterial = material;
+                line.shadowCastingMode = ShadowCastingMode.Off;
+                line.receiveShadows = false;
+                line.useWorldSpace = true;
+                line.numCapVertices = 3;
+                line.numCornerVertices = 2;
+                line.widthCurve = new AnimationCurve(new Keyframe(0f, 0.6f), new Keyframe(0.35f, 1f), new Keyframe(1f, 0.15f));
+                line.colorGradient = trailGradient;
+                whip.GameObject = go;
+                whip.Line = line;
+            }
+            return whip;
+        }
+
+        static void ReleaseWhip(FireVfxWhip whip)
+        {
+            whip.Active = false;
+            whip.Hand = null;
+            if (whip.GameObject != null) whip.GameObject.SetActive(false);
+        }
+
+        FireVfxEmitter AcquireEmitter(out int index)
+        {
+            index = -1;
+            for (int i = 0; i < emitters.Count; i++)
+            {
+                if (!emitters[i].Active)
+                {
+                    index = i;
+                    break;
+                }
+            }
+            if (index < 0)
+            {
+                if (emitters.Count < Mathf.Max(1, FireVfx.Style.MaxEmitters))
+                {
+                    emitters.Add(new FireVfxEmitter());
+                    index = emitters.Count - 1;
+                }
+                else index = 0;   // pool full: the oldest slot is reused
+            }
+            return emitters[index];
+        }
+
+        // Where the floor is under a point (for slams in the air), or the point's own height if nothing is found.
+        static Vector3 GroundBelow(Vector3 position)
+        {
+            if (CombatPhysics.SphereCast(position + Vector3.up * 0.1f, 0.05f, Vector3.down, 15f, out RaycastHit hit)) return hit.point;
+            return position;
+        }
+
         static Vector3 SafeDirection(Vector3 direction, Vector3 fallback)
         {
             return direction.sqrMagnitude > 1e-8f ? direction.normalized : fallback;
+        }
+
+        static float EaseOutCubic(float x)
+        {
+            float inverse = 1f - Mathf.Clamp01(x);
+            return 1f - inverse * inverse * inverse;
         }
 
         static float EaseIn(float x)

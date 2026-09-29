@@ -15,15 +15,17 @@ namespace VaatusRevenge
     //   3. moves the CharacterController exactly once and turns the body to the model's facing
     //   4. turns the model's events into hit checks, fireballs, hitstop and slow motion
     //   5. keeps an attack's hitbox checking every frame while it's active
-    //   6. hands poses, fire, flashes, screen shake and rumble to PlayerFeedback
+    //   6. hands fire, flashes, screen shake and rumble to PlayerFeedback, and tells the body's martial-arts
+    //      animator what the player is doing (PlayerAnimationFeed -> BodyAnimatorDriver)
     // The rules and every gameplay number live in the model and the tuning assets; this class only wires.
     //
     // Setup: PlayerController.Spawn builds a complete player (editor code can call it too), or add this to a
-    // fighter that has a CharacterController, a Combatant and a built GreyboxRig, then call Configure.
+    // fighter that has a CharacterController, a Combatant, a built HumanoidBody and a BodyAnimatorDriver, then
+    // call Configure.
     [DefaultExecutionOrder(0)]
     [DisallowMultipleComponent]
     [SelectionBase]
-    [RequireComponent(typeof(CharacterController), typeof(Combatant), typeof(GreyboxRig))]
+    [RequireComponent(typeof(CharacterController), typeof(Combatant), typeof(HumanoidBody))]
     public class PlayerController : MonoBehaviour, IDamageReceiver
     {
         public static PlayerController Instance { get; private set; }
@@ -37,9 +39,11 @@ namespace VaatusRevenge
 
         CharacterController body;
         Combatant combatant;
-        GreyboxRig rig;
+        HumanoidBody rig;
+        BodyAnimatorDriver animatorDriver;
+        readonly PlayerAnimationFeed animationFeed = new PlayerAnimationFeed();   // combat state -> body animation
         PlayerCombatModel model;
-        PlayerFeedback feel;         // poses, fire effects, flashes, shake and rumble (the Unity-side "feel")
+        PlayerFeedback feel;         // fire effects, flashes, shake and rumble (the Unity-side "feel")
         readonly List<HitReport> hits = new List<HitReport>(8);
 
         // Only used when an asset is missing, so the player still works (with a warning).
@@ -101,8 +105,13 @@ namespace VaatusRevenge
             Combatant fighter = go.AddComponent<Combatant>();
             fighter.Configure(VaatusRevenge.Core.Team.Player, aim, radius, height, settings.DisplayName);
 
-            GreyboxRig greybox = go.AddComponent<GreyboxRig>();
-            greybox.Build(settings.BodyColor, false);
+            // The jointed martial-artist body (Fire Nation red, gold sash and wraps), animated procedurally.
+            HumanoidBody humanoid = go.AddComponent<HumanoidBody>();
+            go.AddComponent<BodyAnimatorDriver>();
+            BodyLook look = BodyLook.Player();
+            look.Cloth = settings.BodyColor;
+            if (!string.IsNullOrEmpty(settings.DisplayName)) look.Name = settings.DisplayName;
+            humanoid.Build(look);
             Layers.SetRecursively(go, Layers.Player); // after Build, so every body part is on the layer too
 
             PlayerController player = go.AddComponent<PlayerController>();
@@ -147,6 +156,8 @@ namespace VaatusRevenge
             openedAttackId = 0;
             ClearElementMessage();
             feel.ResetAll();
+            animationFeed.Reset();
+            if (animatorDriver != null) animatorDriver.ResetPose();
 
             LockOnController lockOn = LockOnController.Instance;
             if (lockOn != null) lockOn.ClearLock();
@@ -364,6 +375,7 @@ namespace VaatusRevenge
                 PlayerEvent e = events[i];
                 HandleGameplayEvent(in e, settings);
                 feel.OnEvent(in e, model, settings);
+                animationFeed.OnEvent(in e);
             }
 
             // 5. A hitbox keeps checking while it's open: an enemy can step into a swing after it started.
@@ -372,6 +384,7 @@ namespace VaatusRevenge
             UpdateDeath();
             UpdateElementSelect(input.ElementSelect, settings);
             feel.Tick(model, settings, dt, Time.unscaledDeltaTime);
+            if (animatorDriver != null) animatorDriver.SetInput(animationFeed.Build(model, dt));
         }
 
         // ---------------------------------------------------------------- one frame, step by step
@@ -756,7 +769,8 @@ namespace VaatusRevenge
         {
             if (body == null) body = GetComponent<CharacterController>();
             if (combatant == null) combatant = GetComponent<Combatant>();
-            if (rig == null) rig = GetComponent<GreyboxRig>();
+            if (rig == null) rig = GetComponent<HumanoidBody>();
+            if (animatorDriver == null) animatorDriver = GetComponent<BodyAnimatorDriver>();
             if (feel == null) feel = new PlayerFeedback(transform, rig, combatant);
         }
 
