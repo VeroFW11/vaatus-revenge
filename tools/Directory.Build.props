@@ -1,0 +1,22 @@
+<Project>
+  <!--
+    Shared settings for the offline check projects in tools/.
+    These projects never ship. They let a machine without Unity (e.g. a cloud
+    Claude session) compile and test the game's C# the way Unity would:
+    C# 9, no implicit usings, .NET Standard 2.1 for anything Unity loads.
+  -->
+  <PropertyGroup>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- CS1701/1702: assembly version unification noise from the Unity reference DLLs. -->
+    <NoWarn>$(NoWarn);CS1701;CS1702;NU1701</NoWarn>
+    <GameRoot>$(MSBuildThisFileDirectory)../game/Assets/_Project/</GameRoot>
+    <!-- Keep bin/obj out of the repo: build output goes to a temp folder (override with VR_BUILD_DIR). -->
+    <ArtifactsPath Condition="'$(VR_BUILD_DIR)' != ''">$(VR_BUILD_DIR)</ArtifactsPath>
+    <ArtifactsPath Condition="'$(VR_BUILD_DIR)' == ''">$([System.IO.Path]::GetTempPath())vaatus-revenge-build</ArtifactsPath>
+  </PropertyGroup>
+</Project>

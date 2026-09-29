@@ -1,0 +1,163 @@
+using System.Globalization;
+using UnityEngine;
+
+namespace VaatusRevenge
+{
+    // The F1 controls overlay: every binding from the prototype spec (docs/Prototype/Fire-Combat-Prototype-Spec.md,
+    // section 1) for gamepad and keyboard + mouse, then the sandbox keys. If a binding changes in
+    // PlayerInputReader, update the table here too.
+    // The rows are built once (and rebuilt only if a name shown in them changes), so drawing allocates nothing.
+    public sealed class HudControlsOverlay
+    {
+        const int GameplayRows = 13;
+        const int SandboxRows = 7;
+
+        static readonly Color PanelColor = new Color(0.035f, 0.035f, 0.045f, 0.92f);
+        static readonly Color StripeColor = new Color(1f, 1f, 1f, 0.045f);
+        static readonly Color DividerColor = new Color(1f, 1f, 1f, 0.18f);
+        static readonly Color DimTextColor = new Color(1f, 1f, 1f, 0.6f);
+
+        readonly string[] actions = new string[GameplayRows];
+        readonly string[] gamepad = new string[GameplayRows];
+        readonly string[] keyboard = new string[GameplayRows];
+        readonly string[] sandboxKeys = new string[SandboxRows];
+        readonly string[] sandboxActions = new string[SandboxRows];
+        bool built;
+        string builtSkill;
+        string builtHeal;
+        string builtElement;
+        float builtSlowScale = -1f;
+
+        // skillName, healName and elementName come from data (the move set and the HUD's settings), so lore
+        // names never live in code. Empty names fall back to generic words.
+        public void Draw(HudPainter p, string skillName, string healName, string elementName, float slowMotionScale, Color accent)
+        {
+            EnsureRows(skillName, healName, elementName, slowMotionScale);
+
+            float margin = p.U(20f);
+            float pad = p.U(26f);
+            float titleHeight = p.U(52f);
+            float gap = p.U(16f);
+            float footerHeight = p.U(34f);
+            float rowHeight = p.U(28f);
+            int rows = (GameplayRows + 1) + (SandboxRows + 1);
+            // Shrink the rows on short screens so the whole table always fits.
+            float fixedHeight = pad * 2f + titleHeight + gap + footerHeight;
+            float available = Screen.height - margin * 2f - fixedHeight;
+            if (rows * rowHeight > available) rowHeight = Mathf.Max(p.U(14f), available / rows);
+
+            float width = Mathf.Min(p.U(1120f), Screen.width - margin * 2f);
+            float height = fixedHeight + rows * rowHeight;
+            var panel = new Rect((Screen.width - width) * 0.5f, Mathf.Max(margin, (Screen.height - height) * 0.5f), width, height);
+            p.Fill(panel, PanelColor);
+            p.Outline(panel, Mathf.Max(1f, p.U(1.5f)), DividerColor);
+
+            float x = panel.x + pad;
+            float innerWidth = width - pad * 2f;
+            float y = panel.y + pad;
+            p.Text(new Rect(x, y, innerWidth, titleHeight * 0.7f), "Controls", p.Heading, Color.white);
+            p.Text(new Rect(x, y, innerWidth, titleHeight * 0.7f), "F1 to close", p.SmallRight, DimTextColor);
+            y += titleHeight;
+
+            // Gameplay: action | gamepad | keyboard + mouse.
+            float actionWidth = innerWidth * 0.43f;
+            float padWidth = innerWidth * 0.25f;
+            float textTop = Mathf.Max(0f, (rowHeight - p.Small.fontSize * 1.25f) * 0.5f);
+            p.Text(new Rect(x, y + textTop, actionWidth, rowHeight), "Action", p.Body, accent);
+            p.Text(new Rect(x + actionWidth, y + textTop, padWidth, rowHeight), "Gamepad (Xbox / PS)", p.Body, accent);
+            p.Text(new Rect(x + actionWidth + padWidth, y + textTop, innerWidth - actionWidth - padWidth, rowHeight), "Keyboard + mouse", p.Body, accent);
+            y += rowHeight;
+            p.Fill(new Rect(x, y - 1f, innerWidth, 1f), DividerColor);
+            for (int i = 0; i < GameplayRows; i++)
+            {
+                if (i % 2 == 0) p.Fill(new Rect(x, y, innerWidth, rowHeight), StripeColor);
+                p.Text(new Rect(x + p.U(6f), y + textTop, actionWidth, rowHeight), actions[i], p.Small, Color.white);
+                p.Text(new Rect(x + actionWidth, y + textTop, padWidth, rowHeight), gamepad[i], p.Small, Color.white);
+                p.Text(new Rect(x + actionWidth + padWidth, y + textTop, innerWidth - actionWidth - padWidth, rowHeight), keyboard[i], p.Small, Color.white);
+                y += rowHeight;
+            }
+
+            // Sandbox keys: key | what it does.
+            y += gap;
+            float keyWidth = innerWidth * 0.14f;
+            p.Text(new Rect(x, y + textTop, innerWidth, rowHeight), "Sandbox keys (keyboard)", p.Body, accent);
+            y += rowHeight;
+            p.Fill(new Rect(x, y - 1f, innerWidth, 1f), DividerColor);
+            for (int i = 0; i < SandboxRows; i++)
+            {
+                if (i % 2 == 0) p.Fill(new Rect(x, y, innerWidth, rowHeight), StripeColor);
+                p.Text(new Rect(x + p.U(6f), y + textTop, keyWidth, rowHeight), sandboxKeys[i], p.Body, accent);
+                p.Text(new Rect(x + keyWidth, y + textTop, innerWidth - keyWidth, rowHeight), sandboxActions[i], p.Small, Color.white);
+                y += rowHeight;
+            }
+
+            p.Text(new Rect(x, panel.yMax - pad - footerHeight * 0.6f, innerWidth, footerHeight * 0.6f),
+                "Click the game to capture the mouse for the camera. Gamepad and keyboard work at the same time.",
+                p.SmallCenter, DimTextColor);
+        }
+
+        void EnsureRows(string skillName, string healName, string elementName, float slowMotionScale)
+        {
+            if (built && builtSkill == skillName && builtHeal == healName && builtElement == elementName
+                && Mathf.Approximately(builtSlowScale, slowMotionScale))
+            {
+                return;
+            }
+            built = true;
+            builtSkill = skillName;
+            builtHeal = healName;
+            builtElement = elementName;
+            builtSlowScale = slowMotionScale;
+
+            string skill = string.IsNullOrEmpty(skillName) ? "Ranged skill" : "Ranged skill (" + skillName + ")";
+            string heal = string.IsNullOrEmpty(healName) ? "Heal" : "Heal (" + healName + ")";
+            string element = string.IsNullOrEmpty(elementName) ? "D-pad" : "D-pad (Up = " + elementName + ")";
+
+            int r = 0;
+            Row(ref r, "Move", "Left stick", "W A S D");
+            Row(ref r, "Camera", "Right stick", "Mouse");
+            Row(ref r, "Swap camera shoulder (hold)", "Hold L3 (left-stick click)", "Hold V");
+            Row(ref r, "Light attack (3-hit chain)", "RB / R1", "Left mouse");
+            // Taught as a rhythm, not a reaction: letting go when the band lights up is usually too late
+            // (playtest report HUD-01). The meter's white "get ready" mark comes just before the gold band.
+            Row(ref r, "Heavy: hold, let go as the meter fills the gold band", "RT / R2", "Right mouse");
+            Row(ref r, "Dodge (tap) / Sprint (hold)", "B / Circle", "Left Shift");
+            Row(ref r, "Jump", "A / Cross", "Space");
+            Row(ref r, "Guard (hold) / Deflect (press just before a hit)", "LB / L1", "Q");
+            Row(ref r, skill, "LT / L2", "E");
+            Row(ref r, heal, "X / Square", "R");
+            Row(ref r, "Lock on / off", "R3", "Middle mouse or Tab");
+            Row(ref r, "Switch target", "Flick right stick while locked", "Mouse wheel, or Z / C");
+            Row(ref r, "Element select", element, "1 - 4");
+
+            string slow = slowMotionScale > 0f && slowMotionScale < 1f
+                ? "Slow motion (" + slowMotionScale.ToString("0.##", CultureInfo.InvariantCulture) + "x) for studying moves"
+                : "Slow motion for studying moves";
+            int s = 0;
+            SandboxRow(ref s, "F1", "Show / hide these controls");
+            SandboxRow(ref s, "F2", slow);
+            SandboxRow(ref s, "F3", "Debug panel: state, frame data, buffered input, i-frames");
+            SandboxRow(ref s, "F4", "Respawn at the start");
+            SandboxRow(ref s, "F5 / F6", "Fluid / Punishing preset, to compare the two feels");
+            SandboxRow(ref s, "T", "Reset enemies and dummies");
+            SandboxRow(ref s, "Esc", "Release the mouse / pause");
+        }
+
+        void Row(ref int index, string action, string pad, string keys)
+        {
+            if (index >= GameplayRows) return;
+            actions[index] = action;
+            gamepad[index] = pad;
+            keyboard[index] = keys;
+            index++;
+        }
+
+        void SandboxRow(ref int index, string key, string action)
+        {
+            if (index >= SandboxRows) return;
+            sandboxKeys[index] = key;
+            sandboxActions[index] = action;
+            index++;
+        }
+    }
+}

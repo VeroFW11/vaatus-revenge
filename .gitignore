@@ -62,3 +62,7 @@ desktop.ini
 
 # Personal editor workspace files
 *.code-workspace
+
+# Offline check projects in tools/ (build output normally goes to a temp folder)
+/tools/**/bin/
+/tools/**/obj/

@@ -41,5 +41,8 @@ Combat is built on the real martial arts behind each bending style: Tai Chi (wat
 - Reference material goes in `docs/knowledge/` with a short summary and the link.
 - Binary assets use Git LFS. Remind the user to `git lfs lock` before editing `.blend`/`.fbx`/`.psd`.
 - Work on branches and merge to `main` via pull requests (see CONTRIBUTING.md).
+- **Gameplay rules are pure C#** in `game/Assets/_Project/Scripts/Core/` (no UnityEngine; its asmdef enforces it); Unity adapters live elsewhere in `Scripts/`. This lets a machine without Unity compile, test and bot-playtest the combat: `tools/compile-check.sh`, `tools/run-core-tests.sh`, `tools/CombatSim` (see `tools/README.md`).
+- Enter Play Mode Options have domain reload **off**: reset every static in a `[RuntimeInitializeOnLoadMethod(SubsystemRegistration)]` method.
+- The combat camera is a custom over-the-shoulder rig (`ThirdPersonCameraRig`), testable headless; Cinemachine stays installed for cutscenes later.
 - Build order: grey-box prototype of core combat first, then a vertical slice, and only then broader content.
 - **All gameplay numbers are data-driven**: health, damage, stamina/chi costs, scaling, XP curves and difficulty go in tuning assets (Unity ScriptableObjects), never hard-coded, so balancing is editing values and doesn't need code.

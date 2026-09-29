@@ -1,0 +1,123 @@
+using UnityEngine;
+
+namespace VaatusRevenge
+{
+    // Grey-box fire effects: glowing blobs, shockwave rings, trails and flashes of light, built from pooled
+    // primitives (no particle assets needed). Call from anywhere during play; the first call creates a
+    // hidden pool object. Calls in edit mode or while play is stopping do nothing, so nothing is ever left
+    // behind in a scene. If the URP shaders can't be found, effects are skipped with a single warning.
+    //
+    // Effects keep animating in real time during hitstop (the impact burst blooms while the fighters are
+    // frozen, like in fighting games) and slow down with slow motion.
+    public static class FireVfx
+    {
+        static FireVfxRunner runner;
+        static FireVfxStyle style;
+        static bool quitting;
+
+        // The look of every effect. Replace or edit it to restyle; never null.
+        public static FireVfxStyle Style
+        {
+            get => style ?? (style = new FireVfxStyle());
+            set => style = value;
+        }
+
+        // A punch of flame travelling along direction (a fire-extended strike). scale 1 = a light attack.
+        public static void Burst(Vector3 position, Vector3 direction, float scale)
+        {
+            FireVfxRunner r = GetRunner();
+            if (r != null) r.Burst(position, direction, scale);
+        }
+
+        // A fireball bursting out to radius, with embers and a flash of light.
+        public static void Explosion(Vector3 position, float radius)
+        {
+            FireVfxRunner r = GetRunner();
+            if (r != null) r.Explosion(position, radius);
+        }
+
+        // A shockwave ring spreading along the ground to radius (landing attacks). center = at the feet.
+        public static void Ring(Vector3 center, float radius)
+        {
+            FireVfxRunner r = GetRunner();
+            if (r != null) r.Ring(center, radius);
+        }
+
+        // A flame ribbon following a transform (a fist, a foot, the blade tip) for duration seconds of game
+        // time, then fading. duration <= 0 keeps it going until handle.Stop() or the transform is destroyed.
+        public static FireVfxHandle Trail(Transform follow, float duration)
+        {
+            FireVfxRunner r = GetRunner();
+            return r != null ? r.Trail(follow, duration) : FireVfxHandle.None;
+        }
+
+        // A fire glow held at an anchor (a charging fist). Drive it with handle.SetLevel(0..1) and end it
+        // with handle.Stop().
+        public static FireVfxHandle ChargeGlow(Transform anchor)
+        {
+            FireVfxRunner r = GetRunner();
+            return r != null ? r.ChargeGlow(anchor) : FireVfxHandle.None;
+        }
+
+        // A small bright pop where a hit connects. The colour is brightened for bloom (e.g. orange for a
+        // clean hit, white for a block, blue for a deflect).
+        public static void HitSpark(Vector3 position, Color color)
+        {
+            FireVfxRunner r = GetRunner();
+            if (r != null) r.HitSpark(position, color);
+        }
+
+        // A launch flash pointing along direction (firing a blast).
+        public static void Muzzle(Vector3 position, Vector3 direction)
+        {
+            FireVfxRunner r = GetRunner();
+            if (r != null) r.Muzzle(position, direction);
+        }
+
+        // Ends every running effect at once (e.g. on a sandbox reset). Extra to the spec.
+        public static void StopAll()
+        {
+            if (runner != null) runner.StopAll();
+        }
+
+        // Handle operations never create the pool: stopping a glow while play shuts down must not spawn objects.
+        internal static void Stop(FireVfxHandle handle)
+        {
+            if (runner != null) runner.Stop(handle);
+        }
+
+        internal static void SetLevel(FireVfxHandle handle, float level)
+        {
+            if (runner != null) runner.SetLevel(handle, level);
+        }
+
+        internal static bool IsAlive(FireVfxHandle handle)
+        {
+            return runner != null && runner.IsAlive(handle);
+        }
+
+        static FireVfxRunner GetRunner()
+        {
+            if (runner != null) return runner.CanRender ? runner : null;
+            if (!Application.isPlaying || quitting) return null;
+            runner = FireVfxRunner.Create();
+            return runner.CanRender ? runner : null;
+        }
+
+        // Domain reload is off in this project, so statics survive between play sessions: reset them when
+        // play starts, and stop creating pools once play is ending.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics()
+        {
+            runner = null;
+            quitting = false;
+            Application.quitting -= OnQuitting;
+            Application.quitting += OnQuitting;
+        }
+
+        static void OnQuitting()
+        {
+            quitting = true;
+        }
+    }
+}

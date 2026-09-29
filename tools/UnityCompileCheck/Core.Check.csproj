@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Mirrors VaatusRevenge.Core.asmdef: pure C#, no UnityEngine reference allowed. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>VaatusRevenge.Core</AssemblyName>
+    <RootNamespace>VaatusRevenge.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(GameRoot)Scripts/Core/**/*.cs" />
+  </ItemGroup>
+</Project>

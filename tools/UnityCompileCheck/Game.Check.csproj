@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Mirrors VaatusRevenge.Game.asmdef: everything under Scripts/ except Scripts/Core/. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>VaatusRevenge.Game</AssemblyName>
+    <RootNamespace>VaatusRevenge</RootNamespace>
+    <!-- Pass -p:UnityEditorDefine=false to check the player-build flavour (no UNITY_EDITOR). -->
+    <UnityEditorDefine Condition="'$(UnityEditorDefine)' == ''">true</UnityEditorDefine>
+    <DefineConstants>$(DefineConstants);UNITY_2021_3_OR_NEWER;UNITY_6000_0_OR_NEWER;ENABLE_INPUT_SYSTEM</DefineConstants>
+    <DefineConstants Condition="'$(UnityEditorDefine)' == 'true'">$(DefineConstants);UNITY_EDITOR</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(GameRoot)Scripts/**/*.cs" Exclude="$(GameRoot)Scripts/Core/**/*.cs" />
+    <PackageReference Include="UnityEngine.Modules" Version="2021.3.33" />
+    <ProjectReference Include="Core.Check.csproj" />
+    <ProjectReference Include="InputSystemStub/InputSystemStub.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UnityEditorDefine)' == 'true'">
+    <Reference Include="UnityEditor">
+      <HintPath>$(NuGetPackageRoot)unity3d.sdk/2021.1.14.1/lib/UnityEditor.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <PackageDownload Include="Unity3D.SDK" Version="[2021.1.14.1]" />
+  </ItemGroup>
+</Project>
