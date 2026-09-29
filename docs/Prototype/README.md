@@ -1,17 +1,17 @@
 # Fire Combat Prototype
 
-A grey-box sandbox for judging whether firebending combat is fun. Capsules and cubes, real timing.
+A grey-box sandbox for judging whether firebending combat is fun: jointed martial-artist fighters animated in code, grey-box arena, real timing.
 
 ## Play it
 
-1. In `C:\Users\david\Avatar Game - The Missing Bison`: `git fetch origin` then `git switch claude/wizardly-hamilton-b7ncq5`.
+1. In `C:\Users\david\Avatar Game - The Missing Bison`: `git fetch origin` then `git switch claude/dazzling-clarke-njm3m5` and `git pull` (the branch with the Spider-Man controls, aerial combat and animated fighters; it builds on PR #2's branch).
 2. Open `game/` in Unity 6000.6.3f1 and let it compile. **Red errors in the Console?** Copy them to Claude before doing anything else.
-3. Menu **Vaatu's Revenge ▸ Build Fire Combat Sandbox**, then press **Play**. Click the Game view to capture the mouse.
+3. Menu **Vaatu's Revenge ▸ Build Fire Combat Sandbox**, then press **Play**. Click the Game view to capture the mouse. If it says your tuning assets are from an older version, click **Update (recommended)**.
 4. Once it works, commit the generated `Assets/_Project/Scenes`, `Tuning` and `Materials` files so Jeremy gets the same tuning.
 
 **F1** shows the controls in-game. Gamepad is the intended way to play. The layout is **Spider-Man 2's** (29 Sep): X attack, Y zip strike, B dodge, A jump, tap LB parry, tap RB Fire Blast, hold LB + X fa jin, D-pad down heal. Full table in the [spec](Fire-Combat-Prototype-Spec.md#controls).
 
-**Pulled the Spider-Man controls update and you'd already built the sandbox once?** Run **Vaatu's Revenge ▸ Reset Sandbox Tuning To Defaults**, then **Build Fire Combat Sandbox** again. Your saved tuning assets still have the old 4 m auto-aim range; the reset gives the new 7 m and the rest of the new numbers.
+**Built the sandbox before (29 Sep or earlier)?** Your saved tuning assets hold the old moves and numbers (3-hit chain, 4 m auto-aim). The builder spots this and offers **Update (recommended)**; or run **Vaatu's Revenge ▸ Reset Sandbox Tuning To Defaults** yourself.
 
 ## Martial-arts animation packs (not in Git)
 

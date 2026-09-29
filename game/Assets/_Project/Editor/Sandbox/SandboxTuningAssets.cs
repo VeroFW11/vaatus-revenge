@@ -71,6 +71,35 @@ namespace VaatusRevenge.EditorTools
             return set;
         }
 
+        // True when saved tuning assets were made by an older version of the game: the Fire move sets have no animation
+        // keys (made before the animated fighters) or a shorter string than the current 5 hits, or the player still has
+        // the old 4 m soft lock exactly. Such assets would quietly bring back the old game, so the builder offers to
+        // reset them (report 03, V-06). Missing assets aren't stale: they're created fresh.
+        public static bool HasStaleAssets(out string reason)
+        {
+            reason = "";
+            int currentChain = ElementMoveSet.CreateFireFluid().LightChain.Length;
+            foreach (string name in new[] { MovesFluidName, MovesPunishingName })
+            {
+                MoveSetAsset moves = AssetDatabase.LoadAssetAtPath<MoveSetAsset>(PathFor(name));
+                if (moves == null || moves.MoveSet == null) continue;
+                MoveData[] chain = moves.MoveSet.LightChain;
+                if (chain == null || chain.Length < currentChain || chain[0] == null || string.IsNullOrEmpty(chain[0].AnimationKey)
+                    || moves.MoveSet.Launcher == null || string.IsNullOrEmpty(moves.MoveSet.Launcher.AnimationKey))
+                {
+                    reason = name + " is from before the 5-hit string and the animated fighters";
+                    return true;
+                }
+            }
+            PlayerTuningAsset player = AssetDatabase.LoadAssetAtPath<PlayerTuningAsset>(PathFor(PlayerFluidName));
+            if (player != null && player.Tuning != null && player.Tuning.SoftLockRange == 4f)
+            {
+                reason = PlayerFluidName + " still has the old 4 m auto-aim range";
+                return true;
+            }
+            return false;
+        }
+
         public static string PathFor(string assetName)
         {
             return Folder + "/" + assetName + ".asset";

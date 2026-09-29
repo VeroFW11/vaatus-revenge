@@ -80,6 +80,8 @@ namespace VaatusRevenge.Core
         int chainIndex = -1;          // light chain move running now (-1 = none)
         float lungeDistance;          // this attack's forward travel: the move's own, stretched to close a gap, or a zip dash
         bool lungeHoming;             // a stretched lunge or zip dash travels straight at its target, not along the facing
+        Vector3 lungeTargetFeet;      // where that target was when last seen: kept if the soft lock drops it mid-lunge
+        float lungeTargetRadius;
         double chainGraceUntil = double.NegativeInfinity;   // see UpdateAttack: chain survives a short recovery
         int chainGraceNext;
         PlayerAttackKind chainGraceKind;   // which string the grace continues (the ground one or the air one)
@@ -255,6 +257,20 @@ namespace VaatusRevenge.Core
                 tuning.DodgeTrigger, tuning.TapHoldThreshold);
 
             if (state == PlayerState.Dead) return;
+
+            // Ability chords (hold the guard button, then a face button: Heavy, AbilityNorth, AbilityEast). The guard
+            // button is the chord's modifier, so its own press was only ever the first half of the chord: the chord
+            // replaces a guard press still waiting in the buffer (or arriving on the same frame), and the parry it
+            // opened closes quietly instead of counting as a whiffed deflect (no anti-mash lockout for it).
+            bool chord = guardHeld && (heavyPressed || abilityNorthPressed || abilityEastPressed);
+            if (chord)
+            {
+                if (buffer.Command == PlayerCommand.Guard) buffer.Clear();
+                if (deflectArmed && !deflectCaught) deflectArmed = false;
+                guardHeldUntil = double.NegativeInfinity;
+                guardPressed = false;
+            }
+
             // The buffer keeps one press (see InputBuffer for which press wins). Pushed in this order so that if
             // two buttons go down in the same frame, the defensive one wins, and the dodge over the guard.
             bool defensiveWins = tuning.DefensivePressesWin;

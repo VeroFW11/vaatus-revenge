@@ -49,6 +49,9 @@ namespace VaatusRevenge
         [Tooltip("RB (R1) held no longer than this, with no face button pressed, fires the ranged skill when let go. "
                  + "Held longer, it's treated as a cancelled element pick and fires nothing.")]
         [SerializeField] private float skillTapMaxTime = 0.35f;
+        [Tooltip("A face button counts as an LB (Q) ability chord only this long after LB went down. Held longer (a parry "
+                 + "you're still holding), B and Y dodge and zip as normal again, so a panic parry-then-dodge isn't eaten.")]
+        [SerializeField] private float abilityChordWindow = 0.5f;
 
         InputActionMap map;
         InputAction move, lookStick, lookMouse;
@@ -62,6 +65,7 @@ namespace VaatusRevenge
         bool heavyChord;                                   // X was pressed while LB was held: X is the Heavy until let go
         bool abilityNorthChord;                            // same for Y (AbilityNorth) ...
         bool abilityEastChord;                             // ... and B (AbilityEast)
+        float guardHeldTime;                               // real seconds LB (Q) has been held (chords only start early in a hold)
         bool skillPadDown;                                 // RB is down (tap = skill, held with a face button = element pick)
         float skillPadHeldTime;
         bool skillPadChordUsed;
@@ -182,9 +186,11 @@ namespace VaatusRevenge
             ElementId elementPick = ReadElementChord(ref zipButton, ref dodgeButton, ref jumpButton, ref attackButton);
             ButtonState skillButton = ReadSkillTap(skillPadButton, Time.unscaledDeltaTime);
             if (skillMouseButton.Pressed) skillButton.Pressed = true;
-            ButtonState heavyButton = ReadAbilityChord(ref attackButton, guardButton, ref heavyChord);
-            ButtonState abilityNorthButton = ReadAbilityChord(ref zipButton, guardButton, ref abilityNorthChord);
-            ButtonState abilityEastButton = ReadAbilityChord(ref dodgeButton, guardButton, ref abilityEastChord);
+            guardHeldTime = guardButton.Held ? (guardButton.Pressed ? 0f : guardHeldTime + Time.unscaledDeltaTime) : 0f;
+            bool chordModifier = guardButton.Held && guardHeldTime <= abilityChordWindow;
+            ButtonState heavyButton = ReadAbilityChord(ref attackButton, chordModifier, ref heavyChord);
+            ButtonState abilityNorthButton = ReadAbilityChord(ref zipButton, chordModifier, ref abilityNorthChord);
+            ButtonState abilityEastButton = ReadAbilityChord(ref dodgeButton, chordModifier, ref abilityEastChord);
 
             if (!gameplayEnabled)
             {
@@ -223,6 +229,7 @@ namespace VaatusRevenge
             heavyChord = false;
             abilityNorthChord = false;
             abilityEastChord = false;
+            guardHeldTime = 0f;
             skillPadDown = false;
             skillPadHeldTime = 0f;
             skillPadChordUsed = false;
@@ -231,9 +238,9 @@ namespace VaatusRevenge
 
         // Hold LB (Q) and press a face button: that press, and everything until it's let go, is the ability in that
         // slot, not the button's normal action. Returns the ability button; the face button reads as untouched meanwhile.
-        static ButtonState ReadAbilityChord(ref ButtonState faceButton, ButtonState guardButton, ref bool latched)
+        static ButtonState ReadAbilityChord(ref ButtonState faceButton, bool modifierActive, ref bool latched)
         {
-            if (faceButton.Pressed && guardButton.Held) latched = true;
+            if (faceButton.Pressed && modifierActive) latched = true;
             if (!latched) return default(ButtonState);
             ButtonState abilityButton = faceButton;
             faceButton = default(ButtonState);

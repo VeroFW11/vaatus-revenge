@@ -34,7 +34,7 @@ namespace VaatusRevenge.Core
         public PlungeSettings Plunge = new PlungeSettings();
         public MoveData Skill = CreateFireSkill();               // ranged skill: launches Skill.Projectile when startup ends
         // Dash to a far target and hit it (see ZipStrikeSettings). Its LungeDistance is ignored: the dash is as long
-        // as the gap to the target; it covers the startup and active frames (or the last LungeTime of them).
+        // as the gap to the target; it covers the startup frames and arrives as the kick goes active.
         public MoveData ZipStrike = CreateFireZipStrike();
         public ZipStrikeSettings Zip = new ZipStrikeSettings();
         public DodgeProfile Dodge = new DodgeProfile();

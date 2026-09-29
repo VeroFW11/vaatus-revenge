@@ -49,6 +49,13 @@ namespace VaatusRevenge.Core
             actionStep = Vector3.Zero;
         }
 
+        // True when the stick is in its dead zone. With a neutral stick the soft lock looks all round, not just ahead
+        // (a counter straight out of a dodge still finds the attacker, report 03 V-09).
+        public bool IsStickNeutral(Vector2 move)
+        {
+            return Directions.CameraRelative(move, 0f).Length() <= Math.Max(tuning.StickDeadzone, Epsilon);
+        }
+
         // The direction the player is aiming right now: the stick (camera-relative) if pushed, else the
         // facing. The Unity side uses it to pick the soft-lock candidate (see SoftLockSelector).
         public float GetAimYaw(Vector2 move, float cameraYaw)
@@ -232,7 +239,9 @@ namespace VaatusRevenge.Core
             else if (!jumpedThisTick)
             {
                 // Hanging in the air while an air strike runs (Spider-Man's air combos), normal gravity otherwise.
-                float gravityScale = state == PlayerState.Attacking ? Angles.Clamp(Aerial.AirAttackGravityScale, 0f, 1f) : 1f;
+                bool aerialMove = state == PlayerState.Attacking && (attackKind == PlayerAttackKind.Air
+                    || attackKind == PlayerAttackKind.Launcher || attackKind == PlayerAttackKind.ZipStrike);
+                float gravityScale = aerialMove ? Angles.Clamp(Aerial.AirAttackGravityScale, 0f, 1f) : 1f;
                 verticalVelocity = LocomotionRules.ApplyGravity(verticalVelocity, tuning.Gravity * gravityScale, tuning.MaxFallSpeed, dt);
             }
 
@@ -251,6 +260,7 @@ namespace VaatusRevenge.Core
         float AttackAimYaw(in PlayerWorldState world, bool hasStick, Vector3 stickDir, float lockYaw)
         {
             if (attackKind == PlayerAttackKind.ZipStrike && world.HasZipTarget) return YawTowards(world.Position, world.ZipTargetPosition);
+            if (lungeHoming && TryGetLungeTarget(world, out Vector3 homingTarget, out _)) return YawTowards(world.Position, homingTarget);
             if (world.HasLockTarget) return lockYaw;
             if (world.HasSoftTarget) return YawTowards(world.Position, world.SoftTargetPosition);
             if (hasStick) return Directions.YawOf(stickDir, facingYaw);
@@ -281,7 +291,9 @@ namespace VaatusRevenge.Core
         {
             MoveData move = currentMove;
             if (!(lungeDistance > 0f)) return Vector3.Zero;
-            float end = move.ActiveEnd;
+            // A zip strike's dash arrives as its kick goes active (so it never connects from metres away); every
+            // other lunge carries on through the active frames.
+            float end = attackKind == PlayerAttackKind.ZipStrike ? move.ActiveStart : move.ActiveEnd;
             float start = move.LungeTime > 0f ? Math.Max(0f, end - move.LungeTime) : 0f;
             float before = MotionCurves.WindowProgress(action.PreviousTime, start, end, 0f);
             float after = MotionCurves.WindowProgress(action.Time, start, end, 0f);
@@ -302,8 +314,14 @@ namespace VaatusRevenge.Core
         {
             vertical = 0f;
             if (state != PlayerState.Attacking || attackKind != PlayerAttackKind.ZipStrike || !lungeHoming || !world.HasZipTarget) return false;
-            float remaining = currentMove.ActiveEnd - action.Time;
-            if (remaining <= 0f) return false;
+            float remaining = currentMove.ActiveStart - action.Time;   // arrive level as the kick goes active
+            if (remaining <= 0f)
+            {
+                // The frame it arrives: stop climbing or dropping, then hang like any air strike.
+                if (action.PreviousTime >= currentMove.ActiveStart) return false;
+                vertical = 0f;
+                return !grounded;
+            }
             float dy = world.ZipTargetPosition.Y - world.Position.Y;
             if (grounded && dy <= 0.05f) return false;   // level ground: stay on it
             vertical = Angles.Clamp(dy / Math.Max(remaining, dt), -25f, 25f);
@@ -322,8 +340,26 @@ namespace VaatusRevenge.Core
             return Directions.SafeNormalize(Directions.Flatten(target - world.Position), Forward);
         }
 
-        // Whom the running attack's lunge closes on: the zip target for a zip strike, else lock, else soft lock.
+        // Whom the running attack's lunge closes on: the zip target for a zip strike, else lock, else soft lock. A
+        // homing lunge sticks with the target it started on: if the soft lock drops it or switches to someone else far
+        // from it mid-lunge (the stick let go during startup, report 03 V-08), it keeps going where that target was.
         bool TryGetLungeTarget(in PlayerWorldState world, out Vector3 target, out float targetRadius)
+        {
+            bool found = TryGetWorldLungeTarget(world, out target, out targetRadius);
+            if (!lungeHoming || state != PlayerState.Attacking) return found;
+            const float SameTargetDistance = 1.5f;
+            if (found && Directions.Flatten(target - lungeTargetFeet).Length() <= SameTargetDistance)
+            {
+                lungeTargetFeet = target;                // still the same one: follow it
+                lungeTargetRadius = targetRadius;
+                return true;
+            }
+            target = lungeTargetFeet;
+            targetRadius = lungeTargetRadius;
+            return true;
+        }
+
+        bool TryGetWorldLungeTarget(in PlayerWorldState world, out Vector3 target, out float targetRadius)
         {
             if (attackKind == PlayerAttackKind.ZipStrike && world.HasZipTarget)
             {

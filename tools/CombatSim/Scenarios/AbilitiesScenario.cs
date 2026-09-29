@@ -171,7 +171,7 @@ namespace VaatusRevenge.CombatSim
             var t = new Table("Pattern", "Targets", "Damage in 10 s", "Damage / stamina", "Hits", "Stamina empty", "Avg Momentum");
             var patterns = new (string name, Func<Session, int, Pad> script)[]
             {
-                ("Light mash (3-hit chain)", (s, f) => new Pad { Light = f % 6 < 2, Move = Aim(s) }),
+                ("Light mash (5-hit string)", (s, f) => new Pad { Light = f % 6 < 2, Move = Aim(s) }),
                 ("Jump + plunge spam", (s, f) => PlungeSpam(s, f)),
                 ("Heavy tap spam", (s, f) => new Pad { Heavy = f % 8 < 1, Move = Aim(s) }),
                 ("Fa jin (hold 0.8 s) loop", (s, f) => FaJinLoop(s, f)),

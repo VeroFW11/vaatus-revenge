@@ -18,7 +18,7 @@ namespace VaatusRevenge.Core
         public float MaxHealth = 180f;
         public bool Unkillable = false;              // training dummy: health never drops below 1
         public float HealthRefillDelay = 0f;         // > 0: health refills after this long without being hit
-        public float MaxPoise = 45f;                 // more than one light chain (39), so mashing alone doesn't stagger
+        public float MaxPoise = 45f;                 // more than one light string (43), so mashing alone doesn't stagger
         public float PoiseRegenDelay = 2f;           // poise refills this long after the last poise damage...
         public float PoiseRegenRate = 60f;           // ...at this many points per second
         public float StaggerDuration = 1.0f;         // stunned time when poise breaks
@@ -213,8 +213,10 @@ namespace VaatusRevenge.Core
             return new EnemyBreakOutRule
             {
                 Enabled = true,
-                HitsToTrigger = 3,
-                HitWindow = 1.2f,
+                // 29 Sep (Spider-Man controls): the 5-hit string lands whole (its 5 hits span ~1.3 s); looping back into
+                // a 6th hit within 2 s arms the shove. Was 3 hits in 1.2 s for the old 3-hit chain (report 03, V-03).
+                HitsToTrigger = 6,
+                HitWindow = 2.0f,
                 MaxWait = 0.6f,
                 Cooldown = 2f,
                 FollowUpDelay = 0f,

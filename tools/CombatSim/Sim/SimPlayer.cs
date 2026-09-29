@@ -117,7 +117,7 @@ namespace VaatusRevenge.CombatSim
                 ws.LockTargetRadius = LockTarget.Radius;
                 return ws;
             }
-            SoftTarget = FindSoftTarget(aimYaw);
+            SoftTarget = FindSoftTarget(aimYaw, Model.IsStickNeutral(input.Move));   // PlayerController.FindSoftTarget
             if (SoftTarget != null)
             {
                 ws.HasSoftTarget = true;
@@ -154,8 +154,9 @@ namespace VaatusRevenge.CombatSim
             return best;
         }
 
-        SimFighter FindSoftTarget(float aimYaw)
+        SimFighter FindSoftTarget(float aimYaw, bool stickNeutral)
         {
+            float angle = stickNeutral ? 180f : Model.Tuning.SoftLockAngle;
             SimFighter best = null;
             float bestScore = float.MaxValue;
             IReadOnlyList<SimFighter> all = world.Fighters;
@@ -163,7 +164,8 @@ namespace VaatusRevenge.CombatSim
             {
                 SimFighter c = Usable(all[i]);
                 if (c == null) continue;
-                if (!SoftLockSelector.TryScore(Feet, aimYaw, c.Feet, Model.Tuning, out float score) || score >= bestScore) continue;
+                if (!SoftLockSelector.TryScore(Feet, aimYaw, c.Feet, Model.Tuning.SoftLockRange, angle,
+                        Model.Tuning.SoftLockMaxHeightDifference, out float score) || score >= bestScore) continue;
                 if (world.Level.IsBlocked(AimPoint, c.AimPoint)) continue;
                 best = c;
                 bestScore = score;

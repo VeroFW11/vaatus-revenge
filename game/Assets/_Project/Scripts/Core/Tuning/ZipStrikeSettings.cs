@@ -7,7 +7,7 @@ namespace VaatusRevenge.Core
     // with none, the press does nothing (and costs nothing).
     // The Unity side picks the target with SoftLockSelector using these limits and reports it in
     // PlayerWorldState.ZipTarget*. The strike itself (frame data, damage, cost) is ElementMoveSet.ZipStrike;
-    // its dash covers the startup and active frames and stops just short of the target.
+    // its dash covers the startup frames, arriving just short of the target as the kick goes active.
     [Serializable]
     public class ZipStrikeSettings
     {

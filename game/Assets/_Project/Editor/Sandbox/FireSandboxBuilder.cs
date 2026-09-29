@@ -57,7 +57,25 @@ namespace VaatusRevenge.EditorTools
             }
             // Offer to save whatever is open first: the build replaces the open scene.
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            OfferToUpdateStaleTuning();
             BuildScene();
+        }
+
+        // Tuning assets saved by an older version would quietly bring the old game back (they're never overwritten by a
+        // build), so say so and offer the reset.
+        static void OfferToUpdateStaleTuning()
+        {
+            if (!SandboxTuningAssets.HasStaleAssets(out string reason)) return;
+            bool update = EditorUtility.DisplayDialog(DialogTitle,
+                "Your tuning assets in " + SandboxTuningAssets.Folder + " were saved by an older version of the prototype ("
+                + reason + ").\n\nUpdate them to the current defaults? Recommended: otherwise you'll play the old moves and "
+                + "numbers. Any values you tuned by hand in them are replaced (Edit > Undo can bring them back).",
+                "Update (recommended)", "Keep mine");
+            if (!update) return;
+            var resetPaths = new List<string>();
+            var createdPaths = new List<string>();
+            SandboxTuningAssets.ResetAllToDefaults(resetPaths, createdPaths);
+            Debug.Log("Sandbox tuning updated to the current defaults (" + resetPaths.Count + " assets).");
         }
 
         [MenuItem(MenuRoot + "Open Fire Combat Sandbox", false, 2)]
@@ -119,6 +137,11 @@ namespace VaatusRevenge.EditorTools
                 if (!SceneManager.GetSceneAt(i).isDirty) continue;
                 Debug.LogError("Fire Combat Sandbox: an open scene has unsaved changes. Save or discard them, then build again.");
                 return false;
+            }
+            if (SandboxTuningAssets.HasStaleAssets(out string staleReason))
+            {
+                Debug.LogWarning("Fire Combat Sandbox: tuning assets are from an older version (" + staleReason + "). Run "
+                                 + "Vaatu's Revenge > Reset Sandbox Tuning To Defaults to play the current moves.");
             }
             return BuildScene();
         }

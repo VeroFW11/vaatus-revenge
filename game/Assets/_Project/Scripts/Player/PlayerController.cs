@@ -433,7 +433,7 @@ namespace VaatusRevenge
                 return world;
             }
 
-            softTarget = FindSoftTarget(position, aimYaw);
+            softTarget = FindSoftTarget(position, aimYaw, model.IsStickNeutral(input.Move));
             if (softTarget != null)
             {
                 world.HasSoftTarget = true;
@@ -455,8 +455,10 @@ namespace VaatusRevenge
 
         // Not locked on, attacks still turn toward the enemy you're obviously going for: the nearest one within
         // range and angle of where you aim (SoftLockSelector), as long as no wall is in the way.
-        Combatant FindSoftTarget(Vector3 position, float aimYaw)
+        // With the stick neutral it looks all round (a counter straight out of a dodge still finds the attacker).
+        Combatant FindSoftTarget(Vector3 position, float aimYaw, bool stickNeutral)
         {
+            float angle = stickNeutral ? 180f : model.Tuning.SoftLockAngle;
             PlayerTuning tuning = model.Tuning;
             System.Numerics.Vector3 self = position.ToNumerics();
             Vector3 eye = combatant != null ? combatant.AimPoint.position : position;
@@ -467,7 +469,8 @@ namespace VaatusRevenge
             {
                 Combatant candidate = UsableTarget(all[i]);
                 if (candidate == null) continue;
-                if (!SoftLockSelector.TryScore(self, aimYaw, candidate.Feet.ToNumerics(), tuning, out float score) || score >= bestScore) continue;
+                if (!SoftLockSelector.TryScore(self, aimYaw, candidate.Feet.ToNumerics(), tuning.SoftLockRange, angle,
+                        tuning.SoftLockMaxHeightDifference, out float score) || score >= bestScore) continue;
                 if (CombatPhysics.IsBlocked(eye, candidate.AimPoint.position)) continue;
                 best = candidate;
                 bestScore = score;

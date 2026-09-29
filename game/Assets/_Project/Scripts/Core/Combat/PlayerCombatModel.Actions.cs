@@ -210,14 +210,14 @@ namespace VaatusRevenge.Core
 
         void TryAbility(MoveData move, in PlayerWorldState world)
         {
-            if (!CanStartAttack() || !stamina.CanAct) return;
+            if (Aloft || !CanStartAttack() || !stamina.CanAct) return;   // grounded only: waits in the buffer for the landing
             buffer.Clear();
             if (move != null) StartAttack(move, PlayerAttackKind.Ability, -1, ChargeTier.None, ConsumeCounterWindow(), true, world);
         }
 
         void TryHeavy(in PlayerWorldState world)
         {
-            if (state == PlayerState.Airborne)
+            if (Aloft)
             {
                 TryPlunge(world);
                 return;
@@ -229,7 +229,7 @@ namespace VaatusRevenge.Core
 
         void TrySkill(in PlayerWorldState world)
         {
-            if (!CanStartAttack() || !stamina.CanAct) return;
+            if (Aloft || !CanStartAttack() || !stamina.CanAct) return;   // grounded only: waits in the buffer for the landing
             buffer.Clear();
             if (moveSet.Skill != null) StartAttack(moveSet.Skill, PlayerAttackKind.Skill, -1, ChargeTier.None, ConsumeCounterWindow(), true, world);
         }
@@ -245,6 +245,9 @@ namespace VaatusRevenge.Core
 
         void TryPlunge(in PlayerWorldState world)
         {
+            // Mid air strike or air dash: wait for its cancel point (the press stays buffered).
+            if (state == PlayerState.Dodging) return;
+            if (state == PlayerState.Attacking && !CanStartAttack()) return;
             // Too soon after leaving the ground: the press does nothing, and isn't saved to plunge later either.
             if (airTime < Plunge.MinAirTime)
             {
@@ -297,7 +300,10 @@ namespace VaatusRevenge.Core
             attackStartClock = clock;
             lungeDistance = PlanLunge(move, kind, world);
             // Air strikes lift you as they start (you hang while striking); the launcher lifts you when its kick lands.
-            if (move.SelfLift > 0f && kind != PlayerAttackKind.Launcher) ApplySelfLift(move.SelfLift);
+            // An air strike stalls you: your rise is replaced by its own small lift (or none, over a standing foe), so a
+            // jump's speed can't carry you sky-high under the lighter air-strike gravity.
+            if (kind == PlayerAttackKind.Air && !grounded) verticalVelocity = Math.Min(verticalVelocity, 0f);
+            if (move.SelfLift > 0f && kind != PlayerAttackKind.Launcher && !AboveGroundedTarget(world)) ApplySelfLift(move.SelfLift);
             currentAttackId = CombatIds.Next();
             RememberAttack(currentAttackId, tier == ChargeTier.FaJin ? Charge.FaJinMomentumGain : move.MomentumGain);
             moveVelocity = Vector3.Zero;
@@ -314,16 +320,42 @@ namespace VaatusRevenge.Core
             if (kind == PlayerAttackKind.ZipStrike)
             {
                 lungeHoming = world.HasZipTarget;
+                if (world.HasZipTarget)
+                {
+                    lungeTargetFeet = world.ZipTargetPosition;
+                    lungeTargetRadius = world.ZipTargetRadius;
+                }
                 return world.HasZipTarget ? GapTo(world.ZipTargetPosition, world.ZipTargetRadius, world) : 0f;
             }
             if ((kind != PlayerAttackKind.Light && kind != PlayerAttackKind.Air) || !(tuning.GapCloseDistance > 0f)) return own;
             float gap;
-            if (world.HasLockTarget) gap = GapTo(world.LockTargetPosition, world.LockTargetRadius, world);
-            else if (world.HasSoftTarget) gap = GapTo(world.SoftTargetPosition, world.SoftTargetRadius, world);
+            if (world.HasLockTarget)
+            {
+                gap = GapTo(world.LockTargetPosition, world.LockTargetRadius, world);
+                lungeTargetFeet = world.LockTargetPosition;
+                lungeTargetRadius = world.LockTargetRadius;
+            }
+            else if (world.HasSoftTarget)
+            {
+                gap = GapTo(world.SoftTargetPosition, world.SoftTargetRadius, world);
+                lungeTargetFeet = world.SoftTargetPosition;
+                lungeTargetRadius = world.SoftTargetRadius;
+            }
             else return own;
             // Only a stretched lunge homes in; a normal step keeps following the facing as it always has.
             lungeHoming = gap > own;
             return Math.Max(own, Math.Min(own + tuning.GapCloseDistance, gap));
+        }
+
+        // An air strike only lifts you when there's something up here to hit: against a foe standing on the ground (you
+        // jumped at it), rising above its head would be silly (report 03, V-10). No target at all: it lifts (air practice).
+        bool AboveGroundedTarget(in PlayerWorldState world)
+        {
+            Vector3 target;
+            if (world.HasLockTarget) target = world.LockTargetPosition;
+            else if (world.HasSoftTarget) target = world.SoftTargetPosition;
+            else return false;
+            return world.Position.Y > target.Y + Aerial.AirLiftMaxHeightAboveTarget;
         }
 
         // Flat distance we could travel toward a target before reaching LungeStopGap from its body.
