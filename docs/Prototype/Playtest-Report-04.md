@@ -172,7 +172,7 @@
 | W-05 | F1 overlay: "face button within 0.5 s of LB". | — |
 | W-06 | The stale-tuning check also flags a saved `Enemy_DaoSoldier` with the old 3-hit break-out or poise 45. | — |
 | Polish | `AerialSettings` comment fixed; README's old 65% masher line replaced. | — |
-| W-03 and the walk/run foot polish | With the body engineer. | — |
+| W-03 and the walk/run foot polish | Fixed by the body engineer (888045d): landings keep feet planted; fewer both-feet-up frames in walk/run. | Final pass below. |
 | W-04 | Left as is: an ability or Fire Blast pressed in the air waits in the input buffer (0.25 s) for the landing, like every buffered press. | — |
 
 **Balance note for Jeremy (not a bug):** duels vs soldiers after these fixes, 40 seeds. The shove now fires, but the 5-hit string does more damage than the old 3-hit chain (56 vs 32 per string), so a lone soldier dies before mashing is punished much.
@@ -184,3 +184,64 @@
 | aggressive | 100% | 80% | 100% | 23% |
 
 Levers if mashing one soldier should lose more often: `Enemy_DaoSoldier` → MaxHealth, `BreakOut.Attack.Move.Damage` (30), `BreakOut.Cooldown` (2 s), or `BreakOut.HitsToTrigger` (6).
+
+## Final pass (verifier, 29 Sep, `888045d`)
+
+This is the verifier's final pass. It re-ran the full harness set (`mashbo`, `behind`, `turn`, `string`, `str2`, `juggle`, `launch2`, `inf`, `zip`, `zipair`, `zipmove`, `chord`, `parryafter`, `flick`, `dodge`, `parry`, `ranges`, `wheel`, `fajin`, plus a new `snap` test for groups and lock-on), `fuzz --quick`, `abilities`, `duels` (6 bots × 1-2 soldiers × both presets) and `anim` with every metric script. It re-read the contact sheets for the landing, walk → run, the behind-you jab, the full string and the juggle. It changed no game code, tests or tools.
+
+**Baseline:**
+- `compile-check.sh` PASS; tests **279/279**.
+- Fuzz: 8 runs, 0 violations. Duels: no invariant violations.
+- Anim: 46/46 keys; every strike aims 0-15° at impact.
+
+### Checklist
+
+| # | Owner's item | Result | Evidence |
+|---|---|---|---|
+| 1 | Controls | **PASS** | LB chords give the ability in 18/18 timings with 0 whiffed parries; a parry after a chord deflects 3/3. Flicks hit 36/36. Dodge → counter: 23 dmg ×4. Parry window is still 9 frames on all 4 attacks |
+| 2 | Aerial feel | **PASS** | Juggle 3/3 in every case (0° / 35°, with or without stick, vs 2 soldiers, after a zip). Zip hits 80/80 moving targets. Plunge after an air jab or air dash works. Relaunch loop stays finite |
+| 3 | Pack bridge | **PASS** (Unity only) | Unchanged since the second pass |
+| 4 | Human models | **PASS** | 0 backward knees; bone lengths constant |
+| 5 | Fluid motion | **PASS** | Worst one-frame limb jump 0.70 m (launcher kick). Nothing below the floor. The landing now plants one foot at a time (f382-390, one foot ≤ 2 cm throughout). Planted-foot skating is gone outside death / axe recovery |
+| 6 | Effects | **PASS** | Unchanged |
+| 7 | Martial-arts movements | **PASS** | New "Jab at a foe behind you" scene: the body turns ~170° over 5 frames (≤ 44°/frame, no pop), and the jab lands aimed 0°, tip 0.65 m from the body |
+| 8 | 5-hit string | **PASS** | 5/5 on a soldier at 1.8 / 3 / 5.5 m, and in all 12 two-soldier layouts; hit 6 arms the shove, which lands at f179 |
+| 9 | Close / mid / long | **PASS** | Unchanged (wheel ≤ 3.8 m, whip ≤ 7.2 m, blast ≤ 26 m, zip ≤ 14 m) |
+
+### Report 04 findings re-checked
+
+| ID | Status | Evidence |
+|---|---|---|
+| W-01 | **Fixed** (mechanism) | Mashing: exactly 1 shove per fight in 6/6 runs (was 0). No chains; 0 poise staggers while armed. Duels match the lead's table: masher vs 1 soldier 98% / 95%. That is a balance question for Jeremy, not a bug |
+| W-02 | **Fixed** | Jab hits at 120 / 150 / 165 / 180° with a neutral or pushed stick. Soldier 3.5 m ahead + 2.2 m behind: the jab turns round and hits the one behind |
+| W-03 | **Fixed** | See checklist row 5 |
+| W-04 | Open (Minor, the lead's call) | An ability or Fire Blast pressed during an air jab still does nothing if the landing is more than 0.25 s away |
+| W-05 | **Fixed** | The overlay says "within 0.5 s of LB" |
+| W-06 | **Fixed** | The stale check flags a saved soldier with the 3-hit break-out or poise 45 |
+| W-07 | **Mostly fixed** (Polish) | Soldier strafe 12 → 4 frames; player walk → run has one frame (f289) with both feet ~11 cm up. The lunge / dodge leaps are unchanged by design |
+
+### Regression hunt (snap and bracing)
+
+- **Snapping onto the wrong enemy:** in 4 group layouts (stick at A, B nearer or at a better angle, including B 1.5 m behind), every jab hit the enemy the stick pointed at.
+- **Lock-on:** locked on A with the stick at B, the jab hits A, as expected.
+- **Launcher / air strings:** vs 2 soldiers, still 3/3 air hits.
+- **Parry timing:** unchanged (9 frames, all 4 attacks). The parry after a chord still deflects.
+- **Braced soldiers:** never unbreakable for long. The brace ends at the shove, a launch or a parry stagger (`EnemyBrain.Stagger` / `Launch` clear it). The wait runs down 0.6 s whenever it's not swinging, and fa jin on an unarmed soldier still staggers (36 dmg).
+- **Break-outs chaining:** 1 per 10-12 s fight while mashing; no back-to-back shoves.
+- **Fuzz and duels:** no violations.
+
+### New findings
+
+| ID | Severity | Summary |
+|---|---|---|
+| X-01 | Polish | `SandboxTuningAssets.HasStaleAssets` treats any soldier asset with `MaxPoise == 45` as stale. If Jeremy ever tunes poise back to 45 on purpose, the builder will keep offering to reset everything. A version field would be safer |
+| X-02 | Polish | The lead's addendum above still lists W-03 as "with the body engineer"; it's fixed in `888045d` |
+
+**Verdict: ready to hand to the owner.** No Blockers or Majors remain. The open items are W-04 (Minor, the lead's design call), X-01 and X-02 and the W-07 residue (Polish), and one balance question for Jeremy: the masher now wins 95-98% against a single soldier.
+
+Final-pass scratch files: `/tmp/claude-0/-home-user-vaatus-revenge/08c08173-6fe0-59c1-a069-7a487d39a9a7/scratchpad/verify5/`:
+- Runs: `anim.json`, `abilities.md`, `fuzz.md`, `duels.md`
+- Sheets: `sheet_behind.png`, `side_land_walk.png`, `sheet_string_juggle.png`
+- Metric scripts: `py/`
+
+The harness is in `verify/harness/`. Its `mashtrace` entry, added from outside, was dropped because its source file was overwritten by the verifier's `snap` test.

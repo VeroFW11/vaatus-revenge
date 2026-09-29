@@ -93,9 +93,10 @@ namespace VaatusRevenge.EditorTools
             }
             EnemyTuningAsset soldier = AssetDatabase.LoadAssetAtPath<EnemyTuningAsset>(PathFor(DaoSoldierName));
             if (soldier != null && soldier.Tuning != null && soldier.Tuning.BreakOut != null
-                && (soldier.Tuning.BreakOut.HitsToTrigger == 3 || soldier.Tuning.MaxPoise == 45f))
+                && soldier.Tuning.BreakOut.HitsToTrigger == 3 && soldier.Tuning.BreakOut.HitWindow == 1.2f)
             {
-                reason = DaoSoldierName + " still has the old 3-hit-chain break-out and poise";
+                // Both old values together: someone tuning just one of them back on purpose isn't nagged (report 04, X-01).
+                reason = DaoSoldierName + " still has the old 3-hit-chain break-out";
                 return true;
             }
             PlayerTuningAsset player = AssetDatabase.LoadAssetAtPath<PlayerTuningAsset>(PathFor(PlayerFluidName));
