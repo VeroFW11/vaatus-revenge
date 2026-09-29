@@ -32,10 +32,15 @@
 - **First element to prototype: Fire.**
 - **Animation:** I intended to use Blender, but I'm open to easier options if they give the same quality. I need the pros and cons first (see below).
 
+**From the Fire combat prototype (28-29 Sep, [prototype docs](../Prototype/README.md)):**
+- **Stagger immunity on normal enemies:** a full combo earns one stagger, then about 1.5 s where they can't be staggered again, so they always swing back. *(David, 28 Sep)*
+- **Camera: third-person over the shoulder, like Spider-Man 2**, not the centred Elden Ring view. It pulls back in fights and swaps shoulders near walls. *(David, 28 Sep)*
+- Prototype defaults still to confirm by playing: timing-based perfect dodge in any direction (bonus Momentum for dashing in), crossbowmen share the 2 attack slots, a buffered dodge beats a later attack press.
+
 ## Things to decide
 
 - [x] **Is Toph's style its own path?** Yes: seismic sense is taught by its own earth master (the badgermole hermit, see [02](02-Storyline.md)), and it works as a see-through-walls toggle.
-- [ ] **Where does fa jin fit?** A charged power strike, a perfect-timing bonus, or an Avatar State move?
+- [ ] **Where does fa jin fit?** A charged power strike, a perfect-timing bonus, or an Avatar State move? *The prototype tests it as a timing reward: hold heavy, let go in the gold band (0.65-0.95 s).*
 - [x] ~~Does pro-bending appear?~~ **No.** Pro-bending is from Korra's era, thousands of years after ours (see [01](01-Lore-and-Universe.md)). Its acrobatic/MMA influence could still shape how some human fighters move, without the sport itself.
 - [x] **Toph's style without Toph.** Solved: it's an ancient badgermole technique. The first earthbenders learned from badgermoles, who "see" through vibration.
 - [ ] **How do we get authentic animation?** Pros and cons are in "Getting animation that matches the real styles" below.
