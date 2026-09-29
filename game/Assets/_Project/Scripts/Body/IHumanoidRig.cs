@@ -1,4 +1,5 @@
 using UnityEngine;
+using VaatusRevenge.Core;
 
 namespace VaatusRevenge
 {
