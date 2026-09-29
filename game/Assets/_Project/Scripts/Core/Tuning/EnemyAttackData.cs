@@ -8,7 +8,8 @@ namespace VaatusRevenge.Core
         Normal,   // e.g. yellow weapon glow
         Heavy,    // big hit: e.g. red glow. Usually hyper-armoured, so dodge or deflect it
         Delayed,  // a long, held wind-up that punishes panic dodging
-        Aimed     // ranged: taking aim
+        Aimed,    // ranged: taking aim
+        BreakOut  // the armoured anti-mash counter (EnemyBreakOutRule): its own colour, so players learn "stop pressing, dodge"
     }
 
     // One attack in an enemy's list. The AI picks among the attacks that are off cooldown, weighted by

@@ -460,6 +460,10 @@ namespace VaatusRevenge
                     pose = poses.ThrustWindUp;
                     lean = poses.ThrustWindUpLean;
                     return;
+                case TelegraphKind.BreakOut:
+                    pose = poses.BreakOutWindUp;
+                    lean = poses.BreakOutWindUpLean;
+                    return;
                 default:
                     pose = poses.SlashWindUp;
                     lean = poses.SlashWindUpLean;
@@ -484,6 +488,10 @@ namespace VaatusRevenge
                 case TelegraphKind.Delayed:
                     aim = poses.ThrustStrikeAim;
                     lean = poses.ThrustStrikeLean;
+                    return;
+                case TelegraphKind.BreakOut:
+                    aim = poses.BreakOutStrikeAim;
+                    lean = poses.BreakOutStrikeLean;
                     return;
                 default:
                     aim = poses.SlashStrikeAim;

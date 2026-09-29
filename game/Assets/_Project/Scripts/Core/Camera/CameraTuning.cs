@@ -96,6 +96,14 @@ namespace VaatusRevenge.Core
         public float CollisionLookAhead = 0.2f;    // metres: a second, fatter probe (radius + this) spots a pillar about to touch the
                                                    // camera (sliding in from the side as you strafe), so it glides in early
                                                    // instead of jumping once it touches. 0 = no look-ahead
+        public float CollisionSweepTime = 0.3f;    // seconds: while the view is swinging round (a lock-on turn), extra probes look
+                                                   // where the camera will be this far ahead, so a pillar face the swing is about to
+                                                   // sweep into the camera is seen early and the camera glides in instead of jumping
+                                                   // (report 02, round 3). 0 = off
+        public float CollisionSweepMaxAngle = 60f; // degrees: the look-ahead along the swing never reaches further round than this
+        public int CollisionSweepSamples = 3;      // probes spread along that arc (a thin pillar can sit between two of them)
+        public float CollisionSweepMinDistance = 0.6f; // the sweep may start the glide down to this close (a real contact is coming, unlike
+                                                   // the fat look-ahead's grazes); closer than that, contact still moves it in
         public float MinCollisionDistance = 1.1f;  // with a wall closer behind than this (a pillar at your back), the camera rises
                                                    // and looks down over the player's head instead of sliding into it. 0 = off
         public float MaxCollisionRisePitch = 85f;  // how steeply (degrees down) it may look while rising over the head (nearly top-down

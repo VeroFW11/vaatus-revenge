@@ -132,6 +132,7 @@ namespace VaatusRevenge
                 TimeScaleController.Hitstop(damage.Hitstop);
                 if (move.Kind == HitKind.Heavy) CameraShake.Add(feedback.HeavyHitShake, feedback.HeavyHitShakeTime);
                 else CameraShake.Add(feedback.HitShake, feedback.HitShakeTime);
+                brain.OnStrikeLanded();   // the anti-mash break-out tells a trade from an earned punish with this
             }
             else if (clanged)
             {

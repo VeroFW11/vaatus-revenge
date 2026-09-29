@@ -213,7 +213,24 @@ namespace VaatusRevenge.CombatSim
             float lookAhead = CameraTuning.CollisionLookAhead > 0f
                 ? LookAhead(shoulder, back, Orbit.DesiredDistance, radius + CameraTuning.CollisionLookAhead)
                 : float.PositiveInfinity;
-            Orbit.UpdateDistance(LastProbe, LastCameraFree, lookAhead, realDt);
+            float sweep = SweepProbe(radius);
+            Orbit.UpdateDistance(LastProbe, LastCameraFree, lookAhead, sweep, realDt);
+        }
+
+        // ThirdPersonCameraRig.SweepProbe (round 3): probes along the coming swing while the view turns.
+        float SweepProbe(float radius)
+        {
+            int samples = Math.Clamp(CameraTuning.CollisionSweepSamples, 0, 8);
+            if (samples == 0 || !Orbit.IsSweeping) return float.PositiveInfinity;
+            float length = Orbit.DesiredDistance;
+            float shortest = float.PositiveInfinity;
+            for (int i = 1; i <= samples; i++)
+            {
+                float share = i / (float)samples;
+                float d = Probe(Orbit.SweepOrigin(share), Orbit.SweepBack(share), length, radius);
+                if (d < length && d < shortest) shortest = d;
+            }
+            return shortest;
         }
 
         // ThirdPersonCameraRig.LookAhead: the fatter probe; says nothing (open) when it starts overlapping a wall.

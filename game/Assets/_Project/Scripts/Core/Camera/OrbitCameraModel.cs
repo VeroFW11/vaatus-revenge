@@ -104,6 +104,7 @@ namespace VaatusRevenge.Core
         float riseVelocity;
         float roomBehind = float.PositiveInfinity; // horizontal room behind the shoulder point, from the last probe
         float occludedTime;
+        float yawRate;               // degrees per second the view turned last frame (real time), for the swing sweep
 
         public OrbitCameraModel(CameraTuning tuning)
         {
@@ -139,6 +140,48 @@ namespace VaatusRevenge.Core
         public bool IsWaitingOutOcclusion => occludedTime > 0f;
         // Flat right-hand direction of the camera: the direction the shoulder offset is measured along.
         public Vector3 Right => Directions.RightFromYaw(Yaw);
+
+        // How far round the view is expected to swing in CollisionSweepTime at its current turn rate (degrees, signed,
+        // capped at CollisionSweepMaxAngle). 0 when it isn't turning or the sweep is off.
+        public float SweepYawDelta
+        {
+            get
+            {
+                float time = Math.Max(0f, Finite(tuning.CollisionSweepTime));
+                float cap = Angles.Clamp(Finite(tuning.CollisionSweepMaxAngle), 0f, 180f);
+                return Angles.Clamp(Finite(yawRate) * time, -cap, cap);
+            }
+        }
+
+        // True while the camera is expected to move noticeably over CollisionSweepTime (turning at least a degree or
+        // travelling at least 10 cm): only then are the sweep probes worth casting.
+        public bool IsSweeping
+        {
+            get
+            {
+                if (Math.Abs(SweepYawDelta) >= 1f) return true;
+                float time = Math.Max(0f, Finite(tuning.CollisionSweepTime));
+                float travel = (float)Math.Sqrt(pivotVelocity.X * pivotVelocity.X + pivotVelocity.Z * pivotVelocity.Z) * time;
+                return CameraMath.IsFinite(travel) && travel >= 0.1f;
+            }
+        }
+
+        // Where the shoulder point will be 'share' (0..1) of the way through CollisionSweepTime if the player keeps moving
+        // as the pivot is now (a dodge or sprint past a pillar carries the camera into it just like a swing does).
+        public Vector3 SweepOrigin(float share)
+        {
+            float s = CameraMath.IsFinite(share) ? Angles.Clamp(share, 0f, 1f) : 0f;
+            Vector3 move = new Vector3(pivotVelocity.X, 0f, pivotVelocity.Z) * (Math.Max(0f, Finite(tuning.CollisionSweepTime)) * s);
+            return CameraMath.IsFinite(move) ? ShoulderPoint + move : ShoulderPoint;
+        }
+
+        // The direction from ShoulderPoint back to where the camera would sit 'share' (0..1) of the way along that swing.
+        // The rig probes along a few of these (ThirdPersonCameraRig.SweepProbe) and passes the shortest to UpdateDistance.
+        public Vector3 SweepBack(float share)
+        {
+            float s = CameraMath.IsFinite(share) ? Angles.Clamp(share, 0f, 1f) : 0f;
+            return -Directions.FromYawPitch(Angles.Wrap180(Yaw + SweepYawDelta * s), ViewPitch);
+        }
 
         // Shoulder offset in metres along Right (+ = over the right shoulder, fighter left of centre), before walls...
         public float DesiredShoulderOffset => wantedOffset;
@@ -180,6 +223,7 @@ namespace VaatusRevenge.Core
             if (CameraMath.IsFinite(pitch)) Pitch = ClampPitch(pitch);
             yawVelocity = 0f;
             pitchVelocity = 0f;
+            yawRate = 0f;
             recentering = false;
             SnapPivot(followPosition);
             ResetFraming();
@@ -268,6 +312,7 @@ namespace VaatusRevenge.Core
         public void UpdateOrientation(in OrbitCameraInput input, float realDeltaTime)
         {
             float dt = CameraMath.SafeDeltaTime(realDeltaTime);
+            float yawBefore = Yaw;
             if (input.SwapShoulder) SwapShoulder();
             UpdateSwapHold(input.SwapShoulderHeld, dt);
 
@@ -301,6 +346,8 @@ namespace VaatusRevenge.Core
             baseDistance = Smooth.Damp(baseDistance, WantedDistance(), ref desiredDistanceVelocity, tuning.DistanceSmoothTime, dt);
             DesiredDistance = baseDistance + combatBlend * Math.Max(0f, Finite(tuning.CombatPullback));
             UpdateRise(dt);
+            if (dt > 0f) yawRate = Angles.Delta(yawBefore, Yaw) / dt;   // paused frames keep the last rate
+            if (!CameraMath.IsFinite(yawRate)) yawRate = 0f;
         }
 
         // Step 3 (optional). freeUp: how far the camera's collision sphere can rise from Pivot before touching a
@@ -371,6 +418,16 @@ namespace VaatusRevenge.Core
         //   - only the look-ahead probe is blocked: glide in, nothing is in the way.
         public void UpdateDistance(float maxDistance, float cameraFree, float lookAheadDistance, float realDeltaTime)
         {
+            UpdateDistance(maxDistance, cameraFree, lookAheadDistance, float.PositiveInfinity, realDeltaTime);
+        }
+
+        // sweepDistance: the shortest probe along the coming swing (SweepBack), from ShoulderPoint with the normal radius.
+        // It works like the look-ahead: while the view swings round, a pillar face the swing is about to sweep into the
+        // camera starts the glide in early, so the camera is already in front of it when it arrives instead of
+        // jumping 2 m in one frame (report 02, round 3). It never brings the camera closer than CollisionSweepMinDistance
+        // on its own, and it feeds the rise over the head, which then also starts early.
+        public void UpdateDistance(float maxDistance, float cameraFree, float lookAheadDistance, float sweepDistance, float realDeltaTime)
+        {
             float dt = CameraMath.SafeDeltaTime(realDeltaTime);
             float limit = DesiredDistance;
             if (CameraMath.IsFinite(maxDistance)) limit = Angles.Clamp(maxDistance, 0f, DesiredDistance);
@@ -381,6 +438,13 @@ namespace VaatusRevenge.Core
             {
                 float floor = Math.Min(limit, Math.Max(0f, Finite(tuning.MinCollisionDistance)));
                 early = Math.Max(floor, Math.Min(limit, lookAheadDistance));
+            }
+            // The swing sweep is a real contact that is about to happen (same radius as the camera), so it may start the
+            // glide closer than the look-ahead may: down to CollisionSweepMinDistance.
+            if (CameraMath.IsFinite(sweepDistance))
+            {
+                float floor = Math.Min(limit, Math.Max(0f, Finite(tuning.CollisionSweepMinDistance)));
+                early = Math.Min(early, Math.Max(floor, Math.Min(limit, sweepDistance)));
             }
             RememberRoomBehind(early);
 

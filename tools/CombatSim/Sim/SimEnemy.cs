@@ -216,7 +216,11 @@ namespace VaatusRevenge.CombatSim
                 if (r.Outcome == HitOutcome.Hit) landed = true;
                 else if (r.Outcome == HitOutcome.Parried) parried = true;
             }
-            if (landed) world.Time.Hitstop(damage.Hitstop);
+            if (landed)
+            {
+                world.Time.Hitstop(damage.Hitstop);
+                Brain.OnStrikeLanded();
+            }
             if (parried) Brain.OnParried();
         }
 

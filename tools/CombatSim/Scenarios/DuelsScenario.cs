@@ -74,12 +74,14 @@ namespace VaatusRevenge.CombatSim
                      + "All use lock-on and move relative to the real camera.");
             // The last group is the whole sandbox ring: both soldiers and both crossbowmen (one on the platform).
             string[] groups = { "soldier", "soldier,soldier", "crossbow", "soldier,soldier,crossbow", "soldier,soldier,crossbow,platform" };
+            if (!string.IsNullOrEmpty(o.Groups)) groups = o.Groups.Split('/', StringSplitOptions.RemoveEmptyEntries);
             foreach (Preset p in o.Presets)
             {
                 Out.Sub(p + " preset");
                 var t = new Table("Bot", "Enemies", "Win", "Time to win (median)", "Damage taken (avg)", "Deaths", "Stamina empty (s/min)",
                     "Perfect dodges / dodges", "Deflects", "Momentum avg", "Heals");
-                foreach (string bot in Bots.Players)
+                string[] bots = string.IsNullOrEmpty(o.Bots) ? Bots.Players : o.Bots.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                foreach (string bot in bots)
                 {
                     foreach (string g in groups)
                     {

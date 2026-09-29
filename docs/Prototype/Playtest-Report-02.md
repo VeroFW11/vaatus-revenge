@@ -281,3 +281,88 @@ Reacting to the flash itself and timing by rhythm are unchanged.
 - **NEW-05:** `EnemyBrain.Reset` keeps queued strike-end events and closes a swing it cuts short, all before `Reset`. Fuzz: enemy hitboxes opened/closed are balanced in all 8 runs (report 02 had them off by 1–8). There are 2 new tests.
 - **NEW-06:** crossbowman `LeashRadius` 3 → **2 m**. The platform archer stays up from all 6 spots, drifts at most 2.00 m, and needs **0** ledge stops (was 249–740).
 - **NEW-07:** `SandboxPostProcessing` builds the "Global Volume" all or nothing. If adding the component or setting a member fails (or throws), the object is destroyed again, and Undo only records it once it's complete. The soak-test comment now names `EnemyStrikes.OpenMelee`.
+
+---
+
+## 8. Round 3 fixes (29 Sep 2026)
+
+Measured with the same harness (Release, 40 seeds) on core fingerprint `sha1 c6ad26afde` (`OrbitCameraModel.cs fe36eb48a9`). "Before" is the same code with both new rules switched off (`--set soldier.BreakOut.Enabled=false --set camera.CollisionSweepTime=0`). With them off, the duel numbers match round 2 exactly. `compile-check.sh` passes and `run-core-tests.sh` gives 231/231 (14 new tests). Still not seen in the Editor. As in round 2, run *Reset Sandbox Tuning To Defaults* to pick up the new numbers.
+
+### Mashing: the Dao Soldier's break-out (new rule, data only to tune)
+
+The problem: in Fluid, mashing light still beat one soldier 100% of the time. The fix is a new rule, `EnemyTuning.BreakOut` (`EnemyBreakOutRule`). Every field is tunable, and `Enabled` switches it off. It is on for the soldier and off for the crossbowman and the dummy.
+
+**How it triggers.** Three clean hits within 1.2 s, while the soldier isn't staggered, arm an armoured counter:
+- **Recovery hits only count after a trade.** Hits on its recovery count only if its own swing landed on the player first. `EnemyStrikes` / `SimEnemy` now call `EnemyBrain.OnStrikeLanded()` for this. So a punish after a dodge, block or deflect never counts.
+- **A stagger wipes the count.** The count also stops while the soldier is stunned.
+- **Hitting into the shove's own wind-up re-arms it**, so the shove comes again straight after.
+
+**How it plays out.**
+- **It waits its turn.** It needs an attack token and waits while another enemy is attacking. If it hasn't started after 0.6 s of free waiting, it gives up. It then has a 2 s cooldown.
+- **It can cut its own wind-up.** It may drop a wind-up that isn't armoured yet to shove instead.
+- **It resets the soldier.** Starting the shove refills the soldier's poise.
+- **The shove itself** (Break-Out Shove): telegraph 0.6 s with its own **violet** glow and a low, crouched wind-up pose. Hyper armour from frame 0, 30 damage, breaks the player's poise, 2 m knockback, recovery 0.35 s.
+- **The follow-up.** If the shove lands, the next attack comes at once. Dodge, block or deflect it and the soldier takes its normal pause.
+- **Fairness:** the telegraph budget at a 0.25 s reaction is 0.32 s. The shove is deflectable and blockable.
+
+| Win rate, 40 seeds (before → after) | Fluid vs 1 soldier | Fluid vs 2 soldiers | Punishing vs 1 soldier | Punishing vs 2 soldiers |
+|---|---|---|---|---|
+| masher | 100% → **65%** (damage taken 54 → 96) | 70% → 25% | 100% → **73%** | 50% → 33% |
+| react | 100% → 100% | 98% → 100% | 100% → 95% | 78% → **43%** |
+| anticipate | 100% → 100% | 100% → 93% | 100% → 98% | 68% → **40%** |
+| guard | 100% → 100% | 90% → 95% | 100% → 100% | 90% → 85% |
+| aggressive | 100% → 98% | 73% → **38%** | 98% → 100% | 25% → 13% |
+| fajin | 100% → 100% | 98% → 98% | 100% → 100% | 95% → 95% |
+
+- **With a crossbowman added** (Fluid, 2 soldiers + crossbow): anticipate 98% → 85%, react 73% → 65%, guard 60% → 55%, aggressive 68% → 40%. The full ring changes by at most 3 points except for the masher. Punishing groups with a crossbow were already at 0–30% (70% for fajin with 2 soldiers + crossbow) and stay within 8 points.
+- The fuzz shows no violations.
+
+**Costs, for Jeremy.** Anyone who keeps swinging into a soldier gets shoved: the aggressive bot, and the stamina-starved dodgers in Punishing against 2 soldiers.
+- In Punishing, a light string is committal, so the bots are often mid-swing when the violet glow starts.
+- A lighter shove (`--set soldier.BreakOut.Attack.Move.Damage=20`) gives Punishing vs 2: anticipate 55%, react 53%. But the Fluid masher is then back to 90%.
+- Round-3 tuning tried 14–36 damage, windows of 0.8–2.0 s, a 0.5–0.7 s telegraph and each switch. The earlier settings are recorded in the `EnemyTuning.CreateDaoSoldierBreakOut` comment.
+
+**Harness changes:**
+- `duels --groups A/B --bots x,y` for quick runs.
+- `--set` takes nested fields (e.g. `soldier.BreakOut.HitWindow=1.0`).
+- Bots drop a threat whose wind-up the enemy abandoned. A person sees the glow change, and this changes nothing while the rule is off.
+- The fairness telegraph table now lists the shove.
+
+### Camera pops near pillars (new swing sweep)
+
+A lock-on swing (or a dodge) used to sweep a pillar face straight into the camera. The new rule:
+- **Sweep probes.** While the camera turns or travels, `ThirdPersonCameraRig` (and the harness) casts `CollisionSweepSamples` 3 probes. They start from where the shoulder point is heading and aim along the coming swing: `CollisionSweepTime` 0.3 s ahead, at most `CollisionSweepMaxAngle` 60° round (`OrbitCameraModel.SweepBack` / `SweepOrigin` / `IsSweeping`).
+- **What the camera does.** The shortest probe starts the existing glide in early, down to `CollisionSweepMinDistance` 0.6 m. Closer than that, only real contact moves the camera. The same probe also starts the rise over the head early.
+- **What stays the same.** A wall touching the camera still moves it in on the same frame, so the camera is never inside geometry.
+
+| Camera pops, shoulder camera (`camera`) | Before: largest jump / frames > 1 m / frames within 0.4 m of the head | After |
+|---|---|---|
+| Fight at the corridor mouth (10 × 30 s) | 1.57 m / 8 / 9 | **0.97 m / 0 / 8** |
+| Fight in the pillar field (10 × 30 s) | 2.46 m / 15 / 19 | **1.67 m / 2 / 7** |
+| Walk through the pillar field, orbiting | 0.86 m / 0 / 0 | 0.56 m / 0 / 0 |
+| Centred camera: fight at the corridor mouth / in the pillar field | 1.54 / 2.56 m, 6 / 15 frames > 1 m | 1.18 / 2.09 m, 2 / 6 frames |
+
+- The fight "before" numbers are lower than round 2's (1.89 / 2.53 m) only because the fights themselves changed with the break-out.
+- Inside geometry: still 0 frames everywhere. The fuzz shows no camera NaN.
+- **Costs:**
+  - The camera glides in more often, so frames pulling in by more than 0.3 m rise from 58 / 104 to 78 / 150 (smaller steps, more of them).
+  - The largest one-frame distance step in 2-soldier fights goes from 0.40 to 0.77 m (a glide, not a cut).
+  - Capping the glide speed made the pops worse, so it's uncapped.
+- **Left:**
+  - Pops of 1.2–2.1 m still happen when the wall ends up closer than 0.6 m. That's the "pillar at your back" case, where the only room is the rise over the head.
+  - A real fix would slide the camera sideways around thin pillars, or fade them out.
+- Tests: `Tests/EditMode/CameraSweepTests.cs` (4).
+
+### Unity 6 compile-risk audit
+
+See [Unity6-Compile-Risk-Audit.md](Unity6-Compile-Risk-Audit.md). Nothing found that should fail in 6000.6:
+- **Avoided already:** the APIs Unity 6 changed (`FindObjectsOfType`, `GetInstanceID`, `Rigidbody.velocity`, `PhysicMaterial`, `renderPipelineAsset`, ...).
+- **Checked against URP 17:** the URP reflection names.
+- **Checked against Input System 1.20:** the Input System members.
+- **Fixed:** `Layers` now resets its static cache on domain-reload-off play (`SubsystemRegistration`).
+- **Not covered offline:** `game/Assets/Editor/ProjectBootstrap/` isn't compiled by the offline check.
+
+### Fuzz note
+
+- The 8-run quick fuzz (`fuzz --quick`) shows no violations.
+- Three runs show enemy hitboxes opened/closed off by one (e.g. 669/668). Each is a swing still open when the run stopped: a debug count of `IsAttackActive` at the end of each run matched exactly.

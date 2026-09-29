@@ -68,7 +68,10 @@ namespace VaatusRevenge.CombatSim
         public Pad NextPad()
         {
             var pad = new Pad();
-            Threats.RemoveAll(t => GameNow > t.StrikeTime(t.HitCount - 1) + 1.5 || !t.Enemy.IsAlive || t.Enemy.Brain.State != EnemyState.Attacking);
+            // A wind-up the enemy abandoned (e.g. cut short by its break-out counter) is no longer a threat: a person sees
+            // the glow change. Without this the bot dodged strikes that never came.
+            Threats.RemoveAll(t => GameNow > t.StrikeTime(t.HitCount - 1) + 1.5 || !t.Enemy.IsAlive || t.Enemy.Brain.State != EnemyState.Attacking
+                                   || t.Enemy.Brain.CurrentAttack != t.Attack);
             StickWorld = Vector3.Zero;
             if (M.IsAlive)
             {

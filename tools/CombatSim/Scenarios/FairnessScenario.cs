@@ -21,7 +21,11 @@ namespace VaatusRevenge.CombatSim
         static IEnumerable<(string enemy, EnemyAttackData attack)> AllAttacks()
         {
             foreach (var t in new[] { EnemyTuning.CreateDaoSoldier(), EnemyTuning.CreateCrossbowman(), EnemyTuning.CreateSparringDummy() })
+            {
                 foreach (var a in t.Attacks) yield return (t.DisplayName, a);
+                // The anti-mash break-out (round 3) isn't in the normal list but is just as much an attack to read.
+                if (t.BreakOut != null && t.BreakOut.Enabled && t.BreakOut.Attack?.Move != null) yield return (t.DisplayName, t.BreakOut.Attack);
+            }
         }
 
         static void TelegraphTable(Options o)

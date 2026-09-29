@@ -47,7 +47,8 @@ Options:
 | `--record file.json` | `duel` only: write a per-frame replay | off |
 | `--quick` | Shorter fuzz (60,000 frames per run), at most 12 seeds for `all` | off |
 | `--no-notify-strikes` | Enemies do **not** call `PlayerCombatModel.NotifyEnemyStrike`. Since the round-2 fixes (report 02, NEW-01) `EnemyStrikes.OpenMelee` calls it on every melee strike, so the harness does too by default; this flag reproduces the 60cb8ee Unity behaviour. (`--notify-strikes` is still accepted and is a no-op.) | notify on |
-| `--set target.Field=value` | What-if tuning without touching game code, repeatable. Targets: `player` (PlayerTuning), `dodge` (DodgeProfile), `charge` (ChargeSettings), `soldier` / `crossbow` (EnemyTuning), `camera` (CameraTuning, e.g. `--set camera.OcclusionGraceTime=0 --set camera.MinCollisionDistance=0` for the pre-round-2 wall rules). E.g. `--set player.EmptyStaminaRegenDelay=0.8 --set soldier.MaxHealth=110` | none |
+| `--set target.Field=value` | What-if tuning without touching game code, repeatable. Targets: `player` (PlayerTuning), `dodge` (DodgeProfile), `charge` (ChargeSettings), `soldier` / `crossbow` (EnemyTuning), `camera` (CameraTuning, e.g. `--set camera.OcclusionGraceTime=0 --set camera.MinCollisionDistance=0` for the pre-round-2 wall rules). Nested fields take dots: `--set soldier.BreakOut.Enabled=false`, `--set soldier.BreakOut.Attack.Move.Damage=24`. E.g. `--set player.EmptyStaminaRegenDelay=0.8 --set soldier.MaxHealth=110` | none |
+| `--groups A/B` / `--bots x,y` | `duels` only: just these enemy groups (`/`-separated, e.g. `soldier/soldier,soldier`) and bots (e.g. `masher,react`), for quick what-ifs | all five groups, all six bots |
 
 Examples:
 

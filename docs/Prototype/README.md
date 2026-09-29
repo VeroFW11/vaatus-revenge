@@ -36,7 +36,8 @@ The human checklist is in [Playtest Report 01, section 6](Playtest-Report-01.md)
 
 - [Build spec](Fire-Combat-Prototype-Spec.md): controls, moves, numbers, architecture, who built what.
 - [Playtest Report 01](Playtest-Report-01.md): the independent headless playtest and code review.
-- [Playtest Report 02](Playtest-Report-02.md): re-check after fixes, plus round 2 fixes.
+- [Playtest Report 02](Playtest-Report-02.md): re-check after fixes, plus round 2 and round 3 fixes.
+- [Unity 6 compile-risk audit](Unity6-Compile-Risk-Audit.md): API uses the offline check (Unity 2021.3 DLLs) can't vouch for.
 - [`tools/README.md`](../../tools/README.md): offline compile check, tests and the CombatSim bot harness.
 
 ## Known open items

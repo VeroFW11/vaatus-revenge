@@ -219,7 +219,9 @@ namespace VaatusRevenge.Tests
                     f.LastStaggerRemaining = remaining;
                     float longestStagger = Math.Max(d.Brain.Tuning.StaggerDuration, d.Brain.Tuning.ParriedStaggerDuration);
                     if (staggered) Assert.Less(f.SinceStaggered, longestStagger + 2f * Dt, "enemy stagger stuck");
-                    f.StateTime = d.Brain.State == f.LastState ? f.StateTime + Dt : 0f;
+                    // A break-out can follow straight on from another attack, so each attack is timed from its own telegraph.
+                    bool newAttack = EnemyFrameHas(d.Last, EnemyEventType.TelegraphStarted);
+                    f.StateTime = d.Brain.State == f.LastState && !newAttack ? f.StateTime + Dt : 0f;
                     f.LastState = d.Brain.State;
                     if (d.Brain.State == EnemyState.Attacking) Assert.Less(f.StateTime, 2.5f, "enemy attack stuck");
                     Assert.That(d.Brain.Health, Is.InRange(0f, d.Brain.MaxHealth));

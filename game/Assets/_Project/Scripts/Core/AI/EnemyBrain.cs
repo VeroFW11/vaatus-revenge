@@ -16,6 +16,9 @@ namespace VaatusRevenge.Core
     // TOKENS: an enemy holds an attack token from the moment it commits to an attack until the attack ends or
     // is interrupted (stagger, death, reset, losing interest, giving up the approach). As a safety net, a
     // token is also dropped at the end of any frame where the brain isn't attacking or about to.
+    // BREAK-OUT (EnemyTuning.BreakOut, the anti-mash rule): enough clean hits in a short window, while not
+    // staggered, arm an armoured counter. It starts at the next free moment (or cuts short a wind-up that has
+    // no armour yet), needs a token like any attack, and is shown with its own TelegraphKind.
     //
     // Tuning is read live and never written (one EnemyTuning may be shared by several enemies).
     public abstract class EnemyBrain
@@ -61,6 +64,12 @@ namespace VaatusRevenge.Core
         bool activeOpen;
         bool committed;               // tracking has stopped for this attack
         float committedPitch;
+
+        readonly double[] breakOutHitTimes = new double[EnemyBreakOutRule.MaxTrackedHits];   // ring of recent clean-hit times
+        int breakOutHitCursor;
+        float breakOutArmed;          // > 0: the break-out has triggered and waits (this many seconds) for a free moment
+        float breakOutCooldown;       // > 0: hits don't count towards a break-out yet
+        bool strikeLanded;            // a strike of the current attack hit the player (OnStrikeLanded)
 
         protected EnemyBrain(EnemyTuning tuning, AttackTokenPool tokens, int ownerId, int seed, float facingYaw)
         {
@@ -110,6 +119,10 @@ namespace VaatusRevenge.Core
         public float StaggerRemaining => state == EnemyState.Staggered ? Math.Max(0f, staggerDuration - action.Time) : 0f;
         // True while staggered and for StaggerImmunity seconds afterwards: hits still hurt but can't re-stagger.
         public bool IsStaggerImmune => state == EnemyState.Staggered || staggerImmunityRemaining > 0f;
+        // The anti-mash counter has triggered and is waiting to start (for tests and the debug panel).
+        public bool IsBreakOutArmed => breakOutArmed > 0f;
+        // The running attack is the break-out counter.
+        public bool IsBreakingOut => CurrentAttack != null && tuning.BreakOut != null && currentAttack == tuning.BreakOut.Attack;
 
         public AttackPhase Phase
         {
@@ -159,6 +172,7 @@ namespace VaatusRevenge.Core
                 {
                     UpdateAwareness(world);
                     AdvanceAction(dt, world);
+                    if (breakOutArmed > 0f) TryStartBreakOut(world);
                     if (IsFree) Think(dt, world);
                 }
                 ComputeMotion(dt, world);
@@ -217,6 +231,9 @@ namespace VaatusRevenge.Core
             EnsureCooldowns();
             for (int i = 0; i < cooldowns.Length; i++) cooldowns[i] = Math.Max(0f, cooldowns[i] - dt);
             if (state != EnemyState.Attacking) AttackTimer = Math.Max(0f, AttackTimer - dt);
+            breakOutCooldown = Math.Max(0f, breakOutCooldown - dt);
+            // The wait only runs down while it's free to act: a break-out armed mid-swing comes right after that swing.
+            if (state != EnemyState.Attacking) breakOutArmed = Math.Max(0f, breakOutArmed - dt);   // no token, player gone: give up
             if (state != EnemyState.Dead && tuning.HealthRefillDelay > 0f && sinceHit >= tuning.HealthRefillDelay && health < MaxHealth)
             {
                 health = MaxHealth;
@@ -362,7 +379,14 @@ namespace VaatusRevenge.Core
             PendingAttackIndex = -1;          // the token now belongs to the running attack
             EnsureCooldowns();
             cooldowns[index] = Math.Max(0f, attack.Cooldown);
+            BeginAttack(attack, world);
+        }
+
+        // The token (if any) is already held: runs 'attack' from its telegraph.
+        void BeginAttack(EnemyAttackData attack, in EnemyWorldState world)
+        {
             SetState(EnemyState.Attacking);
+            strikeLanded = false;
             currentAttack = attack;
             currentAttackId = CombatIds.Next();
             openHitIndex = -1;
@@ -378,6 +402,63 @@ namespace VaatusRevenge.Core
             });
             OnAttackStarted();
             UpdateAttack(world);
+        }
+
+        // ---------------------------------------------------------------- break-out (anti-mash counter)
+
+        // Called for every clean hit that didn't stagger or kill. Counts it; enough of them inside the window arm
+        // the break-out. Hits during a stagger never get here, and hits on its recovery only count when its swing
+        // landed on the player first (a trade; after a dodge, block or deflect the punish is earned).
+        void CountHitForBreakOut()
+        {
+            EnemyBreakOutRule rule = tuning.BreakOut;
+            if (rule == null || !rule.Enabled || rule.Attack == null || rule.Attack.Move == null) return;
+            // Hitting into the break-out itself (its armoured wind-up) is mashing for sure, so those hits count even
+            // during the cooldown: keep pressing through the glow and it shoves again straight after.
+            if (breakOutArmed > 0f || (breakOutCooldown > 0f && !IsBreakingOut)) return;
+            if (Phase == AttackPhase.Recovery && !(rule.CountsTradedRecoveryHits && strikeLanded)) return;   // an earned punish
+            breakOutHitTimes[breakOutHitCursor] = clock;
+            breakOutHitCursor = (breakOutHitCursor + 1) % breakOutHitTimes.Length;
+            int needed = Math.Min(Math.Max(1, rule.HitsToTrigger), breakOutHitTimes.Length);
+            int recent = 0;
+            for (int i = 0; i < breakOutHitTimes.Length; i++)
+                if (breakOutHitTimes[i] >= 0.0 && clock - breakOutHitTimes[i] <= rule.HitWindow + Epsilon) recent++;
+            if (recent < needed) return;
+            breakOutArmed = Math.Max(Epsilon, rule.MaxWait);   // MaxWait 0 still gets this frame's chance
+            ClearBreakOutHits();
+        }
+
+        void ClearBreakOutHits()
+        {
+            for (int i = 0; i < breakOutHitTimes.Length; i++) breakOutHitTimes[i] = -1.0;
+            breakOutHitCursor = 0;
+        }
+
+        // Starts the armed break-out if the enemy can act: when free, or during a wind-up that has no armour yet
+        // (it drops that swing to shove instead; a swing that is already striking or armoured plays out). It needs
+        // the player in reach and an attack token, like any attack; otherwise it keeps waiting until MaxWait runs out.
+        void TryStartBreakOut(in EnemyWorldState world)
+        {
+            EnemyBreakOutRule rule = tuning.BreakOut;
+            EnemyAttackData attack = rule != null ? rule.Attack : null;
+            if (attack == null || attack.Move == null || !rule.Enabled)
+            {
+                breakOutArmed = 0f;
+                return;
+            }
+            bool canCutWindUp = rule.CutsWindUp && state == EnemyState.Attacking && !committed && !HasHyperArmor && currentAttack != attack;
+            if (!IsFree && !canCutWindUp) return;
+            if (!world.HasTarget || RangeTo(world) > attack.MaxRange) return;
+            bool holdsToken = tokens == null || !tuning.UsesAttackToken || tokens.IsHolding(OwnerId);
+            if (!holdsToken && !tokens.CanAcquire(OwnerId)) return;
+            if (rule.WaitsForOtherAttackers && tokens != null && tokens.Count > (tokens.IsHolding(OwnerId) ? 1 : 0)) return;
+            if (canCutWindUp) ExitAttack();           // closes the dropped swing tidily (its AttackEnded) and returns its token...
+            PendingAttackIndex = -1;                  // ...a reserved approach is replaced by the break-out
+            if (tokens != null && tuning.UsesAttackToken && !tokens.TryAcquire(OwnerId)) return;   // ...and takes it straight back
+            breakOutArmed = 0f;
+            breakOutCooldown = Math.Max(0f, rule.Cooldown);
+            if (rule.RestoresPoise) poise.Reset(tuning.MaxPoise);
+            BeginAttack(attack, world);
         }
 
         static int HitCountOf(EnemyAttackData attack)
@@ -467,8 +548,9 @@ namespace VaatusRevenge.Core
 
         void EndAttack()
         {
+            bool followUp = IsBreakingOut && strikeLanded;   // the shove landed: press the advantage
             ExitAttack();
-            AttackTimer = NextAttackDelay();
+            AttackTimer = followUp ? Math.Max(0f, tuning.BreakOut.FollowUpDelay) : NextAttackDelay();
             OnAttackFinished();
             if (state == EnemyState.Attacking) SetState(EnemyState.Circle);
         }
@@ -633,12 +715,23 @@ namespace VaatusRevenge.Core
                 Stagger(tuning.StaggerDuration);
                 knockback.Start(hit.Direction, hit.Knockback, tuning.KnockbackTime);
             }
+            else if (state != EnemyState.Staggered)
+            {
+                CountHitForBreakOut();
+            }
             return result;
         }
 
         // Hyper armour runs from Move.HyperArmorFrom (e.g. halfway through a big wind-up) until the last strike ends.
         bool HasHyperArmor => state == EnemyState.Attacking && currentAttack != null && currentAttack.Move.HyperArmor
             && action.Time >= currentAttack.Move.HyperArmorFrom && action.Time < LastActiveEnd(currentAttack);
+
+        // The Unity side (EnemyStrikes) reports that a melee strike of the current attack hit the player cleanly (not
+        // blocked, deflected or dodged). The break-out rule uses it to tell a trade from an earned punish.
+        public void OnStrikeLanded()
+        {
+            if (state == EnemyState.Attacking) strikeLanded = true;
+        }
 
         // The player deflected our attack: stagger. (For a deflected bolt the Unity side may skip this.)
         public void OnParried()
@@ -656,6 +749,8 @@ namespace VaatusRevenge.Core
             staggerDuration = Math.Max(0f, duration);
             moveVelocity = Vector3.Zero;
             action.Begin();
+            breakOutArmed = 0f;               // a stagger is earned: it wipes any break-out in the making
+            ClearBreakOutHits();
             Emit(new EnemyEvent { Type = EnemyEventType.Staggered, Duration = staggerDuration });
         }
 
@@ -762,6 +857,9 @@ namespace VaatusRevenge.Core
             AttackTimer = 0f;
             Array.Clear(cooldowns, 0, cooldowns.Length);
             Array.Clear(recentHitsTaken, 0, recentHitsTaken.Length);
+            ClearBreakOutHits();
+            breakOutArmed = 0f;
+            breakOutCooldown = 0f;
             Random.Reseed(seed);
             OnReset();
         }
@@ -771,6 +869,7 @@ namespace VaatusRevenge.Core
             get
             {
                 string attack = CurrentAttack != null ? " " + CurrentMove.DisplayName + " " + Phase : "";
+                if (breakOutArmed > 0f) attack += " (break-out armed)";
                 return string.Format(CultureInfo.InvariantCulture, "{0}{1} | HP {2:0}/{3:0} PO {4:0} | token {5} | next attack {6:0.00}s",
                     state, attack, health, MaxHealth, poise.Current, HoldsToken ? "yes" : "no", AttackCooldownRemaining);
             }

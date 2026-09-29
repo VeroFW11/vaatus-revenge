@@ -67,6 +67,9 @@ namespace VaatusRevenge.Core
 
         public EnemyAttackData[] Attacks = CreateDaoSoldierAttacks();
 
+        // --- Anti-mash counter (see EnemyBreakOutRule) ---
+        public EnemyBreakOutRule BreakOut = CreateDaoSoldierBreakOut();
+
         public static EnemyTuning CreateDaoSoldier()
         {
             return new EnemyTuning();
@@ -86,6 +89,7 @@ namespace VaatusRevenge.Core
             t.LeashRadius = 2f;                      // smaller than the sandbox platform's half-width (3 m) plus a body radius,
                                                      // so the leash alone keeps it off the edge; the ledge check is only a backup
             t.UsesAttackToken = true;                // shares the encounter's tokens with the soldiers (ENEMY-01, pending David)
+            t.BreakOut.Enabled = false;              // it backs away instead; a crossbow has no shove
             t.Attacks = new[]
             {
                 new EnemyAttackData
@@ -122,6 +126,7 @@ namespace VaatusRevenge.Core
             t.AttackIntervalMax = 2.5f;
             t.BackOffChance = 0f;
             t.UsesAttackToken = false;
+            t.BreakOut.Enabled = false;              // a practice target: mashing it is the point
             t.Attacks = new[]
             {
                 new EnemyAttackData
@@ -174,6 +179,41 @@ namespace VaatusRevenge.Core
                 {
                     Telegraph = TelegraphKind.Delayed, Weight = 1.5f, MinRange = 1.2f, MaxRange = ThrustReach, Cooldown = 4f,
                     Move = thrust
+                }
+            };
+        }
+
+        // The Dao Soldier's break-out: a wide shoulder-shove-and-slash. Armoured from its first frame (that's what
+        // "breaking out" of a combo means), but with a telegraph long enough to react to (0.6 s; human reaction is
+        // about 0.25 s, and the extra 0.1 s over the Quick Slash lets a Punishing player finish the light they were
+        // in before dodging) and a normal strike that can be dodged, blocked or deflected. It hits hard (30, more than
+        // the Heavy Overhead), breaks the player's poise and knocks them back, and recovers quickly; if it landed, the
+        // next attack follows straight away. A player who keeps mashing into the glow loses the trade.
+        // Tuned in playtest report 02, round 3: masher vs one soldier in Fluid 100% -> 65% wins, the defending bots
+        // stay at 98-100%. Weaker settings (14-24 damage, a long recovery the masher could punish) left it at 88-100%.
+        static EnemyBreakOutRule CreateDaoSoldierBreakOut()
+        {
+            MoveData shove = Melee("Break-Out Shove", 0.60f, 0.12f, 0.35f, 30f, 35f, SwordReach, 160f, 0.3f, 360f);
+            shove.Kind = HitKind.Heavy;
+            shove.HyperArmor = true;
+            shove.HyperArmorFrom = 0f;
+            shove.Knockback = 2.0f;
+            shove.Hitstop = 0.08f;
+            shove.GuardStaminaDamage = 25f;
+            return new EnemyBreakOutRule
+            {
+                Enabled = true,
+                HitsToTrigger = 3,
+                HitWindow = 1.2f,
+                MaxWait = 0.6f,
+                Cooldown = 2f,
+                FollowUpDelay = 0f,
+                RestoresPoise = true,
+                CutsWindUp = true,
+                Attack = new EnemyAttackData
+                {
+                    Telegraph = TelegraphKind.BreakOut, Weight = 0f, MaxRange = SwordReach + 0.3f,
+                    Move = shove
                 }
             };
         }

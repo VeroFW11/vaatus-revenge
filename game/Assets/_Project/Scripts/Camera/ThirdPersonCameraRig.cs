@@ -248,7 +248,27 @@ namespace VaatusRevenge
             float lookAhead = tuning.CollisionLookAhead > 0f
                 ? LookAhead(shoulder, back, orbit.DesiredDistance, radius + tuning.CollisionLookAhead)
                 : float.PositiveInfinity;
-            orbit.UpdateDistance(maxDistance, cameraFree, lookAhead, realDt);
+            float sweep = SweepProbe(orbit, tuning, radius);
+            orbit.UpdateDistance(maxDistance, cameraFree, lookAhead, sweep, realDt);
+        }
+
+        // Looks ahead along the swing when the camera is turning (a lock-on turn) or travelling (a dodge): a few probes
+        // from where the shoulder point is heading toward where the camera will be over the next CollisionSweepTime
+        // (report 02, round 3). The shortest one lets the camera start gliding in before a pillar face is swept into
+        // it. Infinity = the camera is holding still, or nothing is there.
+        static float SweepProbe(OrbitCameraModel orbit, CameraTuning tuning, float radius)
+        {
+            int samples = Mathf.Clamp(tuning.CollisionSweepSamples, 0, 8);
+            if (samples == 0 || !orbit.IsSweeping) return float.PositiveInfinity;
+            float length = orbit.DesiredDistance;
+            float shortest = float.PositiveInfinity;
+            for (int i = 1; i <= samples; i++)
+            {
+                float share = i / (float)samples;
+                float d = Probe(orbit.SweepOrigin(share).ToUnity(), orbit.SweepBack(share).ToUnity(), length, radius);
+                if (d < length && d < shortest) shortest = d;
+            }
+            return shortest;
         }
 
         // The fatter distance probe. It only warns about something ahead: if the fat sphere already overlaps a wall where

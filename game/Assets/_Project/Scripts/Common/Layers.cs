@@ -11,6 +11,15 @@ namespace VaatusRevenge
         static int player = -1;
         static int enemy = -1;
 
+        // Domain reload is off, so the cached layer numbers would survive into the next Play session; forget them in
+        // case the layers were renamed in Tags and Layers between sessions.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics()
+        {
+            player = -1;
+            enemy = -1;
+        }
+
         public static int Player
         {
             get

@@ -19,11 +19,14 @@ namespace VaatusRevenge
         public Color DelayedTelegraphColor = new Color(1f, 0.12f, 0.06f);
         [Tooltip("Ranged attacks while taking aim: yellow.")]
         public Color AimedTelegraphColor = new Color(1f, 0.78f, 0.12f);
+        [Tooltip("The break-out counter (hit it too many times in a row and it shoves back, armoured): violet, unlike any other attack, so it reads as 'stop pressing, dodge now'.")]
+        public Color BreakOutTelegraphColor = new Color(0.72f, 0.2f, 1f);
         [Tooltip("Glow brightness at the end of the wind-up. Around 1-3 reads well with bloom.")]
         public float NormalTelegraphIntensity = 2f;
         public float HeavyTelegraphIntensity = 3f;
         public float DelayedTelegraphIntensity = 3f;
         public float AimedTelegraphIntensity = 2f;
+        public float BreakOutTelegraphIntensity = 3.5f;
         [Tooltip("The glow starts at this share of full brightness and builds up as the strike gets closer, so its peak tells you when to dodge.")]
         [Range(0f, 1f)] public float TelegraphStartShare = 0.35f;
         [Tooltip("For this many seconds before the strike lands the glow flares brighter: the 'now!' cue for dodges and deflects. 0 = no flare.")]
@@ -93,6 +96,7 @@ namespace VaatusRevenge
                 case TelegraphKind.Heavy: return HeavyTelegraphColor;
                 case TelegraphKind.Delayed: return DelayedTelegraphColor;
                 case TelegraphKind.Aimed: return AimedTelegraphColor;
+                case TelegraphKind.BreakOut: return BreakOutTelegraphColor;
                 default: return NormalTelegraphColor;
             }
         }
@@ -104,6 +108,7 @@ namespace VaatusRevenge
                 case TelegraphKind.Heavy: return HeavyTelegraphIntensity;
                 case TelegraphKind.Delayed: return DelayedTelegraphIntensity;
                 case TelegraphKind.Aimed: return AimedTelegraphIntensity;
+                case TelegraphKind.BreakOut: return BreakOutTelegraphIntensity;
                 default: return NormalTelegraphIntensity;
             }
         }

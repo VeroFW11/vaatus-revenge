@@ -26,6 +26,8 @@ namespace VaatusRevenge.CombatSim
         public string Enemies = "soldier";
         public double Seconds = 60;
         public bool Quick;
+        public string Bots;            // duels only: comma list of bot styles (null = all six)
+        public string Groups;          // duels only: enemy groups separated by '/', e.g. "soldier/soldier,soldier" (null = all five)
     }
 
     // Headless playtest harness for the Fire combat prototype. See README.md.
@@ -123,6 +125,8 @@ namespace VaatusRevenge.CombatSim
                     case "--enemies": o.Enemies = Next(); break;
                     case "--seconds": o.Seconds = double.Parse(Next(), CultureInfo.InvariantCulture); break;
                     case "--quick": o.Quick = true; break;
+                    case "--groups": o.Groups = Next(); break;
+                    case "--bots": o.Bots = Next(); break;
                     case "--notify-strikes": SimEnemy.NotifyStrikes = true; break;      // the default now; kept so old commands still run
                     case "--no-notify-strikes": SimEnemy.NotifyStrikes = false; break;
                     case "--set": TuningOverrides.Add(Next()); break;
@@ -152,7 +156,8 @@ namespace VaatusRevenge.CombatSim
             Console.WriteLine("Options: --seed N  --seeds N  --preset fluid|punishing|both  --fps N  --record file.json  --out results.md");
             Console.WriteLine("         --bot masher|react|anticipate|guard|aggressive|fajin|oracle|idle  --enemies soldier,soldier,crossbow,platform,dummy  --seconds N  --quick");
             Console.WriteLine("         --no-notify-strikes  enemies don't call PlayerCombatModel.NotifyEnemyStrike (the 60cb8ee Unity behaviour; on by default, as Unity does now)");
-            Console.WriteLine("         --set target.Field=value  what-if tuning (targets: player, dodge, charge, soldier, crossbow, camera), repeatable");
+            Console.WriteLine("         --set target.Field=value  what-if tuning (targets: player, dodge, charge, soldier, crossbow, camera; nested fields with dots), repeatable");
+            Console.WriteLine("         --groups soldier/soldier,soldier  --bots masher,react  duels only: just these enemy groups ('/'-separated) and bots");
         }
 
         // A short hash of the core sources measured, so results can be matched to a version of the code.

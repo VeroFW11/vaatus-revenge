@@ -8,7 +8,8 @@ namespace VaatusRevenge
     //
     // Readability is the point: each attack type has its own silhouette, so players learn to tell them apart
     // before they land. Slash = sword cocked over the shoulder, overhead = sword straight up with the body
-    // rearing back, thrust = sword drawn in level and pointing at you, then a dead-still pause.
+    // rearing back, thrust = sword drawn in level and pointing at you, then a dead-still pause, break-out (the
+    // anti-mash counter) = shoulder dropped and blade swept low behind, a crouch before a wide shove-and-slash.
     //
     // Fairness is the other point: when a strike lands, the blade tip sits exactly on the edge of what the
     // attack can hit (its OriginForward + Range, read from the attack data), so a hit never comes from beyond
@@ -43,6 +44,8 @@ namespace VaatusRevenge
         public Vector3 SlashWindUp = new Vector3(0.42f, 1.62f, -0.05f);
         public Vector3 OverheadWindUp = new Vector3(0.12f, 2.0f, -0.15f);
         public Vector3 ThrustWindUp = new Vector3(0.22f, 1.42f, 0.12f);
+        [Tooltip("Break-out counter: blade swept low and back, so it reads differently from every normal wind-up.")]
+        public Vector3 BreakOutWindUp = new Vector3(0.5f, 1.1f, -0.3f);
 
         [Header("Strikes: where the blade points as the hit lands (x = degrees right of straight ahead, y = degrees below level)")]
         [Tooltip("How far the hand reaches out is worked out from the attack's reach, so the blade tip lands exactly on the edge of what the attack can hit.")]
@@ -52,6 +55,8 @@ namespace VaatusRevenge
         public Vector2 OverheadStrikeAim = new Vector2(3f, 10f);
         [Tooltip("The thrust's reach is longest, so the hand drives furthest out.")]
         public Vector2 ThrustStrikeAim = new Vector2(-3f, 4f);
+        [Tooltip("Break-out counter: a wide, low sweep across the body.")]
+        public Vector2 BreakOutStrikeAim = new Vector2(-40f, 14f);
         [Tooltip("How far the hand may reach from the shoulder, in metres. If an attack's reach needs more or less, the blade can't match it and a warning says to change WeaponLength.")]
         public float StrikeArmMin = 0.3f;
         public float StrikeArmMax = 1.4f;
@@ -63,6 +68,8 @@ namespace VaatusRevenge
         public float OverheadStrikeLean = 8f;
         public float ThrustWindUpLean = -9f;
         public float ThrustStrikeLean = 6f;
+        public float BreakOutWindUpLean = 10f;        // hunched forward into the shove (the others lean back)
+        public float BreakOutStrikeLean = 12f;
 
         [Header("Crossbow")]
         [Tooltip("Where the crossbow hand goes while aiming: raised to the chest, near where the bolt leaves.")]
