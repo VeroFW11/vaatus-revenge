@@ -34,7 +34,7 @@ namespace VaatusRevenge.EditorTools
         const string DialogTitle = "Animation Catalogue";
 
         // Unity creates hidden preview clips inside some model files; they aren't real animations.
-        const string PreviewClipPrefix = "__preview__";
+        internal const string PreviewClipPrefix = "__preview__";
 
         // The humanoid "IK goal" curves we read for the reach estimate. On a Humanoid clip Unity stores, besides the
         // muscle curves, where each hand and foot ends up ("LeftHandT" = left hand translation) and where the body's
@@ -211,7 +211,8 @@ namespace VaatusRevenge.EditorTools
 
         // For each hand and foot, finds when it is furthest from the body centre. For a punch or kick that is
         // usually the moment of impact, which is when the hitbox should be live. Only a heuristic: see the note.
-        static ReachEstimate EstimateReach(AnimationClip clip, out string unavailableReason)
+        // Shared with AnimationSetBuilder (impact-time estimate for the animation set).
+        internal static ReachEstimate EstimateReach(AnimationClip clip, out string unavailableReason)
         {
             unavailableReason = null;
             if (!clip.isHumanMotion)
@@ -393,7 +394,7 @@ namespace VaatusRevenge.EditorTools
         // Helpers
         // ---------------------------------------------------------------------------------------------------------
 
-        static bool EditorIsIdle(string action)
+        internal static bool EditorIsIdle(string action)
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling)
             {
@@ -403,7 +404,7 @@ namespace VaatusRevenge.EditorTools
             return true;
         }
 
-        static bool ThirdPartyFolderExists()
+        internal static bool ThirdPartyFolderExists()
         {
             if (AssetDatabase.IsValidFolder(ThirdPartyFolder)) return true;
             EditorUtility.DisplayDialog(DialogTitle,
@@ -417,7 +418,7 @@ namespace VaatusRevenge.EditorTools
             return false;
         }
 
-        static List<string> FindAssetPaths(string filter)
+        internal static List<string> FindAssetPaths(string filter)
         {
             var paths = new List<string>();
             var seen = new HashSet<string>();
@@ -431,7 +432,7 @@ namespace VaatusRevenge.EditorTools
         }
 
         // "Assets/ThirdParty/Brawler Animations/Fbx/Punch.fbx" -> "Brawler Animations".
-        static string PackName(string path)
+        internal static string PackName(string path)
         {
             string rest = path.Substring(Math.Min(path.Length, ThirdPartyFolder.Length + 1));
             int slash = rest.IndexOf('/');
@@ -613,14 +614,14 @@ namespace VaatusRevenge.EditorTools
             }
         }
 
-        class ReachEstimate
+        internal class ReachEstimate
         {
             public float SampleRate;
             public int SampleCount;
             public readonly List<LimbReach> Limbs = new List<LimbReach>();
         }
 
-        class LimbReach
+        internal class LimbReach
         {
             public string Limb;
             public float RestDistance, PeakDistance, PeakTime, PeakNormalizedTime;
