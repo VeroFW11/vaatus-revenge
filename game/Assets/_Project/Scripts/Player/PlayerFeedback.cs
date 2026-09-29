@@ -209,15 +209,14 @@ namespace VaatusRevenge
             switch (move.EffectKey)
             {
                 case EffectKeys.Cone:
-                    FireVfx.Cone(origin, direction, move.Range * (faJin ? 1.15f : 1f), move.ArcDegrees);
+                    // Drawn exactly as long as it hits: a fa jin cone is stronger, not longer.
+                    FireVfx.Cone(origin, direction, move.Range, move.ArcDegrees);
                     break;
                 case EffectKeys.Pillar:
-                {
-                    Vector3 flat = new Vector3(direction.x, 0f, direction.z).normalized;
-                    float share = p != null ? p.PillarReachShare : 0.6f;
-                    FireVfx.Pillar(body.position + flat * (move.Range * share), p != null ? p.PillarHeight : 2.6f);
+                    // The rising kick throws a burst up along the kick; the column of fire itself rises under the
+                    // enemy when it's actually launched (EnemyRigPresenter.OnLaunched), so there's only ever one.
+                    FireVfx.Burst(limb.position, direction, move.Range * s.BurstScalePerMetre * 0.5f);
                     break;
-                }
                 case EffectKeys.Whip:
                     StopWhip();
                     if (rig != null)
@@ -228,7 +227,9 @@ namespace VaatusRevenge
                     FireVfx.Wheel(body.position, move.Range);
                     break;
                 case EffectKeys.Slam:
-                    FireVfx.Slam(limb.position, move.Range);
+                    // A downward burst from the kicking foot. The ring of fire on the floor appears where and when the
+                    // enemy actually lands (EnemyRigPresenter.OnKnockedDown), not under the player.
+                    FireVfx.Burst(limb.position, Vector3.down, move.Range * s.BurstScalePerMetre * 0.5f);
                     break;
                 case EffectKeys.Trail:
                     FireVfx.Burst(limb.position, direction, move.Range * s.BurstScalePerMetre * 0.5f);
@@ -249,7 +250,7 @@ namespace VaatusRevenge
         static bool HasBigEffect(MoveData move)
         {
             string key = move.EffectKey;
-            return key == EffectKeys.Cone || key == EffectKeys.Whip || key == EffectKeys.Wheel || key == EffectKeys.Pillar;
+            return key == EffectKeys.Cone || key == EffectKeys.Whip || key == EffectKeys.Wheel;
         }
 
         void PlungeImpact(in PlayerEvent e, PlayerFeedbackSettings s)

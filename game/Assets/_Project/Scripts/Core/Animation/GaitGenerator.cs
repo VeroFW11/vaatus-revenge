@@ -98,7 +98,7 @@ namespace VaatusRevenge.Core
                 // Heel strikes toes-up, rolls flat, and peels off the ground toes-down at push-off. When the foot tips,
                 // the ankle rises so the ball of the foot (or the heel) stays on the floor instead of sinking into it.
                 pitch = u < 0.2f ? AnimMath.Lerp(-12f, 0f, u / 0.2f) : (u > 0.7f ? AnimMath.Lerp(0f, 25f + 20f * run, (u - 0.7f) / 0.3f) : 0f);
-                height = FootTipRise(pitch);
+                height = PoseSolver.FootTipRise(pitch);
                 return;
             }
             float q = (p - stanceShare) / Math.Max(1e-3f, 1f - stanceShare);
@@ -108,19 +108,9 @@ namespace VaatusRevenge.Core
             // rather than hovering, and peaks early (the heel kicks up behind when running).
             float arc = MathF.Pow(Math.Max(0f, MathF.Sin(MathF.PI * MathF.Pow(q, 0.75f))), 1.5f);
             float pitchNow = AnimMath.Lerp(45f * run + 20f, -12f, AnimMath.SmoothStep(q));
-            height = Math.Max(lift * arc, FootTipRise(pitchNow));
+            height = Math.Max(lift * arc, PoseSolver.FootTipRise(pitchNow));
             along -= run * half * 0.35f * MathF.Sin(MathF.PI * q) * (1f - q);
             pitch = pitchNow;
-        }
-
-        // How far the ankle must rise for a foot tipped by pitch degrees to keep its lowest point on the floor
-        // (toes down: the ball of the foot, 13 cm ahead and 6 cm below the ankle; toes up: the heel).
-        static float FootTipRise(float pitch)
-        {
-            float a = Math.Abs(pitch) * AnimMath.Deg2Rad;
-            float reach = pitch > 0f ? 0.13f : 0.07f;
-            float drop = reach * MathF.Sin(a) + 0.06f * MathF.Cos(a);
-            return Math.Max(0f, drop - 0.06f);
         }
 
         static float Wrap01(float x)

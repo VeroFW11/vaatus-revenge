@@ -41,16 +41,22 @@ namespace VaatusRevenge.Core
         public float StrikeAimMaxPitch = 55f;
         public float StrikeAimGiveUpYaw = 150f;
         public float StrikeAimMaxDistance = 7f;      // metres: further targets aren't aimed at
+        // Seconds after the first active moment that the aim is measured at. The hit shows on the first frame at or
+        // after that moment (up to one frame late), so half a 60 fps frame keeps a fast sweeping kick on target.
+        public float StrikeAimLead = 1f / 120f;
 
         // ---- Foot locking: a planted foot stays exactly where it touched down while the body moves over it, and
         // takes a quick step when the pose wants it somewhere else (no skating).
         public bool FootLocks = true;
         public float PlantHeight = 0.025f;           // a foot this close to the floor counts as planted
         public float StepDistance = 0.2f;            // step when the pose wants the foot this far from where it stands
+        public float StepTurn = 35f;                 // ...or turned this many degrees from the way it points (a pivot)
+        public float StepRetargetShare = 0.5f;       // 0..1: a step's landing spot follows the pose for this share of it
         public float StepSpeed = 5f;                 // m/s of a step (sets its duration)...
         public float StepMinTime = 0.07f;            // ...within these limits
         public float StepMaxTime = 0.16f;
         public float StepLiftPerMetre = 0.35f;       // how high a step lifts the foot, per metre stepped
+        public float StepMinLift = 0.045f;           // even a short step clears the floor (it's a step, not a shuffle)
         public float StepMaxLift = 0.12f;
         public float ReleaseRate = 16f;              // how quickly a released foot catches up with the pose (1/s)
         public float LeapSpeed = 6f;                 // a grounded action moving faster than this (m/s) leaps: both feet leave the floor
@@ -62,6 +68,7 @@ namespace VaatusRevenge.Core
 
         // ---- Landing
         public float LandDuration = 0.22f;           // knees absorb a landing for this long (when nothing else is playing)
+        public float LandBlendIn = 0.05f;            // ...blending in over this long
         public float HardLandingSpeed = 9f;          // m/s: landings faster than this sink deeper
     }
 

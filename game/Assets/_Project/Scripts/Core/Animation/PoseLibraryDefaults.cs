@@ -130,6 +130,18 @@ namespace VaatusRevenge.Core
             clips.Add(new ClipBuilder("dummy:" + AnimationKeys.Idle, ClipMode.Loop, DummyGuard()) { LoopPeriod = 4f, ArmSwing = 0f }
                 .K(KeyPhase.Cycle, 0.5f, PoseEase.InOut, s => s.Torso(1f, 2f, 1f))
                 .Build());
+            // A dummy on its post rocks back and wobbles when hit; its feet never leave the post.
+            clips.Add(new ClipBuilder("dummy:" + AnimationKeys.Hurt, ClipMode.Action, DummyGuard()) { DefaultDuration = 0.4f, StartupShare = 0.15f, ActiveShare = 0.35f, FadeIn = 0.06f }
+                .K(KeyPhase.Startup, 1f, PoseEase.Snap, s => s.Torso(-12f, 8f, 4f).Head(-10f, 5f))
+                .K(KeyPhase.Active, 1f, PoseEase.InOut, s => s.Torso(5f, -3f, -2f).Head(4f, -2f))
+                .K(KeyPhase.Recovery, 1f, PoseEase.InOut, DummyGuard())
+                .Build());
+            clips.Add(new ClipBuilder("dummy:" + AnimationKeys.Stagger, ClipMode.Action, DummyGuard()) { DefaultDuration = 1f, StartupShare = 0.12f, ActiveShare = 0.66f, FadeIn = 0.06f }
+                .K(KeyPhase.Startup, 1f, PoseEase.Snap, s => s.Torso(-20f, 10f, 6f).Head(-18f, 0f))
+                .K(KeyPhase.Active, 0.35f, PoseEase.InOut, s => s.Torso(12f, -6f, -8f).Head(10f, 0f, -6f))
+                .K(KeyPhase.Active, 0.7f, PoseEase.InOut, s => s.Torso(-6f, 4f, 5f).Head(-4f, 0f, 4f))
+                .K(KeyPhase.Recovery, 1f, PoseEase.InOut, DummyGuard())
+                .Build());
 
             // Jump: legs drive the take-off, then knees tuck up with the hands high (held while rising).
             PoseSpec push = guard.Clone();
@@ -174,7 +186,7 @@ namespace VaatusRevenge.Core
                 {
                     s.Hips(0f, -0.24f, 0.06f).Pelvis(0f, 5f).Torso(30f, 0f).Head(-20f, 0f);
                     // fire-propelled: both feet skim just off the floor for the dash (no skating on a planted foot)
-                    s.Foot(L, 0.13f, Ground + 0.07f, 0.38f, 5f, -10f).Foot(R, 0.15f, 0.16f, -0.4f, 20f, 35f);
+                    s.Foot(L, 0.13f, Ground + 0.045f, 0.38f, 5f, -10f).Foot(R, 0.15f, 0.16f, -0.4f, 20f, 35f);
                     s.Arm(L, 25f, -45f, 0.95f, 10f).Arm(R, 20f, -50f, 0.95f, 10f).Set(PoseChannel.ArmFollow, 0.2f);
                 })
                 .K(KeyPhase.Active, 1f, PoseEase.Linear, s =>
@@ -187,7 +199,7 @@ namespace VaatusRevenge.Core
 
             // Air dash: body stretched out flat behind a jet of flame from the feet, arms swept back.
             PoseSpec air = AirGuard();
-            clips.Add(new ClipBuilder(AnimationKeys.AirDash, ClipMode.Action, air) { DefaultDuration = 0.3f, StartupShare = 0.15f, ActiveShare = 0.55f, FadeIn = 0.06f }
+            clips.Add(new ClipBuilder(AnimationKeys.AirDash, ClipMode.Action, air) { DefaultDuration = 0.3f, StartupShare = 0.25f, ActiveShare = 0.5f, FadeIn = 0.06f }
                 .K(KeyPhase.Startup, 1f, PoseEase.Snap, s =>
                 {
                     s.Hips(0f, 0f, 0f).Pelvis(28f, 5f).Torso(40f, 0f).Head(-45f, 0f);
@@ -334,14 +346,14 @@ namespace VaatusRevenge.Core
 
             // Get up: a kip-up. Knees roll back over the chest, then the legs snap forward and the body springs
             // up into a crouch, back to guard.
-            clips.Add(new ClipBuilder(AnimationKeys.GetUp, ClipMode.Action, lying) { DefaultDuration = 0.65f, StartupShare = 0.4f, ActiveShare = 0.25f, FadeIn = 0.08f }
+            clips.Add(new ClipBuilder(AnimationKeys.GetUp, ClipMode.Action, lying) { DefaultDuration = 0.65f, StartupShare = 0.35f, ActiveShare = 0.35f, FadeIn = 0.08f }
                 .K(KeyPhase.Startup, 1f, PoseEase.InOut, s =>
                 {
-                    s.Hips(0f, -0.8f, -0.05f).Pelvis(-140f, 0f).Torso(-5f, 0f).Head(25f, 0f);
+                    s.Hips(0f, -0.56f, -0.05f).Pelvis(-118f, 0f).Torso(8f, 0f).Head(30f, 0f);   // rocked back onto the shoulders
                     s.Kick(L, 8f, -8f, 0.45f, 10f, 30f).Kick(R, 6f, -12f, 0.45f, 10f, 30f);
-                    s.Arm(L, 30f, 95f, 0.55f, 40f, 0f, 70f).Arm(R, 30f, 95f, 0.55f, 40f, 0f, 70f);
+                    s.Arm(L, 40f, 30f, 0.5f, 40f, 0f, 70f).Arm(R, 40f, 30f, 0.5f, 40f, 0f, 70f);   // palms planted by the shoulders
                 })
-                .K(KeyPhase.Active, 1f, PoseEase.Snap, s =>
+                .K(KeyPhase.Active, 1f, PoseEase.InOut, s =>
                 {
                     s.Set(PoseChannel.LegFrame, 0f).Set(PoseChannel.ArmFollow, 0.5f).Set(PoseChannel.LookFront, 1f);
                     s.Hips(0f, -0.36f, 0f).Pelvis(-10f, 15f).Torso(28f, 0f).Head(0f, 0f);
@@ -365,12 +377,19 @@ namespace VaatusRevenge.Core
                     s.Foot(L, 0.15f, Ground, 0.12f, 10f).Foot(R, 0.16f, Ground, -0.12f, 20f, 30f);
                     s.Arm(L, 12f, -82f, 0.95f, 5f).Arm(R, 15f, -80f, 0.95f, 5f).Set(PoseChannel.ArmFollow, 1f);
                 })
+                .K(KeyPhase.Seconds, 0.7f, PoseEase.InOut, s =>
+                {
+                    // toppling forward off the knees: the legs straighten out behind as the body goes down
+                    s.Set(PoseChannel.LegFrame, 1f);
+                    s.Hips(0f, -0.62f, 0.15f).Pelvis(45f, 8f).Torso(12f, 0f, 3f).Head(10f, 30f, 0f);
+                    s.Kick(L, 6f, -75f, 0.96f, 10f, 90f).Kick(R, 12f, -72f, 0.94f, 20f, 90f);
+                })
                 .K(KeyPhase.Seconds, 0.92f, PoseEase.In, s =>
                 {
                     s.Set(PoseChannel.LegFrame, 1f);
                     s.Hips(0f, -0.85f, 0.3f).Pelvis(86f, 8f).Torso(4f, 0f, 0f).Head(-5f, 65f, 0f);
-                    s.Kick(L, 6f, -96f, 0.95f, 10f, 60f).Kick(R, 18f, -78f, 0.82f, 25f, 50f);
-                    s.Arm(L, 65f, -20f, 0.9f, 20f, 0f).Arm(R, 25f, 45f, 0.78f, 20f, 0f);
+                    s.Kick(L, 6f, -100f, 1f, 10f, 95f).Kick(R, 16f, -96f, 0.99f, 20f, 90f);   // legs straight out behind, insteps on the floor
+                    s.Arm(L, 85f, -30f, 0.9f, 20f, 0f).Arm(R, 85f, 50f, 0.85f, 20f, 0f);   // flung out to the sides, along the floor
                 })
                 .K(KeyPhase.Seconds, 1.1f, PoseEase.Out, s => s.Hips(0f, -0.87f, 0.3f).Pelvis(89f, 8f))
                 .Build());
@@ -527,6 +546,12 @@ namespace VaatusRevenge.Core
                     s.Hips(0f, -0.26f, 0f).Pelvis(0f, 8f).Torso(14f, 4f);
                     s.Arm(L, 25f, -55f, 0.8f, 10f).Arm(R, 20f, -60f, 0.8f, 10f).Set(PoseChannel.ArmFollow, 0.2f);
                 })
+                .K(KeyPhase.Startup, 0.8f, PoseEase.InOut, s =>
+                {
+                    // the rear knee drives up first: the kick unfolds from there
+                    s.Hips(0f, -0.14f, 0f).Torso(4f, 2f);
+                    s.Kick(R, 0f, 5f, 0.5f, 0f, -10f);
+                })
                 .K(KeyPhase.Active, 0f, PoseEase.Snap, s =>
                 {
                     s.Hips(0f, 0.04f, 0f).Pelvis(-8f, 0f).Torso(-18f, 0f).Set(PoseChannel.LookFront, 0.5f);
@@ -604,14 +629,19 @@ namespace VaatusRevenge.Core
                     s.Torso(-10f, 5f).Arm(L, 50f, 40f, 0.8f, 10f).Arm(R, 40f, 30f, 0.8f, 10f).Set(PoseChannel.ArmFollow, 0.5f);
                 })
                 .K(KeyPhase.Active, 1f, PoseEase.Linear, s => s.Torso(-5f, 5f))
-                .K(KeyPhase.Recovery, 0.16f, PoseEase.Out, s =>
+                .K(KeyPhase.Recovery, 0.25f, PoseEase.InOut, s =>
                 {
                     // the chop lands over about five frames, not one
                     s.Hips(0f, -0.3f, 0.05f).Pelvis(0f, 5f).Torso(26f, 0f);
-                    s.Kick(R, 5f, -52f, 1f, 0f, 20f).Foot(L, 0.13f, Ground, -0.22f, 25f);
+                    s.Kick(R, 5f, -36f, 0.95f, 0f, -15f).Foot(L, 0.13f, Ground, -0.22f, 25f);   // heel chops to the floor, not through it
                     s.Arm(L, 10f, -30f, 0.9f, 10f).Arm(R, 5f, -28f, 0.9f, 10f).Set(PoseChannel.ArmFollow, 0.3f);
                 })
-                .K(KeyPhase.Recovery, 0.45f, PoseEase.Out, s => s.Hips(0f, -0.28f, 0.03f).Torso(20f, 0f))
+                // the heel settles flat where it landed, then steps back to the guard (lifted, not dragged along the floor)
+                .K(KeyPhase.Recovery, 0.45f, PoseEase.Out, s => s.Hips(0f, -0.28f, 0.03f).Torso(20f, 0f).Foot(R, 0.1f, Ground, 0.6f, 0f))
+                .K(KeyPhase.Recovery, 0.65f, PoseEase.InOut, s =>
+                {
+                    for (int c = 0; c < PoseSpec.LegChannels; c++) s[PoseSpec.Leg(R, c)] = guard[PoseSpec.Leg(R, c)];
+                })
                 .K(KeyPhase.Recovery, 1f, PoseEase.InOut, guard)
                 .Build());
 
@@ -686,7 +716,7 @@ namespace VaatusRevenge.Core
                     s.Set(PoseChannel.RootYaw, 20f).Set(PoseChannel.LookFront, 0.4f).Set(PoseChannel.ArmFollow, 0.3f);
                     s.Hips(0f, -0.52f, 0.02f).Pelvis(15f, 0f).Torso(22f, 0f, 14f);
                     s.Foot(L, 0.04f, Ground, 0.12f, 20f, 0f, 25f);
-                    s.Kick(R, 90f, -25f, 1f, 30f, 8f);   // shin skimming just above the floor
+                    s.Kick(R, 90f, -23f, 1f, 30f, 8f);   // shin skimming just above the floor
                     s.Arm(L, 25f, -70f, 1f, 10f).Arm(R, 70f, 0f, 0.8f, 10f);
                 })
                 .K(KeyPhase.Active, 0f, PoseEase.Linear, s => s.Set(PoseChannel.RootYaw, 0f))

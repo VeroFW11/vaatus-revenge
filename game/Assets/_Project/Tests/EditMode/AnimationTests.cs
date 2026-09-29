@@ -278,6 +278,106 @@ namespace VaatusRevenge.Tests
                 Assert.That(Math.Abs(Quaternion.Dot(before.Local[j], animator.Pose.Local[j])), Is.GreaterThan(0.99999f), BodyJoints.Name((BodyJoint)j));
         }
 
+        // V-05: blending out of a tumble must take the short way round: from -217 degrees (feet over the head) to
+        // lying on the back at -90 it goes through -180, never up through 0 (standing upright) in mid-air.
+        [Test]
+        public void TurnsBlendTheShortWayRound()
+        {
+            PoseSpec flipped = PoseLibraryDefaults.Neutral();
+            flipped[PoseChannel.PelvisPitch] = -217f;
+            PoseSpec lying = PoseLibraryDefaults.Neutral();
+            lying[PoseChannel.PelvisPitch] = -90f;
+            var library = new PoseLibrary
+            {
+                Clips = new[]
+                {
+                    new PoseClip { Key = "tumble", Mode = ClipMode.Hold, Keys = new[] { new PoseKeyframe { Phase = KeyPhase.Seconds, Pose = flipped } } },
+                    new PoseClip { Key = "lying", Mode = ClipMode.Hold, FadeIn = 0.2f, Keys = new[] { new PoseKeyframe { Phase = KeyPhase.Seconds, Pose = lying } } },
+                }
+            };
+            var animator = new FighterAnimator(library, HumanoidSkeleton.Create());
+            for (int i = 0; i < 20; i++) animator.Update(new FighterAnimInput { DeltaTime = Dt, ActionKey = "tumble", ActionTime = i * Dt, ActionSerial = 1 });
+            for (int i = 0; i < 30; i++)
+            {
+                animator.Update(new FighterAnimInput { DeltaTime = Dt, ActionKey = "lying", ActionTime = i * Dt, ActionSerial = 2 });
+                float pitch = animator.CurrentSpec[PoseChannel.PelvisPitch];
+                float wrapped = ((pitch % 360f) + 540f) % 360f - 180f;
+                Assert.That(Math.Abs(wrapped), Is.GreaterThanOrEqualTo(89.9f), "passed upright at frame " + i + " (" + pitch + ")");
+            }
+            Assert.That(animator.CurrentSpec[PoseChannel.PelvisPitch], Is.EqualTo(-90f).Within(0.5f));
+        }
+
+        // V-07: with a target, the striking limb points at it on the first active frame, even one well off to the side.
+        [Test]
+        public void StrikesAimAtTheirTarget()
+        {
+            ElementMoveSet set = ElementMoveSet.CreateFireFluid();
+            foreach (MoveData move in new[] { set.LightChain[0], set.LightChain[3], set.Launcher, set.AirChain[1] })
+            {
+                HumanoidSkeleton skeleton = HumanoidSkeleton.Create();
+                var animator = new FighterAnimator(PoseLibrary.Default, skeleton);
+                var fk = new ForwardKinematics(skeleton);
+                var target = new Vector3(0.5f, 1.2f, 1.7f);   // chest height, off to the right
+                for (int frame = 0; ; frame++)
+                {
+                    FighterAnimInput input = ActionInput(move.AnimationKey, frame * Dt, move);
+                    input.HasTarget = true;
+                    input.TargetLocal = target;
+                    input.StrikeLimb = move.Limb;
+                    animator.Update(input);
+                    if (frame * Dt >= move.ActiveStart - 1e-4f) break;   // the first active frame
+                }
+                fk.Compute(animator.Pose, Vector3.Zero, 0f);
+                bool foot = move.Limb == Limb.RightFoot || move.Limb == Limb.LeftFoot;
+                Vector3 root = foot ? fk[BodyJoint.RightUpperLeg] : move.Limb == Limb.LeftFist ? fk[BodyJoint.LeftUpperArm] : fk[BodyJoint.RightUpperArm];
+                Vector3 tip = foot ? fk[BodyJoint.RightToes] : move.Limb == Limb.LeftFist ? fk[BodyJoint.LeftHand] : fk[BodyJoint.RightHand];
+                Vector3 limb = Vector3.Normalize(tip - root), to = Vector3.Normalize(target - root);
+                float angle = MathF.Acos(Math.Clamp(Vector3.Dot(limb, to), -1f, 1f)) * AnimMath.Rad2Deg;
+                Assert.That(angle, Is.LessThan(12f), move.DisplayName + " points " + angle + " degrees off its target");
+            }
+        }
+
+        // V-12: a planted foot stays where it stands while the body lunges over it (straight, or turning toward a
+        // target as it goes); it only moves by stepping (lifted).
+        [TestCase(0f)]
+        [TestCase(12f)]
+        public void PlantedFeetDontSkateDuringALunge(float turnPerFrame)
+        {
+            MoveData jab = ElementMoveSet.CreateFireFluid().LightChain[0];
+            HumanoidSkeleton skeleton = HumanoidSkeleton.Create();
+            var animator = new FighterAnimator(PoseLibrary.Default, skeleton);
+            var fk = new ForwardKinematics(skeleton);
+            for (int i = 0; i < 30; i++) animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "" });
+            Vector3 root = Vector3.Zero;
+            float yaw = 0f;
+            var last = new Vector3[2];
+            bool first = true;
+            float worst = 0f;
+            for (float t = 0f; t < jab.TotalDuration; t += Dt)
+            {
+                float speed = t < jab.ActiveEnd ? 4f : 0f;   // a 0.7 m lunge
+                float turn = t < jab.ActiveEnd ? turnPerFrame : 0f;
+                yaw += turn;
+                FighterAnimInput input = ActionInput(AnimationKeys.Jab, t, jab);
+                input.LocalVelocity = new Vector3(0f, 0f, speed);
+                input.YawDelta = turn;
+                animator.Update(input);
+                root += AnimMath.Rotate(AnimMath.Yaw(yaw), new Vector3(0f, 0f, speed * Dt));
+                fk.Compute(animator.Pose, root, yaw);
+                for (int s = 0; s < 2; s++)
+                {
+                    Vector3 toes = fk[s == 0 ? BodyJoint.LeftToes : BodyJoint.RightToes];
+                    Vector3 ankle = fk[s == 0 ? BodyJoint.LeftFoot : BodyJoint.RightFoot];
+                    bool planted = toes.Y < 0.035f && ankle.Y < 0.11f;
+                    if (!first && planted && last[s].Y < 0.035f)
+                        worst = Math.Max(worst, Vector2.Distance(new Vector2(toes.X, toes.Z), new Vector2(last[s].X, last[s].Z)));
+                    last[s] = toes;
+                }
+                first = false;
+            }
+            Assert.That(worst, Is.LessThan(0.02f), "a planted foot slid " + worst + " m in one frame");
+        }
+
         [Test]
         public void EulerAndLookRotationFollowUnityConventions()
         {

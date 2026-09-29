@@ -11,6 +11,8 @@ namespace VaatusRevenge
     //     into a pose and the cues a pack-clip player reads.
     //   LateUpdate (order 50, after MecanimPoseSource at 45): the pose is written to the bones, unless a pack clip
     //     already posed them this frame (IHumanoidRig.ExternalPoseActive), and the flag is cleared for next frame.
+    //     When the source switches (a pack clip starts or stops), the bones fade over handOffSeconds from what was
+    //     showing instead of cutting.
     // It runs on scaled time, so hitstop freezes the body mid-strike and slow motion slows it.
     [DefaultExecutionOrder(50)]
     [DisallowMultipleComponent]
@@ -19,12 +21,22 @@ namespace VaatusRevenge
     {
         [Tooltip("Optional: an edited copy of the pose library. Empty = the built-in poses.")]
         [SerializeField] private PoseLibraryAsset poseLibrary;
+        [Tooltip("Seconds to fade between a pack clip and the procedural animator when one takes over from the other.")]
+        [SerializeField, Min(0f)] private float handOffSeconds = 0.15f;
 
         HumanoidBody body;
         FighterAnimator animator;
         FighterAnimInput input;
         bool hasInput;
         bool warnedNoInput;
+
+        // The pack-clip <-> procedural hand-off: what the bones showed at the end of last frame, and a frozen copy of
+        // it taken when the source switched, which the new source fades away from.
+        readonly BodyPose shown = new BodyPose();
+        readonly BodyPose handOffFrom = new BodyPose();
+        bool hasShown;
+        bool lastExternal;
+        float handOffTime = float.PositiveInfinity;
 
         public AnimationCue ActionCue => animator != null ? animator.ActionCue : default;
         public AnimationCue LocomotionCue => animator != null ? animator.LocomotionCue : default;
@@ -53,6 +65,8 @@ namespace VaatusRevenge
             if (!EnsureAnimator()) return;
             animator.Reset();
             body.ApplyPose(animator.Pose);
+            handOffTime = float.PositiveInfinity;
+            hasShown = false;
         }
 
         // The body was rebuilt (new bones, maybe a new size): start a fresh animator and stand in guard.
@@ -89,6 +103,7 @@ namespace VaatusRevenge
                 input = new FighterAnimInput { Grounded = true, ActionKey = "" };
             }
             input.DeltaTime = Time.deltaTime;
+            animator.PropLength = body.WeaponReach;   // the weapon can be resized at any time (SetWeaponLength)
             animator.Update(input);
             hasInput = false;
         }
@@ -96,8 +111,24 @@ namespace VaatusRevenge
         void LateUpdate()
         {
             if (animator == null || body == null) return;
-            if (!body.ExternalPoseActive) body.ApplyPose(animator.Pose);
+            bool external = body.ExternalPoseActive;
+            if (!external) body.ApplyPose(animator.Pose);
             else body.ApplyProp(animator.Pose);   // a pack clip posed the bones; the weapon angle is still ours
+
+            // A pack clip just started or stopped posing the body: rather than cut, fade from what was showing.
+            if (external != lastExternal && hasShown && handOffSeconds > 0f)
+            {
+                handOffFrom.CopyFrom(shown);
+                handOffTime = 0f;
+            }
+            lastExternal = external;
+            if (handOffTime < handOffSeconds)
+            {
+                handOffTime += Time.deltaTime;
+                body.BlendBonesFrom(handOffFrom, Mathf.SmoothStep(0f, 1f, handOffTime / handOffSeconds));
+            }
+            body.CaptureBones(shown);
+            hasShown = true;
             body.ExternalPoseActive = false;
         }
 
@@ -108,6 +139,7 @@ namespace VaatusRevenge
             if (animator != null) return true;
             Core.PoseLibrary library = poseLibrary != null && poseLibrary.Library != null ? poseLibrary.Library : Core.PoseLibrary.Default;
             animator = new FighterAnimator(library, HumanoidSkeleton.Create(null, body.Scale), body.AnimationStyle);
+            animator.PropLength = body.WeaponReach;   // keeps the blade tip out of the floor
             return true;
         }
     }

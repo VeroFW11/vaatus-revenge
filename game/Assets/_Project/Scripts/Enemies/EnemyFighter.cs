@@ -31,6 +31,7 @@ namespace VaatusRevenge
         const float LedgeProbeRadius = 0.05f;
         const float MinStepLength = 1e-5f;
         const float LaunchPillarHeight = 3.2f;       // the column of fire under a launched enemy (visual only)
+        const float KnockdownRingRadius = 1.6f;      // the ring of fire where a launched or slammed enemy lands (visual only)
 
         static readonly string[] StateNames = System.Enum.GetNames(typeof(EnemyState));
         static AttackTokenPool fallbackTokens;
@@ -355,7 +356,7 @@ namespace VaatusRevenge
             if (animatorDriver == null) return;
             bool grounded = Planted || controller == null || !controller.enabled || controller.isGrounded;
             float aim = world.HasTarget ? presenter.AimPitch(EyePosition(), world.TargetAimPoint.ToUnity(), Feedback) : 0f;
-            animatorDriver.SetInput(animationFeed.Build(b, dt, grounded, aim));
+            animatorDriver.SetInput(animationFeed.Build(b, dt, grounded, aim, Planted));
         }
 
         bool HandleEvents(in EventList<EnemyEvent> events, EnemyBrain b)
@@ -394,7 +395,7 @@ namespace VaatusRevenge
                         presenter.OnLaunched(transform.position, LaunchPillarHeight);
                         break;
                     case EnemyEventType.KnockedDown:
-                        presenter.OnKnockedDown(transform.position);
+                        presenter.OnKnockedDown(transform.position, KnockdownRingRadius);
                         break;
                     case EnemyEventType.Damaged:
                         presenter.OnDamaged(feedback);

@@ -19,6 +19,7 @@ namespace VaatusRevenge.Core
         readonly HumanoidSkeleton skeleton;
         readonly Quaternion[] modelRot = new Quaternion[BodyJoints.Count];
         readonly Vector3[] modelPos = new Vector3[BodyJoints.Count];
+        bool grounded;
 
         public PoseSolver(HumanoidSkeleton skeleton)
         {
@@ -33,8 +34,10 @@ namespace VaatusRevenge.Core
 
         // travel: metres the body has moved forward since the current action began (anchored feet stay behind).
         // aimPitch: degrees up (+) or down toward a target, for clips that aim (crossbow).
-        public void Solve(PoseSpec s, BodyPose pose, float travel = 0f, float aimPitch = 0f)
+        // grounded: the fighter stands on the floor (model y = 0), so a kick aimed down never goes through it.
+        public void Solve(PoseSpec s, BodyPose pose, float travel = 0f, float aimPitch = 0f, bool grounded = false)
         {
+            this.grounded = grounded;
             float k = skeleton.Scale;
             float rootYaw = s[PoseChannel.RootYaw];
             Quaternion body = AnimMath.Yaw(rootYaw);   // the body's facing frame (includes spins)
@@ -184,11 +187,16 @@ namespace VaatusRevenge.Core
             // Planted target (ankle position in the body's frame), pulled back by the lunge when anchored so the
             // back foot stays on its spot while the body drives forward (no skating), but never past full stretch.
             float anchorBack = anchor * Math.Max(0f, travel);
+            // A planted foot tipped onto its toes (a heel pivot, a push-off) rises by exactly as much as it tips, so
+            // the ball of the foot stays on the floor instead of sinking into it.
+            if (flat > 0.5f && footPitch > 0f && footY < (0.08f + 0.02f) * k) footY = Math.Max(footY, (0.08f + FootTipRise(footPitch)) * k);
             Vector3 planted = AnimMath.Rotate(body, new Vector3(sign * footX, footY, footZ - anchorBack));
             // Aimed target (kicks): a direction and extension from the hip.
             Vector3 kickDir = AnimMath.Rotate(frame, AnimMath.Direction(sign * kickYaw, kickPitch));
             Vector3 aimed = hip + kickDir * (kickReach * (l1 + l2));
             Vector3 target = Vector3.Lerp(planted, aimed, reachMode);
+            float floorAnkle = MinAnkleHeight * k;
+            if (grounded && reachMode > 0.5f && target.Y < floorAnkle) target.Y = floorAnkle;
             if (reachMode < 0.5f)
             {
                 // Planted feet can't reach past a straight leg: the foot lifts rather than the leg stretching.
@@ -202,6 +210,14 @@ namespace VaatusRevenge.Core
             Vector3 toeDir = AnimMath.Rotate(reachMode > 0.5f ? frame : body, AnimMath.Direction(sign * footYaw, 0f));
             Vector3 pole = RotateAround(toeDir, legDir, -sign * kneeOut);
             TwoBone(hip, target, l1, l2, pole, AnimMath.Rotate(body, Vector3.UnitY), out Vector3 knee, out Vector3 front);
+            if (grounded && knee.Y < MinKneeHeight * k)
+            {
+                // Lying or falling: a knee that would bend through the floor turns its bend upward, by as much as it
+                // would dip (so the change is gradual, never a flip).
+                float t = AnimMath.Clamp01((MinKneeHeight * k - knee.Y) / (KneeLiftRange * k));
+                Vector3 raised = AnimMath.SafeNormalize(Vector3.Lerp(pole, Vector3.UnitY, t), pole);
+                TwoBone(hip, target, l1, l2, raised, AnimMath.Rotate(body, Vector3.UnitY), out knee, out front);
+            }
 
             Vector3 restAxis = HumanoidSkeleton.RestAxis(upper);
             Vector3 restFront = HumanoidSkeleton.RestFront(upper);
@@ -220,9 +236,41 @@ namespace VaatusRevenge.Core
             Quaternion carried = shinModel * AnimMath.AxisAngle(Vector3.UnitX, footPitch);
             Quaternion footModel = Quaternion.Normalize(Quaternion.Slerp(carried, flatFoot, flat));
             SetFromModel(pose, foot, footModel);
+            if (grounded) KeepToesAboveFloor(pose, foot, toes, footModel, k);
             // Toes stay on the ground when the heel lifts (push-off), and curl back a little in a front kick.
             float toeBend = flat > 0.5f ? -Math.Max(0f, footPitch) * 0.8f : (footPitch < 0f ? footPitch * 0.4f : 0f);
             SetLocal(pose, toes, AnimMath.AxisAngle(Vector3.UnitX, toeBend));
+        }
+
+        // On the ground (kneeling, falling, lying) a pointed foot mustn't dig its toes into the floor: tip the foot up
+        // about the ankle, by exactly as much as the toes would sink, so they rest on the floor instead.
+        void KeepToesAboveFloor(BodyPose pose, BodyJoint foot, BodyJoint toes, Quaternion footModel, float k)
+        {
+            Vector3 ankle = modelPos[(int)foot];
+            Vector3 v = AnimMath.Rotate(footModel, skeleton.RestOffset(toes));
+            float floor = ToesFloorHeight * k;
+            if (ankle.Y + v.Y >= floor) return;
+            Vector3 axis = AnimMath.Rotate(footModel, Vector3.UnitX);   // the foot's hinge: its left-right axis
+            // Rotating v about axis by angle a: y(a) = along.y + across.y cos a + side.y sin a. Solve y(a) = floor.
+            Vector3 along = axis * Vector3.Dot(v, axis);
+            Vector3 across = v - along;
+            Vector3 side = Vector3.Cross(axis, across);
+            float c = floor - ankle.Y - along.Y;
+            float r = MathF.Sqrt(across.Y * across.Y + side.Y * side.Y);
+            if (r < 1e-5f || Math.Abs(c) > r) return;   // can't reach the floor by tipping (the ankle itself is low)
+            float phase = MathF.Atan2(side.Y, across.Y);
+            float spread = MathF.Acos(AnimMath.Clamp(c / r, -1f, 1f));
+            float a1 = Wrap(phase + spread), a2 = Wrap(phase - spread);
+            float angle = Math.Abs(a1) < Math.Abs(a2) ? a1 : a2;   // the smaller tip that does it
+            Quaternion lifted = Quaternion.Normalize(Quaternion.CreateFromAxisAngle(axis, angle) * footModel);
+            SetFromModel(pose, foot, lifted);
+
+            static float Wrap(float radians)
+            {
+                while (radians > MathF.PI) radians -= 2f * MathF.PI;
+                while (radians < -MathF.PI) radians += 2f * MathF.PI;
+                return radians;
+            }
         }
 
         // Prop direction: 0 degrees = along the forearm, 90 = straight out of the top of the fist (thumb side);
@@ -268,6 +316,20 @@ namespace VaatusRevenge.Core
             float h = MathF.Sqrt(Math.Max(0f, l1 * l1 - a * a));
             middle = root + dir * a + bend * h;
             front = AnimMath.SafeNormalize(dir * h - bend * a, -bend);
+        }
+
+        // How far the ankle must rise for a foot tipped toes-down by pitch degrees to keep the ball of the foot
+        // (13 cm ahead of and 6 cm below the ankle) on the floor.
+        const float MinAnkleHeight = 0.06f;   // a kick along the floor: the ankle skims it
+        const float ToesFloorHeight = 0.02f;  // the ball of the foot's joint on a flat foot (the sole is under it)
+        const float MinKneeHeight = 0.05f;    // the front of a knee resting on the floor
+        const float KneeLiftRange = 0.25f;    // a knee this far under the floor bends straight up
+
+        public static float FootTipRise(float pitch)
+        {
+            if (!(pitch > 0f)) return 0f;
+            float a = pitch * AnimMath.Deg2Rad;
+            return Math.Max(0f, 0.13f * MathF.Sin(a) + 0.06f * MathF.Cos(a) - 0.06f);
         }
 
         static Vector3 RotateAround(Vector3 v, Vector3 axis, float degrees)

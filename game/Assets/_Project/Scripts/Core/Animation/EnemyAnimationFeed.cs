@@ -116,7 +116,9 @@ namespace VaatusRevenge.Core
 
         // dt: scaled delta time. grounded: the body is standing on something (CharacterController.isGrounded, or
         // always for a planted dummy). aimPitch: degrees up toward the target, for aiming clips (crossbow).
-        public FighterAnimInput Build(EnemyBrain brain, float dt, bool grounded, float aimPitch = 0f)
+        // planted: the body is fixed in place (a dummy on its post), so a knockback the brain asks for never
+        // actually moves it and the feet must not step to follow it.
+        public FighterAnimInput Build(EnemyBrain brain, float dt, bool grounded, float aimPitch = 0f, bool planted = false)
         {
             if (brain == null) return default;
             if (!AnimMath.IsFinite(dt) || dt < 0f) dt = 0f;
@@ -141,7 +143,7 @@ namespace VaatusRevenge.Core
                 else attackTime += dt;
             }
 
-            Vector3 velocity = brain.Velocity;
+            Vector3 velocity = planted ? Vector3.Zero : brain.Velocity;
             input = new FighterAnimInput
             {
                 DeltaTime = dt,

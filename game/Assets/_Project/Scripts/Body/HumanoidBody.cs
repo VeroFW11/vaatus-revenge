@@ -93,6 +93,8 @@ namespace VaatusRevenge
         public Transform HeadAnchor => headAnchor != null ? headAnchor : transform;
         public Transform WeaponPivot => weaponPivot;
         public bool HasWeapon => weaponTip != null;
+        // Metres from the grip to the weapon's tip (0 = no weapon); the animator keeps that tip above the floor.
+        public float WeaponReach => weaponTip != null ? weaponTip.localPosition.z : 0f;
         public Transform GetBone(BodyJoint joint) => IsBuilt ? bones[(int)joint] : null;
 
         // The transform a strike comes from (trails, sparks, flames). Never null. BothFists = the right fist;
@@ -178,6 +180,46 @@ namespace VaatusRevenge
             hips.localPosition = restLocal[(int)BodyJoint.Hips] + pose.HipsOffset.ToUnity();
             hips.localRotation = Quaternion.Euler(0f, pose.RootYaw, 0f) * ToUnity(pose.Local[(int)BodyJoint.Hips]);
             ApplyProp(pose);
+        }
+
+        // Reads what the bones show right now (whoever posed them: us or a pack clip) into a pose buffer. The whole-body
+        // yaw is left folded into the hips rotation (RootYaw = 0), which is how BlendBonesFrom expects it.
+        public void CaptureBones(BodyPose into)
+        {
+            if (!IsBuilt || into == null) return;
+            for (int j = 0; j < BodyJoints.Count; j++)
+            {
+                Transform bone = bones[j];
+                if (bone == null) continue;
+                Quaternion q = bone.localRotation;
+                into.Local[j] = new System.Numerics.Quaternion(q.x, q.y, q.z, q.w);
+            }
+            Transform hips = bones[(int)BodyJoint.Hips];
+            into.HipsOffset = hips != null ? (hips.localPosition - restLocal[(int)BodyJoint.Hips]).ToNumerics() : System.Numerics.Vector3.Zero;
+            into.RootYaw = 0f;
+            if (weaponPivot != null)
+            {
+                Quaternion p = weaponPivot.localRotation;
+                into.PropLocal = new System.Numerics.Quaternion(p.x, p.y, p.z, p.w);
+            }
+        }
+
+        // Blends the bones from a captured pose (weight 0) to what they show now (weight 1). Used to fade between a
+        // pack clip and the procedural animator instead of cutting: the new source poses the bones as usual, then
+        // this pulls them back toward where the old one left them, less each frame.
+        public void BlendBonesFrom(BodyPose from, float weight)
+        {
+            if (!IsBuilt || from == null || weight >= 1f) return;
+            weight = Mathf.Clamp01(weight);
+            for (int j = 0; j < BodyJoints.Count; j++)
+            {
+                Transform bone = bones[j];
+                if (bone == null) continue;
+                bone.localRotation = Quaternion.Slerp(ToUnity(from.Local[j]), bone.localRotation, weight);
+            }
+            Transform hips = bones[(int)BodyJoint.Hips];
+            if (hips != null) hips.localPosition = Vector3.Lerp(restLocal[(int)BodyJoint.Hips] + from.HipsOffset.ToUnity(), hips.localPosition, weight);
+            if (weaponPivot != null) weaponPivot.localRotation = Quaternion.Slerp(ToUnity(from.PropLocal), weaponPivot.localRotation, weight);
         }
 
         // The held weapon's angle in the hand (also while a pack clip drives the bones).

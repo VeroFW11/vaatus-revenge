@@ -484,12 +484,44 @@ namespace VaatusRevenge.CombatSim
                 Fighter = fighter;
                 Kind = kind;
                 Id = nextId++;
+                ByFighter[fighter] = this;
                 HumanoidSkeleton skeleton = HumanoidSkeleton.Create(null, scale);
-                Animator = new FighterAnimator(PoseLibrary.Default, skeleton, StyleOf(kind));
+                Animator = new FighterAnimator(PoseLibrary.Default, skeleton, StyleOf(kind)) { PropLength = AnimRecorder.PropLength(kind) };
                 Fk = new ForwardKinematics(skeleton);
                 if (fighter is SimPlayer) PlayerFeed = new PlayerAnimationFeed();
                 else EnemyFeed = new EnemyAnimationFeed();
             }
+
+            // Same rule as PlayerController: the lock-on target, else the soft lock, else the nearest living enemy.
+            public static SimFighter StrikeTarget(SimWorld world, SimPlayer p)
+            {
+                if (p.LockTarget != null && p.LockTarget.IsAlive) return p.LockTarget;
+                if (p.SoftTarget != null && p.SoftTarget.IsAlive) return p.SoftTarget;
+                SimFighter best = null;
+                float bestDistance = NearestTargetRange;
+                foreach (SimEnemy e in world.Enemies)
+                {
+                    if (!e.IsAlive) continue;
+                    float d = Vector3.Distance(e.Feet, p.Feet);
+                    if (d < bestDistance)
+                    {
+                        best = e;
+                        bestDistance = d;
+                    }
+                }
+                return best;
+            }
+
+            public const float NearestTargetRange = 8f;   // PlayerController uses the same
+
+            public static readonly Dictionary<SimFighter, AnimRig> ByFighter = new Dictionary<SimFighter, AnimRig>();
+
+            static Vector3 ChestOf(SimFighter f)
+            {
+                return ByFighter.TryGetValue(f, out AnimRig rig) && rig.HasPose ? rig.Fk[BodyJoint.Chest] : f.AimPoint;
+            }
+
+            public bool HasPose;
 
             public static string StyleOf(string kind)
             {
@@ -507,7 +539,11 @@ namespace VaatusRevenge.CombatSim
                 if (Fighter is SimPlayer p)
                 {
                     for (int i = 0; i < p.FrameEvents.Count; i++) PlayerFeed.OnEvent(p.FrameEvents[i]);
-                    LastInput = PlayerFeed.Build(p.Model, dt);
+                    SimFighter target = StrikeTarget(world, p);
+                    // Aim at where the target's body really is (a launched enemy lies flat, well below its capsule's
+                    // chest height): its chest as last animated, like PlayerController reading HumanoidBody.ChestAnchor.
+                    Vector3 chest = target != null ? ChestOf(target) : Vector3.Zero;
+                    LastInput = target != null ? PlayerFeed.Build(p.Model, dt, true, p.Feet, chest) : PlayerFeed.Build(p.Model, dt);
                 }
                 else if (Fighter is SimEnemy e)
                 {
@@ -518,10 +554,11 @@ namespace VaatusRevenge.CombatSim
                         Vector3 to = world.Player.AimPoint - (e.Feet + new Vector3(0f, 1.42f, 0f));
                         aim = Directions.PitchOf(to);
                     }
-                    LastInput = EnemyFeed.Build(e.Brain, dt, e.Planted || e.Controller.IsGrounded, aim);
+                    LastInput = EnemyFeed.Build(e.Brain, dt, e.Planted || e.Controller.IsGrounded, aim, e.Planted);
                 }
                 Animator.Update(LastInput);
                 Fk.Compute(Animator.Pose, Fighter.Feet, Fighter.Yaw);
+                HasPose = true;
             }
         }
 
@@ -552,7 +589,7 @@ namespace VaatusRevenge.CombatSim
                 {
                     if (rig.Fighter is SimPlayer p)
                     {
-                        foreach (PlayerEvent e in p.FrameEvents) PlayerEffect(rig, e);
+                        foreach (PlayerEvent e in p.FrameEvents) PlayerEffect(rig, e, s);
                     }
                     else if (rig.Fighter is SimEnemy en)
                     {
@@ -626,7 +663,7 @@ namespace VaatusRevenge.CombatSim
             public const float SwordLength = EnemyPoseSettingsWeaponLength;
             const float EnemyPoseSettingsWeaponLength = 1.3f;   // keep equal to EnemyPoseSettings.DefaultWeaponLength (Unity side)
 
-            void PlayerEffect(AnimRig rig, in PlayerEvent e)
+            void PlayerEffect(AnimRig rig, in PlayerEvent e, Scene scene)
             {
                 switch (e.Type)
                 {
@@ -637,11 +674,16 @@ namespace VaatusRevenge.CombatSim
                         string key = string.IsNullOrEmpty(m.EffectKey) ? EffectKeys.Burst : m.EffectKey;
                         Vector3 dir = e.Direction;
                         float duration = Math.Max(0.2f, m.Active + 0.15f);
-                        fx.Add(Fx(key, e.Origin, dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id));
+                        // As PlayerFeedback: the launcher's column rises under the launched enemy (EnemyEffect), the slam's
+                        // ring appears where the enemy lands; at the strike itself they're a burst from the limb.
+                        if (key == EffectKeys.Pillar || key == EffectKeys.Slam)
+                            fx.Add(Fx(EffectKeys.Burst, e.Origin, key == EffectKeys.Slam ? -Vector3.UnitY : dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id));
+                        else fx.Add(Fx(key, e.Origin, dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id));
                         if (key != EffectKeys.Burst && key != EffectKeys.Trail)
                             fx.Add(Fx(EffectKeys.Trail, e.Origin, dir, m.Range, m.ArcDegrees, m.Active + 0.05f, LimbJoint(m.Limb), rig.Id));
                         float ext = StrikeExtension(rig, m.Limb);
                         extensions.Add((m.DisplayName, ext));
+                        MeasureAim(rig, m, scene);
                         break;
                     }
                     case PlayerEventType.ProjectileLaunched:
@@ -672,6 +714,9 @@ namespace VaatusRevenge.CombatSim
                         fx.Add(Fx(EffectKeys.Pillar, enemy.Feet, Vector3.UnitY, 3f, 0f, 0.6f, (int)BodyJoint.Hips, rig.Id));
                         fx.Add(Fx("embers", enemy.Feet, Vector3.UnitY, 1f, 0f, 1.2f, (int)BodyJoint.Chest, rig.Id));
                         break;
+                    case EnemyEventType.KnockedDown:
+                        fx.Add(Fx(EffectKeys.Slam, enemy.Feet, -Vector3.UnitY, SlamRingRadius, 360f, 0.45f, (int)BodyJoint.Hips, rig.Id));
+                        break;
                     case EnemyEventType.Damaged:
                         fx.Add(Fx("spark", enemy.AimPoint, Vector3.UnitZ, 0.4f, 0f, 0.16f, (int)BodyJoint.Chest, rig.Id));
                         break;
@@ -686,6 +731,47 @@ namespace VaatusRevenge.CombatSim
                         break;
                 }
             }
+
+            public const float SlamRingRadius = 1.6f;   // EnemyRigPresenter's knockdown ring (visual)
+
+            // V-22: at the first active frame, how far the striking limb points away from the nearest living enemy's
+            // chest (degrees, shoulder/hip -> hand/toes vs shoulder/hip -> chest), and how far its tip is from that body.
+            void MeasureAim(AnimRig rig, MoveData m, Scene scene)
+            {
+                Vector3[] j = rig.Fk.Positions;
+                int root, tip;
+                switch (m.Limb)
+                {
+                    case Limb.LeftFist: root = (int)BodyJoint.LeftUpperArm; tip = (int)BodyJoint.LeftHand; break;
+                    case Limb.RightFoot: root = (int)BodyJoint.RightUpperLeg; tip = (int)BodyJoint.RightToes; break;
+                    case Limb.LeftFoot: root = (int)BodyJoint.LeftUpperLeg; tip = (int)BodyJoint.LeftToes; break;
+                    default: root = (int)BodyJoint.RightUpperArm; tip = (int)BodyJoint.RightHand; break;
+                }
+                AnimRig best = null;
+                float bestDistance = float.MaxValue;
+                foreach (AnimRig other in scene.Rigs)
+                {
+                    if (other == rig || !other.Fighter.IsAlive || other.Fighter is SimPlayer) continue;
+                    float d = Vector3.Distance(other.Fk[BodyJoint.Chest], j[tip]);
+                    if (d < bestDistance)
+                    {
+                        bestDistance = d;
+                        best = other;
+                    }
+                }
+                if (best == null) return;
+                Vector3 limb = j[tip] - j[root];
+                Vector3 to = best.Fk[BodyJoint.Chest] - j[root];
+                float cos = Vector3.Dot(limb, to) / Math.Max(1e-6f, limb.Length() * to.Length());
+                float angle = MathF.Acos(Math.Clamp(cos, -1f, 1f)) * AnimMath.Rad2Deg;
+                float body = float.MaxValue;
+                BodyJoint[,] segments = { { BodyJoint.Hips, BodyJoint.Chest }, { BodyJoint.Chest, BodyJoint.Head }, { BodyJoint.LeftUpperLeg, BodyJoint.LeftFoot }, { BodyJoint.RightUpperLeg, BodyJoint.RightFoot } };
+                for (int i = 0; i < segments.GetLength(0); i++)
+                    body = Math.Min(body, HitGeometry.DistanceToSegment(j[tip], best.Fk[segments[i, 0]], best.Fk[segments[i, 1]]));
+                aims.Add((m.DisplayName, angle, body));
+            }
+
+            readonly List<(string move, float angle, float tip)> aims = new List<(string, float, float)>();
 
             // How straight the striking limb is right now: 1 = fully extended.
             static float StrikeExtension(AnimRig rig, Limb limb)
@@ -835,10 +921,15 @@ namespace VaatusRevenge.CombatSim
 
             public void Report()
             {
-                Out.Sub("Strike extension at the first active frame (1.00 = limb fully straight)");
-                var t = new Table("Move", "Times", "Min", "Mean");
+                Out.Sub("Strikes at the first active frame: extension (1.00 = limb straight), aim (degrees between the limb and the nearest enemy's chest) and the tip's distance from that body");
+                var t = new Table("Move", "Times", "Extension min", "Aim off mean", "Aim off max", "Tip to body (m)");
                 foreach (var g in extensions.GroupBy(x => x.move))
-                    t.Row(g.Key, g.Count(), Out.N(g.Min(x => x.ext), 3), Out.N(g.Average(x => x.ext), 3));
+                {
+                    var a = aims.Where(x => x.move == g.Key).ToList();
+                    t.Row(g.Key, g.Count(), Out.N(g.Min(x => x.ext), 3),
+                        a.Count > 0 ? Out.N(a.Average(x => x.angle), 0) : "-", a.Count > 0 ? Out.N(a.Max(x => x.angle), 0) : "-",
+                        a.Count > 0 ? Out.N(a.Average(x => x.tip), 2) : "-");
+                }
                 t.Print();
                 Out.Sub("Dao blade tip at each strike vs the attack's reach (" + Out.N(SwordLength, 2) + " m blade)");
                 var t2 = new Table("Strike", "Times", "Tip distance (m)", "Reach (m)");

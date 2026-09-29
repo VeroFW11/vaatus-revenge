@@ -133,12 +133,15 @@ namespace VaatusRevenge
             if (body != null) embers = FireVfx.EmberTrail(body.ChestAnchor, 0f);
         }
 
-        // Landed from a juggle: a burst of dust and flame where it hits the floor.
-        public void OnKnockedDown(Vector3 feet)
+        // Landed from a juggle or a slam: a downward burst and a ring of fire racing out where it hits the floor,
+        // at the moment it hits (the slam kick itself only throws fire down from the foot).
+        public void OnKnockedDown(Vector3 feet, float ringRadius)
         {
             StopEmbers();
-            FireVfx.Ring(feet, 1.2f);
+            FireVfx.Slam(feet + Vector3.up * KnockdownBurstHeight, ringRadius);
         }
+
+        const float KnockdownBurstHeight = 0.3f;   // metres above the feet the burst starts, so it reads as hitting the floor
 
         public void OnDied(EnemyFeedbackSettings feedback)
         {

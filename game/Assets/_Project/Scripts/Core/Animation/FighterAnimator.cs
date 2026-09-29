@@ -67,6 +67,9 @@ namespace VaatusRevenge.Core
         readonly PoseSpec blended = new PoseSpec();
         readonly PoseSpec output = new PoseSpec();
         readonly PoseSpec lastShown = new PoseSpec();
+        readonly PoseSpec locoFrom = new PoseSpec();
+        float locoFadeTime = float.MaxValue;
+        bool wasAirborne;
         readonly AnimatorSettings fallbackSettings = new AnimatorSettings();
         readonly GaitSettings fallbackGait = new GaitSettings();
 
@@ -158,6 +161,8 @@ namespace VaatusRevenge.Core
             locoKeyTime = 0f;
             leanPitch = leanRoll = headLag = flinchPitch = flinchRoll = flinchYaw = default;
             lastVelocity = Vector3.Zero;
+            footLocks[0] = footLocks[1] = default;
+            lastRootYaw = 0f;
             clock = 0f;
             EvaluateClip(AnimationKeys.Idle, 0f, default, false, 0f, output);
             fadeFrom.CopyFrom(output);
@@ -229,7 +234,7 @@ namespace VaatusRevenge.Core
             // ---- 5. solve
             PoseClip shown = action ? Clip(key) : null;
             float aim = shown != null && shown.Aims ? input.AimPitch : 0f;
-            solver.Solve(output, pose, action ? travel : 0f, aim);
+            solver.Solve(output, pose, action ? travel : 0f, aim, input.Grounded);
             if (!pose.IsFinite())
             {
                 // Never hand Unity a broken pose: fall back to the stance (and say nothing: this is a safety net).
@@ -276,8 +281,17 @@ namespace VaatusRevenge.Core
 
             EvaluateClip(AnimationKeys.Idle, idleTime, default, false, 0f, stanceSpec);
 
+            // Switching between the air poses and the ground ones blends too (a landing never snaps).
+            bool airborne = !input.Grounded && airTime > 0.05f;
+            if (airborne != wasAirborne)
+            {
+                locoFrom.CopyFrom(locoSpec);
+                locoFadeTime = 0f;
+                wasAirborne = airborne;
+            }
+
             string key;
-            if (!input.Grounded && airTime > 0.05f)
+            if (airborne)
             {
                 // Rising: tucked jump. Falling: legs reach down, arms out. Blended by vertical speed.
                 EvaluateClip(AnimationKeys.Jump, airTime, default, false, 0f, airSpec);
@@ -304,11 +318,18 @@ namespace VaatusRevenge.Core
                 if (landTime < landDuration)
                 {
                     EvaluateClip(AnimationKeys.Land, landTime, default, false, landDuration, landSpec);
-                    float w = (1f - AnimMath.SmoothStep(landTime / landDuration)) * AnimMath.Clamp01(landDepth);
+                    float w = (1f - AnimMath.SmoothStep(landTime / landDuration)) * AnimMath.Clamp01(landDepth)
+                              * AnimMath.SmoothStep((landTime + dt) / Math.Max(0.01f, settings.LandBlendIn));
                     PoseSpec.Lerp(locoSpec, landSpec, w, locoSpec);
                     key = AnimationKeys.Land;
                     landTime += dt;
                 }
+            }
+            if (locoFadeTime < settings.LocomotionFade)
+            {
+                locoFadeTime += dt;
+                UnwrapTurnsToward(locoFrom, locoSpec);
+                PoseSpec.Lerp(locoFrom, locoSpec, AnimMath.SmoothStep(locoFadeTime / Math.Max(0.01f, settings.LocomotionFade)), locoSpec);
             }
             if (key != locoKey)
             {
@@ -404,19 +425,23 @@ namespace VaatusRevenge.Core
                 aimYaw = 0f;
                 aimPitch = 0f;
                 if (aimSolver == null) aimSolver = new PoseSolver(solver.Skeleton);
-                clip.Evaluate(timing.Startup, in timing, aimSpec);
-                aimSolver.Solve(aimSpec, aimPose);
-                LimbEnds(aimSolver, input.StrikeLimb, out Vector3 root, out Vector3 end);
-                Vector3 dir = end - root;
-                Vector3 to = input.TargetLocal - root;
-                if (AnimMath.IsFinite(to) && dir.LengthSquared() > 1e-4f && to.LengthSquared() > 1e-4f && to.Length() <= s.StrikeAimMaxDistance)
+                clip.Evaluate(timing.Startup + s.StrikeAimLead, in timing, aimSpec);
+                // Three passes: turning the body also moves the shoulder or hip the limb swings from, so later
+                // passes correct what's left after the first.
+                for (int pass = 0; pass < 3; pass++)
                 {
+                    aimSolver.Solve(aimSpec, aimPose);
+                    LimbEnds(aimSolver, input.StrikeLimb, out Vector3 root, out Vector3 end);
+                    Vector3 dir = end - root;
+                    Vector3 to = input.TargetLocal - root;
+                    if (!AnimMath.IsFinite(to) || dir.LengthSquared() < 1e-4f || to.LengthSquared() < 1e-4f || to.Length() > s.StrikeAimMaxDistance) break;
                     float yawError = Wrap180(YawOf(to) - YawOf(dir));
-                    if (Math.Abs(yawError) <= s.StrikeAimGiveUpYaw)
-                    {
-                        aimYaw = AnimMath.Clamp(yawError, -s.StrikeAimMaxYaw, s.StrikeAimMaxYaw);
-                        aimPitch = AnimMath.Clamp(PitchOf(to) - PitchOf(dir), -s.StrikeAimMaxPitch, s.StrikeAimMaxPitch);
-                    }
+                    if (Math.Abs(yawError) > s.StrikeAimGiveUpYaw) break;
+                    float newYaw = AnimMath.Clamp(aimYaw + yawError, -s.StrikeAimMaxYaw, s.StrikeAimMaxYaw);
+                    float newPitch = AnimMath.Clamp(aimPitch + PitchOf(to) - PitchOf(dir), -s.StrikeAimMaxPitch, s.StrikeAimMaxPitch);
+                    AddAim(aimSpec, input.StrikeLimb, newYaw - aimYaw, newPitch - aimPitch);
+                    aimYaw = newYaw;
+                    aimPitch = newPitch;
                 }
             }
             float w;
@@ -424,13 +449,19 @@ namespace VaatusRevenge.Core
             else if (t <= timing.LastActiveEnd) w = 1f;
             else w = 1f - AnimMath.SmoothStep((t - timing.LastActiveEnd) / Math.Max(0.05f, timing.Recovery * 0.6f));
             if (!(w > 0f)) return;
-            spec[PoseChannel.RootYaw] += aimYaw * w;
-            switch (input.StrikeLimb)
+            AddAim(spec, input.StrikeLimb, aimYaw * w, aimPitch * w);
+        }
+
+        static void AddAim(PoseSpec spec, Limb limb, float yaw, float pitch)
+        {
+            spec[PoseChannel.RootYaw] += yaw;
+            float aimPitch = pitch, w = 1f;
+            switch (limb)
             {
                 case Limb.LeftFoot:
                 case Limb.RightFoot:
                 {
-                    BodySide side = input.StrikeLimb == Limb.LeftFoot ? BodySide.Left : BodySide.Right;
+                    BodySide side = limb == Limb.LeftFoot ? BodySide.Left : BodySide.Right;
                     if (spec[PoseSpec.Leg(side, 7)] > 0.5f) spec[PoseSpec.Leg(side, 9)] += aimPitch * w;
                     break;
                 }
@@ -447,7 +478,7 @@ namespace VaatusRevenge.Core
             }
         }
 
-        // Where a strike limb starts (shoulder / hip) and ends (wrist / ankle) in the last solve.
+        // Where a strike limb starts (shoulder / hip) and ends (wrist / ball of the foot) in the last solve.
         static void LimbEnds(PoseSolver s, Limb limb, out Vector3 root, out Vector3 end)
         {
             switch (limb)
@@ -458,11 +489,11 @@ namespace VaatusRevenge.Core
                     return;
                 case Limb.RightFoot:
                     root = s.ModelPosition(BodyJoint.RightUpperLeg);
-                    end = s.ModelPosition(BodyJoint.RightFoot);
+                    end = s.ModelPosition(BodyJoint.RightToes);    // the ball of the foot is what lands
                     return;
                 case Limb.LeftFoot:
                     root = s.ModelPosition(BodyJoint.LeftUpperLeg);
-                    end = s.ModelPosition(BodyJoint.LeftFoot);
+                    end = s.ModelPosition(BodyJoint.LeftToes);
                     return;
                 case Limb.BothFists:
                     root = (s.ModelPosition(BodyJoint.LeftUpperArm) + s.ModelPosition(BodyJoint.RightUpperArm)) * 0.5f;
@@ -493,16 +524,24 @@ namespace VaatusRevenge.Core
             public Vector2 Position;      // where the planted foot stands (fighter frame, this frame)
             public bool Stepping;
             public Vector2 From;
+            public Vector2 To;            // where the step lands (a fixed spot on the ground, predicted from the body's motion)
             public float StepTime;
             public float StepDuration;
             public float StepHeight;
             public Vector2 Offset;        // after a release: how far the foot still is from the pose (decays)
+            // Which way the foot points, in degrees in the fighter frame: a planted foot keeps pointing the same way
+            // on the ground while the body turns over it (otherwise the toes would swing round the ankle and skate).
+            public float Yaw;
+            public float FromYaw;
+            public float ToYaw;
+            public float YawOffset;       // after a release: how far the foot's angle still is from the pose (decays)
         }
 
         readonly FootLock[] footLocks = new FootLock[2];
+        float lastRootYaw;
 
         // A grounded action covering ground faster than a person can step (a stretched lunge, a flying kick) becomes
-        // a leap: both feet leave the floor for the rush and land as it slows.
+        // a leap: both feet leave the floor for the rush and land as it slows (a dodge or backstep hops the same way).
         void ApplyLeap(in FighterAnimInput input, Vector3 velocity, bool action, AnimatorSettings s)
         {
             if (!action || !input.Grounded || input.Dead) return;
@@ -511,8 +550,17 @@ namespace VaatusRevenge.Core
             if (!(lift > 0f)) return;
             float k = 1f / Math.Max(0.1f, solver.Skeleton.Scale);
             output[PoseChannel.HipsY] += lift * 0.6f * k;
-            output[PoseChannel.LFootY] += lift * k;
-            output[PoseChannel.RFootY] += lift * k;
+            for (int i = 0; i < 2; i++)
+            {
+                BodySide side = i == 0 ? BodySide.Left : BodySide.Right;
+                // A foot up on its toes is already raised by its tip (see PoseSolver.FootTipRise): lift from there, or
+                // the leap would vanish into that rise and the toes would drag along the floor.
+                float y = output[PoseSpec.Leg(side, 1)];
+                float pitch = output[PoseSpec.Leg(side, 5)];
+                if (output[PoseSpec.Leg(side, 6)] > 0.5f && pitch > 0f && y < 0.1f)
+                    y = Math.Max(y, 0.08f + PoseSolver.FootTipRise(pitch));
+                output[PoseSpec.Leg(side, 1)] = y + lift * k;
+            }
         }
 
         // Planted feet stay where they touched down while the body moves and turns over them; when the pose wants a
@@ -524,6 +572,12 @@ namespace VaatusRevenge.Core
             bool enabled = s.FootLocks && input.Grounded && !input.Dead;
             float rootYaw = output[PoseChannel.RootYaw];
             float turn = AnimMath.IsFinite(input.YawDelta) ? input.YawDelta : 0f;
+            float turnRate = dt > 0f ? turn / dt : 0f;
+            // A spin the clip itself makes (RootYaw: a spinning kick) pivots a planted foot on the ball with the body;
+            // only the fighter's own turning (YawDelta) leaves the foot pointing where it was.
+            float spin = Wrap180(rootYaw - lastRootYaw);
+            lastRootYaw = rootYaw;
+            float footLength = solver.Skeleton.Proportions.FootLength * k;
             var move = new Vector2(velocity.X, velocity.Z) * dt;
             float decay = 1f - AnimMath.ExpBlend(s.ReleaseRate, dt);
             for (int i = 0; i < 2; i++)
@@ -533,28 +587,50 @@ namespace VaatusRevenge.Core
                 ref FootLock f = ref footLocks[i];
                 if (dt > 0f)
                 {
-                    // The body moved and turned: a spot fixed on the ground moves the other way in the body's frame.
-                    f.Position = RotateXZ(f.Position - move, -turn);
-                    f.From = RotateXZ(f.From - move, -turn);
+                    // The body turned and moved: a spot fixed on the ground turns and moves the other way in the
+                    // body's frame (the velocity is already in the new, turned frame, so turn first, then move).
+                    f.Position = RotateXZ(f.Position, -turn) - move;
+                    f.From = RotateXZ(f.From, -turn) - move;
+                    f.To = RotateXZ(f.To, -turn) - move;
+                    if (f.Locked && !f.Stepping && spin != 0f)
+                    {
+                        // Pivot on the ball of the foot, not the ankle: the toes stay put and the heel swings round.
+                        Vector2 ball = f.Position + RotateXZ(new Vector2(0f, footLength), f.Yaw - turn);
+                        f.Position = ball - RotateXZ(new Vector2(0f, footLength), f.Yaw - turn + spin);
+                    }
+                    f.Yaw += spin - turn;
+                    f.FromYaw += spin - turn;
+                    f.ToYaw += spin - turn;
                     f.Offset *= decay;
+                    f.YawOffset *= decay;
                 }
                 Vector2 key = RotateXZ(new Vector2(sign * output[PoseSpec.Leg(side, 0)], output[PoseSpec.Leg(side, 2)]) * k, rootYaw);
+                float keyYaw = rootYaw + sign * output[PoseSpec.Leg(side, 4)];
                 bool planted = output[PoseSpec.Leg(side, 7)] < 0.5f && output[PoseSpec.Leg(side, 1)] * k < (0.08f + s.PlantHeight) * k;
                 Vector2 shown;
+                float shownYaw;
                 float lift = 0f;
                 if (!enabled || !planted)
                 {
-                    if (f.Locked) f.Offset = f.Position - key;
+                    if (f.Locked)
+                    {
+                        f.Offset = f.Position - key;
+                        f.YawOffset = Wrap180(f.Yaw - keyYaw);
+                    }
                     f.Locked = false;
                     f.Stepping = false;
                     shown = key + f.Offset;
+                    shownYaw = keyYaw + f.YawOffset;
                 }
                 else if (!f.Locked)
                 {
                     f.Locked = true;
                     f.Position = key + f.Offset;
+                    f.Yaw = keyYaw + f.YawOffset;
                     f.Offset = Vector2.Zero;
+                    f.YawOffset = 0f;
                     shown = f.Position;
+                    shownYaw = f.Yaw;
                 }
                 else
                 {
@@ -564,26 +640,47 @@ namespace VaatusRevenge.Core
                         if (f.StepTime >= f.StepDuration)
                         {
                             f.Stepping = false;
-                            f.Position = key;
+                            f.Position = f.To;
+                            f.Yaw = f.ToYaw;
                         }
                     }
                     if (!f.Stepping)
                     {
                         float distance = Vector2.Distance(key, f.Position);
+                        float twist = Math.Abs(Wrap180(keyYaw - f.Yaw));
                         bool otherStepping = footLocks[1 - i].Stepping;
-                        if (distance > s.StepDistance * k && (!otherStepping || distance > 2f * s.StepDistance * k))
+                        bool wantsStep = distance > s.StepDistance * k || twist > s.StepTurn;
+                        bool urgent = distance > 2f * s.StepDistance * k || twist > 2f * s.StepTurn;
+                        if (wantsStep && (!otherStepping || urgent))
                         {
                             f.Stepping = true;
                             f.From = f.Position;
+                            f.FromYaw = f.Yaw;
                             f.StepTime = 0f;
-                            f.StepDuration = AnimMath.Clamp(distance / Math.Max(0.1f, s.StepSpeed), s.StepMinTime, s.StepMaxTime);
-                            f.StepHeight = Math.Min(s.StepMaxLift, distance * s.StepLiftPerMetre) * k;
+                            float length = Math.Max(distance, twist * AnimMath.Deg2Rad * 0.1f * k);   // a pivot counts as a short step
+                            f.StepDuration = AnimMath.Clamp(length / Math.Max(0.1f, s.StepSpeed), s.StepMinTime, s.StepMaxTime);
+                            // Land where (and pointing how) the pose will want the foot when the step ends (the body keeps
+                            // moving and turning meanwhile), so the foot touches down on a fixed spot and doesn't skid.
+                            f.To = RotateXZ(key, turnRate * f.StepDuration) + new Vector2(velocity.X, velocity.Z) * f.StepDuration;
+                            f.ToYaw = keyYaw + turnRate * f.StepDuration;
+                            f.StepHeight = AnimMath.Clamp(length * s.StepLiftPerMetre, s.StepMinLift, s.StepMaxLift) * k;
                         }
                     }
                     if (f.Stepping)
                     {
                         float u = AnimMath.Clamp01(f.StepTime / Math.Max(1e-3f, f.StepDuration));
-                        shown = Vector2.Lerp(f.From, key, AnimMath.SmoothStep(u));
+                        if (u < s.StepRetargetShare)
+                        {
+                            // Early in the step the foot is still in the air: if the pose keeps moving (a clip drawing
+                            // the foot back to guard), the landing spot follows it, so one step covers the whole move
+                            // instead of a shuffle of short ones.
+                            float remaining = f.StepDuration - f.StepTime;
+                            f.To = RotateXZ(key, turnRate * remaining) + new Vector2(velocity.X, velocity.Z) * remaining;
+                            f.ToYaw = keyYaw + turnRate * remaining;
+                        }
+                        float e = AnimMath.SmoothStep(u);
+                        shown = Vector2.Lerp(f.From, f.To, e);
+                        f.Yaw = f.FromYaw + Wrap180(f.ToYaw - f.FromYaw) * e;
                         lift = f.StepHeight * MathF.Sin(MathF.PI * u);
                         f.Position = shown;
                     }
@@ -591,12 +688,14 @@ namespace VaatusRevenge.Core
                     {
                         shown = f.Position;
                     }
+                    shownYaw = f.Yaw;
                 }
-                if (!f.Locked && f.Offset.LengthSquared() < 1e-8f) continue;
+                if (!f.Locked && f.Offset.LengthSquared() < 1e-8f && Math.Abs(f.YawOffset) < 0.01f) continue;
                 Vector2 local = RotateXZ(shown, -rootYaw) / k;
                 output[PoseSpec.Leg(side, 0)] = sign * local.X;
                 output[PoseSpec.Leg(side, 2)] = local.Y;
                 output[PoseSpec.Leg(side, 1)] += lift / k;
+                output[PoseSpec.Leg(side, 4)] = sign * Wrap180(shownYaw - rootYaw);
                 if (f.Locked) output[PoseSpec.Leg(side, 11)] = 0f;   // the lock replaces the lunge anchor
             }
         }

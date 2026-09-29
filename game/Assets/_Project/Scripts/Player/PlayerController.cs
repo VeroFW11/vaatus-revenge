@@ -384,7 +384,14 @@ namespace VaatusRevenge
             UpdateDeath();
             UpdateElementSelect(input.ElementSelect, settings);
             feel.Tick(model, settings, dt, Time.unscaledDeltaTime);
-            if (animatorDriver != null) animatorDriver.SetInput(animationFeed.Build(model, dt));
+            if (animatorDriver != null)
+            {
+                // The body aims its strikes at whoever the combat rules are tracking (locked, else soft target).
+                Combatant aimAt = lockTarget != null ? lockTarget : softTarget;
+                animatorDriver.SetInput(aimAt != null
+                    ? animationFeed.Build(model, dt, true, transform.position.ToNumerics(), aimAt.AimPoint.position.ToNumerics())
+                    : animationFeed.Build(model, dt));
+            }
         }
 
         // ---------------------------------------------------------------- one frame, step by step

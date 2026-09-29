@@ -15,11 +15,6 @@ namespace VaatusRevenge
         [Tooltip("Moves that throw fire of their own (cone, whip, wheel...) keep their limb flame this much shorter, so the big effect reads.")]
         [Range(0f, 1f)] public float BigEffectLimbFlameShare = 0.6f;
 
-        [Header("Launcher")]
-        [Tooltip("The Rising Dragon Kick's column of fire rises this high (metres) at this share of its reach in front of you.")]
-        public float PillarHeight = 2.6f;
-        [Range(0f, 1f)] public float PillarReachShare = 0.6f;
-
         [Header("Fire Whip")]
         [Tooltip("The lash keeps sweeping this long after the active frames end (seconds), then thins away.")]
         public float WhipLinger = 0.1f;
