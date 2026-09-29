@@ -27,6 +27,15 @@ namespace VaatusRevenge
         static readonly HashSet<string> reportedMissing = new HashSet<string>();
         static Mesh ringBandMesh;
 
+        // Domain reload is off, so statics survive between Play sessions: forget them at the start of each one (the
+        // cached mesh may have been destroyed with the last scene, and a missing shader should be reported again).
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics()
+        {
+            reportedMissing.Clear();
+            ringBandMesh = null;
+        }
+
         // Unity's built-in mesh for a primitive (the same one CreatePrimitive uses), cached.
         public static Mesh GetMesh(PrimitiveType type)
         {
