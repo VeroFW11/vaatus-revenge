@@ -19,6 +19,7 @@ namespace VaatusRevenge
         const float SlopeLimit = 50f;
         const float AimHeight = 1.3f;
         const string CrossbowName = "Crossbow";
+        const float MinBuiltWeaponLength = 1e-3f;
 
         // Archetype colours (spec section 9), used unless the tuning asset's feedback picks a custom one.
         static readonly Color SoldierColor = new Color(0.44f, 0.52f, 0.62f);     // steel blue-grey
@@ -43,8 +44,32 @@ namespace VaatusRevenge
             return fallback != null ? fallback.DisplayName : "";
         }
 
-        // Creates the fighter, still inactive: CharacterController, Combatant with aim point, built GreyboxRig.
-        public static GameObject Create(Transform parent, Vector3 position, float yaw, string displayName, Color bodyColor, bool withWeapon)
+        // The weapon length the tuning asks for (dao or practice stick, hand to tip).
+        public static float WeaponLengthFor(EnemyFeedbackSettings feedback)
+        {
+            return feedback != null && feedback.Poses != null ? feedback.Poses.WeaponLength : EnemyPoseSettings.DefaultWeaponLength;
+        }
+
+        // Stretches the rig's weapon along the blade so its tip is 'length' metres from the hand. GreyboxRig builds
+        // every weapon the same length; the tip anchor (and anything on it, like the sword trail) moves with the
+        // stretch. Does nothing for a rig without a weapon. Safe to call every time (e.g. after live edits).
+        public static void SetWeaponLength(GreyboxRig rig, float length)
+        {
+            if (rig == null || !rig.HasWeapon || !(length > 0f)) return;
+            Transform tip = rig.GetAnchor(Limb.Weapon);
+            if (tip == rig.GetAnchor(Limb.RightFist)) return;  // no tip anchor (it falls back to the hand): nothing to stretch
+            Transform weapon = tip.parent;                     // the weapon's pivot sits in the hand, blade along +Z
+            float builtLength = tip.localPosition.z;
+            if (weapon == null || !(builtLength > MinBuiltWeaponLength)) return;
+            Vector3 scale = weapon.localScale;
+            float stretch = length / builtLength;
+            if (!Mathf.Approximately(scale.z, stretch)) weapon.localScale = new Vector3(scale.x, scale.y, stretch);
+        }
+
+        // Creates the fighter, still inactive: CharacterController, Combatant with aim point, built GreyboxRig
+        // (with its weapon stretched to weaponLength).
+        public static GameObject Create(Transform parent, Vector3 position, float yaw, string displayName, Color bodyColor, bool withWeapon,
+            float weaponLength)
         {
             var go = new GameObject(string.IsNullOrEmpty(displayName) ? "Enemy" : displayName);
             go.SetActive(false);
@@ -68,6 +93,7 @@ namespace VaatusRevenge
 
             GreyboxRig rig = go.AddComponent<GreyboxRig>();
             rig.Build(bodyColor, withWeapon);
+            SetWeaponLength(rig, weaponLength);
             return go;
         }
 

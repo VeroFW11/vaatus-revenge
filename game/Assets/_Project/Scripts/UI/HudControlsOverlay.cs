@@ -60,8 +60,8 @@ namespace VaatusRevenge
             y += titleHeight;
 
             // Gameplay: action | gamepad | keyboard + mouse.
-            float actionWidth = innerWidth * 0.4f;
-            float padWidth = innerWidth * 0.27f;
+            float actionWidth = innerWidth * 0.43f;
+            float padWidth = innerWidth * 0.25f;
             float textTop = Mathf.Max(0f, (rowHeight - p.Small.fontSize * 1.25f) * 0.5f);
             p.Text(new Rect(x, y + textTop, actionWidth, rowHeight), "Action", p.Body, accent);
             p.Text(new Rect(x + actionWidth, y + textTop, padWidth, rowHeight), "Gamepad (Xbox / PS)", p.Body, accent);
@@ -116,9 +116,11 @@ namespace VaatusRevenge
             int r = 0;
             Row(ref r, "Move", "Left stick", "W A S D");
             Row(ref r, "Camera", "Right stick", "Mouse");
-            Row(ref r, "Swap camera shoulder", "L3 (click left stick)", "V");
+            Row(ref r, "Swap camera shoulder (hold)", "Hold L3 (left-stick click)", "Hold V");
             Row(ref r, "Light attack (3-hit chain)", "RB / R1", "Left mouse");
-            Row(ref r, "Heavy attack (hold, release on the flash)", "RT / R2", "Right mouse");
+            // Taught as a rhythm, not a reaction: letting go when the band lights up is usually too late
+            // (playtest report HUD-01). The meter's white "get ready" mark comes just before the gold band.
+            Row(ref r, "Heavy: hold, let go as the meter fills the gold band", "RT / R2", "Right mouse");
             Row(ref r, "Dodge (tap) / Sprint (hold)", "B / Circle", "Left Shift");
             Row(ref r, "Jump", "A / Cross", "Space");
             Row(ref r, "Guard (hold) / Deflect (press just before a hit)", "LB / L1", "Q");

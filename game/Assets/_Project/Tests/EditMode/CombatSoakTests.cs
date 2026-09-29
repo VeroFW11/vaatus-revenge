@@ -100,6 +100,8 @@ namespace VaatusRevenge.Tests
             PlayerState lastPlayerState = PlayerState.Locomotion;
             Pad holdButtons = Pad.None;
             int holdFrames = 0;
+            Pad lastPad = Pad.None;
+            bool dodgeNextFrame = false;
             Vector2 stick = Vector2.Zero;
 
             for (int frame = 0; frame < frames; frame++)
@@ -117,7 +119,17 @@ namespace VaatusRevenge.Tests
                     pad |= holdButtons;
                 }
                 Pad defence = model.IsAlive ? ChooseDefence(bot, frame, player, enemies, ref holdButtons, ref holdFrames) : Pad.None;
-                if (defence != Pad.None)
+                if (dodgeNextFrame)
+                {
+                    pad = Pad.Dodge;                             // the fresh press, one frame after letting go
+                    dodgeNextFrame = false;
+                }
+                else if (defence == Pad.Dodge && (lastPad & Pad.Dodge) != 0)
+                {
+                    pad = Pad.None;                              // was holding dodge to sprint: let go first, press next frame
+                    dodgeNextFrame = true;
+                }
+                else if (defence != Pad.None)
                 {
                     pad |= defence;
                 }
@@ -128,6 +140,7 @@ namespace VaatusRevenge.Tests
                 }
                 if (holdFrames == 0) holdButtons = Pad.None;
                 player.Step(pad, stick);
+                lastPad = pad;
 
                 // ---- player events -> hits and projectiles
                 foreach (PlayerEvent e in player.Last.Events)
@@ -174,6 +187,8 @@ namespace VaatusRevenge.Tests
                         else if (e.Type == EnemyEventType.AttackActiveStart)
                         {
                             f.ActiveBalance++;
+                            // As the Unity enemy code does: report every strike, so a dodge away can still be perfect.
+                            player.Model.NotifyEnemyStrike(e.Origin, e.Direction, e.Move, d.World.Position);
                             EnemyMelee(f, player, e.Origin, e.Direction, e.Move, d.Brain.BuildDamage(e), stats);
                         }
                         else if (e.Type == EnemyEventType.AttackActiveEnd)
@@ -294,7 +309,12 @@ namespace VaatusRevenge.Tests
                 int framesToStrike = f.StrikeFrame - frame;
                 if (distance > 4.5f || framesToStrike != bot.Range(1, 10)) continue;
                 if (bot.Chance(0.4f)) return Pad.None;
-                if (bot.Chance(0.5f)) return Pad.Dodge;
+                if (bot.Chance(0.5f))
+                {
+                    holdButtons = Pad.None;                      // stop sprinting or charging to get out
+                    holdFrames = 0;
+                    return Pad.Dodge;
+                }
                 holdButtons = Pad.Guard;
                 holdFrames = bot.Range(4, 30);
                 return Pad.Guard;
@@ -306,6 +326,7 @@ namespace VaatusRevenge.Tests
         {
             PlayerCombatModel model = player.Model;
             if (model.Health < 40f && model.HealCharges > 0 && bot.Chance(0.05f)) return Pad.Heal;
+            if (model.Stamina < 25f) return Pad.None;           // like a person: keep enough stamina to dodge
             float distanceToTarget = target == null ? 99f : Directions.Flatten(target.Driver.World.Position - player.World.Position).Length();
             float roll = bot.NextFloat();
             if (distanceToTarget > 5f)

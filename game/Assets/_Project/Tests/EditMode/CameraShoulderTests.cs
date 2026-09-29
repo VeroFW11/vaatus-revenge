@@ -145,8 +145,67 @@ namespace VaatusRevenge.Tests
             Assert.Greater(ScreenAngle(camera, camera.Pivot), 1f, "the fighter sits right of the screen centre");
         }
 
+        static OrbitCameraInput HoldingSwap()
+        {
+            return new OrbitCameraInput { SwapShoulderHeld = true };
+        }
+
         [Test]
-        public void TheSwapButtonSlidesSmoothlyToTheOtherShoulder()
+        public void TheSwapButtonMustBeHeldBriefly()
+        {
+            var tuning = new CameraTuning();
+            var camera = NewCamera(tuning);
+            int almost = (int)(tuning.ShoulderSwapHoldTime / Frame) - 2;
+            for (int i = 0; i < almost; i++) Step(camera, HoldingSwap());
+            Assert.AreEqual(1, camera.ShoulderSide, "not held long enough yet");
+            for (int i = 0; i < 4; i++) Step(camera, HoldingSwap());
+            Assert.AreEqual(-1, camera.ShoulderSide, "held long enough: swapped");
+
+            Run(camera, HoldingSwap(), 2f);
+            Assert.AreEqual(-1, camera.ShoulderSide, "one swap per hold, however long it's held");
+
+            Step(camera, Idle());
+            Run(camera, HoldingSwap(), tuning.ShoulderSwapHoldTime + 0.1f);
+            Assert.AreEqual(1, camera.ShoulderSide, "let go and hold again to swap back");
+        }
+
+        [Test]
+        public void QuickClicksNeverSwap()
+        {
+            // The accidental L3 clicks from pushing the stick hard while sprinting: 0.1 s presses.
+            var camera = NewCamera();
+            for (int click = 0; click < 20; click++)
+            {
+                for (int i = 0; i < 6; i++) Step(camera, HoldingSwap());
+                for (int i = 0; i < 3; i++) Step(camera, Idle());
+            }
+            Assert.AreEqual(1, camera.ShoulderSide);
+            Assert.That(camera.ShoulderOffset, Is.EqualTo(0.55f).Within(1e-4f));
+        }
+
+        [Test]
+        public void AZeroHoldTimeSwapsOnPressOncePerPress()
+        {
+            var camera = NewCamera(new CameraTuning { ShoulderSwapHoldTime = 0f });
+            Step(camera, HoldingSwap());
+            Assert.AreEqual(-1, camera.ShoulderSide);
+            Run(camera, HoldingSwap(), 1f);
+            Assert.AreEqual(-1, camera.ShoulderSide, "still one swap per press");
+            Step(camera, Idle());
+            Step(camera, HoldingSwap());
+            Assert.AreEqual(1, camera.ShoulderSide);
+        }
+
+        [Test]
+        public void TheSwapHoldWaitsWhileTimeIsStopped()
+        {
+            var camera = NewCamera();
+            for (int i = 0; i < 100; i++) camera.UpdateOrientation(HoldingSwap(), 0f);
+            Assert.AreEqual(1, camera.ShoulderSide);
+        }
+
+        [Test]
+        public void AnInstantSwapRequestSlidesSmoothlyToTheOtherShoulder()
         {
             var camera = NewCamera();
             Step(camera, new OrbitCameraInput { SwapShoulder = true });

@@ -14,9 +14,12 @@ namespace VaatusRevenge.Core
     {
         public float MaxChargeTime = 1.2f;           // holding this long releases automatically as Charged
         public float QuickReleaseTime = 0.2f;
-        public float SweetSpotStart = 0.70f;
-        public float SweetSpotEnd = 0.90f;
-        public float ChargedDamageMultiplier = 1.4f;
+        public float SweetSpotStart = 0.65f;
+        public float SweetSpotEnd = 0.95f;
+        public float ReadyCueLead = 0.25f;           // a "get ready" cue shows this long before the sweet spot, because
+                                                     // people need ~0.2-0.25 s to react: releasing on the sweet-spot flash
+                                                     // itself is usually too late (playtest report HUD-01)
+        public float ChargedDamageMultiplier = 1.2f;
         public float FaJinDamageMultiplier = 1.8f;
         public float FaJinPoiseMultiplier = 2f;
         public float FaJinHitstopBonus = 0.12f;      // extra freeze-frame on a fa jin hit

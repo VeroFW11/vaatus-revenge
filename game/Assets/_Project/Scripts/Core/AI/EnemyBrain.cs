@@ -51,6 +51,9 @@ namespace VaatusRevenge.Core
         float staggerImmunityRemaining;  // counts down after a stagger ends; poise can't break meanwhile
         PushMotion knockback;
         Vector3 actionStep;           // this frame's lunge movement, worked out before the attack can end
+        Vector3 home;                 // leash centre: where it stood on its first frame (or first frame after Reset)
+        bool homeKnown;
+        bool leashLimited;            // last frame the leash stopped it moving outward (e.g. backing off the edge)
 
         EnemyAttackData currentAttack;
         int currentAttackId;
@@ -118,8 +121,11 @@ namespace VaatusRevenge.Core
             }
         }
 
+        public Vector3 Home => home;
+
         // For subclasses.
         protected DeterministicRandom Random { get; }
+        protected bool LeashLimited => leashLimited;   // true when the leash blocked outward movement last frame
         protected float StateTime => stateTime;
         protected double Clock => clock;
         protected float AttackTimer { get; set; }      // next attack allowed when this reaches 0
@@ -139,6 +145,11 @@ namespace VaatusRevenge.Core
                 pendingEvents.Clear();
                 if (!(dt > 0f) || float.IsInfinity(dt)) return MakeResult();   // paused / frozen: nothing advances
 
+                if (!homeKnown)
+                {
+                    home = world.Position;
+                    homeKnown = true;
+                }
                 clock += dt;
                 stateTime += dt;
                 sinceHit += dt;
@@ -519,6 +530,7 @@ namespace VaatusRevenge.Core
                     break;
                 default:
                     moveVelocity = LocomotionRules.Accelerate(moveVelocity, desiredVelocity, tuning.Acceleration, tuning.Acceleration, dt);
+                    moveVelocity = KeepInsideLeash(moveVelocity, world.Position, dt);
                     if (aggro && world.HasTarget) facingYaw = LocomotionRules.Turn(facingYaw, yawToTarget, tuning.TurnRate, dt);
                     else if (desiredVelocity.LengthSquared() > Epsilon)
                         facingYaw = LocomotionRules.Turn(facingYaw, Directions.YawOf(desiredVelocity, facingYaw), tuning.TurnRate, dt);
@@ -529,6 +541,31 @@ namespace VaatusRevenge.Core
             if (world.Grounded) verticalVelocity = -tuning.GroundStickSpeed;
             else verticalVelocity = LocomotionRules.ApplyGravity(verticalVelocity, tuning.Gravity, 0f, dt);
             lastVelocity = moveVelocity + displacement / dt + new Vector3(0f, verticalVelocity, 0f);
+        }
+
+        // Leash (LeashRadius > 0): the enemy never walks further than LeashRadius from home. A step that would cross
+        // the edge is pulled back onto it, which keeps its sideways part, so it slides along the edge; if something
+        // pushed it outside (a knockback), it walks straight back in. Applied to the real velocity, so acceleration
+        // can't carry it past the edge.
+        Vector3 KeepInsideLeash(Vector3 velocity, Vector3 position, float dt)
+        {
+            leashLimited = false;
+            float leash = tuning.LeashRadius;
+            if (!(leash > 0f) || !homeKnown || !(dt > 0f)) return velocity;
+            Vector3 offset = Directions.Flatten(position - home);
+            float distance = offset.Length();
+            if (distance > leash + Epsilon)
+            {
+                leashLimited = true;
+                float back = Math.Min(Math.Max(tuning.WalkSpeed, velocity.Length()), (distance - leash) / dt);
+                return -offset / distance * back;
+            }
+            Vector3 next = offset + velocity * dt;
+            float nextDistance = next.Length();
+            if (nextDistance <= leash) return velocity;
+            leashLimited = true;
+            next *= leash / nextDistance;
+            return (next - offset) / dt;
         }
 
         // Forward step during the first strike (over its last LungeTime seconds), stopping short of the target.
@@ -599,8 +636,9 @@ namespace VaatusRevenge.Core
             return result;
         }
 
+        // Hyper armour runs from Move.HyperArmorFrom (e.g. halfway through a big wind-up) until the last strike ends.
         bool HasHyperArmor => state == EnemyState.Attacking && currentAttack != null && currentAttack.Move.HyperArmor
-            && action.Time < LastActiveEnd(currentAttack);
+            && action.Time >= currentAttack.Move.HyperArmorFrom && action.Time < LastActiveEnd(currentAttack);
 
         // The player deflected our attack: stagger. (For a deflected bolt the Unity side may skip this.)
         public void OnParried()
@@ -670,13 +708,15 @@ namespace VaatusRevenge.Core
             Reset(spawnYaw);
         }
 
-        // Back to full health, unaware, with the same random sequence as a fresh brain (repeatable tests).
+        // Back to full health, unaware, with the same random sequence as a fresh brain (repeatable tests). Events
+        // still queued from before the reset are dropped: the Reset event tells the Unity side to reset its visuals.
+        // The home point (leash centre) is re-captured on the next Tick, so move the body before ticking again.
         public void Reset(float newFacingYaw)
         {
             if (state == EnemyState.Attacking) ExitAttack();
-            if (state == EnemyState.Staggered) Emit(EnemyEventType.StaggerEnded);
             spawnYaw = Angles.Wrap180(newFacingYaw);
             ResetState();
+            pendingEvents.Clear();
             Emit(EnemyEventType.Reset);
         }
 
@@ -700,6 +740,8 @@ namespace VaatusRevenge.Core
             lastVelocity = Vector3.Zero;
             knockback.Stop();
             actionStep = Vector3.Zero;
+            homeKnown = false;
+            leashLimited = false;
             sinceHit = 0f;
             AttackTimer = 0f;
             Array.Clear(cooldowns, 0, cooldowns.Length);

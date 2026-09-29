@@ -1,3 +1,4 @@
+using System.Globalization;
 using UnityEngine;
 using UnityEngine.Rendering;
 using VaatusRevenge.Core;
@@ -7,11 +8,13 @@ namespace VaatusRevenge
     // Turns what an enemy brain does into grey-box body language on its GreyboxRig. This is where "readable
     // and fair" lives: every attack has a wind-up pose held for its whole telegraph, a glow in the telegraph's
     // colour (yellow = normal, red = heavy or delayed) that builds up and flares just before the strike, a
-    // swing that arrives as the hit window opens, and a sword trail while the swing can hit. Hits flash,
+    // swing that arrives as each hit window opens, and a sword trail while the blade swings in. Hits flash,
     // staggers flash and wobble, deaths flash and topple.
     //
     // The glow's build-up is the timing cue: players learn to dodge or deflect on the flare rather than on
     // the pose, which is what makes the delayed thrust (a held pose that baits panic dodges) fair.
+    // The blade shows the reach: when a strike lands, its tip sits on the edge of what the attack can hit
+    // (see FitStrikeHand), so nothing hits you from beyond the visible blade.
     //
     // Plain C# owned by an EnemyFighter, which forwards the brain's events and calls Tick once per frame after
     // them. Every rig call is guarded, so a fighter without a built rig simply shows nothing.
@@ -21,6 +24,7 @@ namespace VaatusRevenge
 
         const float MinSeconds = 1e-3f;          // an instant (0 s) wind-up or trail must not divide by zero
         const float SwishVertexSpacing = 0.02f;  // metres between trail points: smooth enough, cheap enough
+        const float Epsilon = 1e-4f;
 
         GreyboxRig rig;
         Transform crossbow;
@@ -28,16 +32,20 @@ namespace VaatusRevenge
         TrailRenderer swish;
         Material swishMaterial;
 
-        bool telegraphing;
-        bool telegraphJustStarted;
-        bool telegraphRanged;
-        bool swingStarted;
-        float telegraphTime;
+        // The running attack, from its telegraph until it ends. attackTime follows the brain's own attack clock
+        // (0 on the frame the telegraph starts, then + dt each frame), so swings can start just before each hit.
+        bool attackRunning;
+        bool attackJustStarted;
+        bool attackRanged;
+        bool telegraphing;                       // still winding up: the glow is on
+        float attackTime;
         float telegraphDuration;
         float telegraphPeak;
         Color telegraphColor;
-        TelegraphKind telegraphKind;
-        EnemyAttackData telegraphAttack;
+        TelegraphKind attackKind;
+        EnemyAttackData attack;
+        int nextSwing;                           // the first strike whose swing hasn't started yet
+        bool warnedReach;
 
         AimMode aimMode;
         float aimPitch;
@@ -54,6 +62,7 @@ namespace VaatusRevenge
             crossbow = newCrossbow;
             crossbowRenderers = crossbow != null ? crossbow.GetComponentsInChildren<Renderer>(true) : null;
             SyncCrossbowMaterial();
+            EnemyBuilder.SetWeaponLength(rig, PosesOf(feedback).WeaponLength);
             if (swish == null && feedback.Swish && rig != null && rig.HasWeapon && Application.isPlaying) CreateSwish(feedback);
         }
 
@@ -68,18 +77,19 @@ namespace VaatusRevenge
 
         public void OnTelegraphStarted(in EnemyEvent e, EnemyFeedbackSettings feedback)
         {
+            attackRunning = true;
+            attackJustStarted = true;
+            attackTime = 0f;
             telegraphing = true;
-            telegraphJustStarted = true; // the brain's own clock starts at 0 this frame; ours starts next frame too
-            telegraphTime = 0f;
             telegraphDuration = Mathf.Max(MinSeconds, e.Duration);
-            telegraphKind = e.Telegraph;
-            telegraphAttack = e.Attack;
-            telegraphRanged = e.Move != null && e.Move.LaunchesProjectile;
+            attackKind = e.Telegraph;
+            attack = e.Attack;
+            attackRanged = e.Move != null && e.Move.LaunchesProjectile;
+            nextSwing = 0;
             telegraphColor = feedback.TelegraphColor(e.Telegraph);
             telegraphPeak = Mathf.Max(0f, feedback.TelegraphIntensity(e.Telegraph));
-            swingStarted = false;
             ApplyTelegraphGlow(feedback);
-            if (telegraphRanged)
+            if (attackRanged)
             {
                 aimMode = AimMode.Tracking;
                 SyncCrossbowMaterial();
@@ -87,23 +97,28 @@ namespace VaatusRevenge
             if (rig == null) return;
 
             EnemyPoseSettings poses = PosesOf(feedback);
-            WindUpPose(e.Telegraph, telegraphRanged, poses, out Vector3 pose, out float lean);
+            EnemyBuilder.SetWeaponLength(rig, poses.WeaponLength); // picks up live edits of the length
+            WindUpPose(e.Telegraph, attackRanged, poses, out Vector3 pose, out float lean);
             float rise = Mathf.Clamp(poses.WindUpRiseTime, 0f, telegraphDuration * poses.WindUpRiseMaxShare);
             // Rise, then hold for the whole wind-up: the strike takes over from wherever the hand is, and an
             // interrupted wind-up is sent back to guard by OnAttackEnded.
             rig.Strike(Limb.Weapon, pose, rise, telegraphDuration, poses.ReturnToGuardTime);
-            if (lean != 0f && rise > 0f) rig.Lean(lean, rise / LeanPeakShare());
+            // Lean back while winding up and be upright again just as the swing starts, so the swing lands
+            // exactly where FitStrikeHand aimed it.
+            float snap = Mathf.Max(0f, poses.StrikeSnapTime);
+            if (lean != 0f) rig.Lean(lean, Mathf.Max(rise, telegraphDuration - snap));
         }
 
-        // A melee strike's active window opened: the glow goes out and the swing (if it hasn't started in the
-        // last moments of the wind-up) starts now.
+        // A melee strike's active window opened: the glow goes out, and the swing starts now unless it already
+        // started just before the window (see Tick).
         public void OnStrike(in EnemyEvent e, EnemyFeedbackSettings feedback)
         {
-            bool alreadySwinging = e.HitIndex == 0 && swingStarted;
             StopTelegraph();
-            if (e.Attack != null) telegraphAttack = e.Attack;
-            telegraphKind = e.Telegraph;
-            if (!alreadySwinging) BeginSwing(e.HitIndex, feedback);
+            if (e.Attack != null) attack = e.Attack;
+            attackKind = e.Telegraph;
+            if (nextSwing > e.HitIndex) return;
+            BeginSwing(e.HitIndex, feedback);
+            nextSwing = e.HitIndex + 1;
         }
 
         public void OnStrikeEnd()
@@ -123,9 +138,9 @@ namespace VaatusRevenge
 
             // Kick back with each bolt. During a burst, hold the kicked pose until the next bolt so the crossbow
             // stays up; after the last one, lower it over the recovery.
-            EnemyAttackData attack = e.Attack;
-            bool moreToCome = attack != null && e.HitIndex < attack.HitCount - 1;
-            float hold = moreToCome ? Mathf.Max(0f, attack.HitInterval) : 0f;
+            EnemyAttackData bolts = e.Attack;
+            bool moreToCome = bolts != null && e.HitIndex < bolts.HitCount - 1;
+            float hold = moreToCome ? Mathf.Max(0f, bolts.HitInterval) : 0f;
             float lower = moreToCome ? poses.ReturnToGuardTime : RecoveryPullBack(e.Move, poses);
             float kick = Mathf.Max(0f, poses.RecoilKickTime);
             rig.Strike(Limb.Weapon, poses.AimPose + poses.RecoilOffset, kick, hold, lower);
@@ -136,6 +151,7 @@ namespace VaatusRevenge
         public void OnAttackEnded(EnemyFeedbackSettings feedback)
         {
             bool cutShortInWindUp = telegraphing;
+            attackRunning = false;
             StopTelegraph();
             StopSwish(false);
             aimMode = AimMode.Rest;
@@ -164,11 +180,12 @@ namespace VaatusRevenge
 
         public void OnStaggered(EnemyFeedbackSettings feedback)
         {
+            attackRunning = false;
             StopTelegraph();
             StopSwish(false);
             aimMode = AimMode.Rest;
             if (rig == null) return;
-            rig.SetStaggered(true); // wobble and dim; also pulls the limbs back
+            rig.RestartStagger(); // wobble and dim, from the strongest kick even if it was already staggered
             rig.Flash(feedback.StaggerFlashColor, feedback.StaggerFlashTime);
         }
 
@@ -179,6 +196,7 @@ namespace VaatusRevenge
 
         public void OnDied(EnemyFeedbackSettings feedback)
         {
+            attackRunning = false;
             StopTelegraph();
             StopSwish(false);
             aimMode = AimMode.Rest;
@@ -195,10 +213,11 @@ namespace VaatusRevenge
         // Back to the rest pose with every effect cleared (respawn / reset).
         public void OnReset()
         {
+            attackRunning = false;
+            attackJustStarted = false;
             telegraphing = false;
-            telegraphJustStarted = false;
-            swingStarted = false;
-            telegraphAttack = null;
+            attack = null;
+            nextSwing = 0;
             StopSwish(true);
             aimMode = AimMode.Rest;
             aimPitch = 0f;
@@ -209,6 +228,7 @@ namespace VaatusRevenge
         // The fighter was switched off: nothing may keep glowing or trailing.
         public void OnDisabled()
         {
+            attackRunning = false;
             StopTelegraph();
             StopSwish(true);
         }
@@ -219,45 +239,110 @@ namespace VaatusRevenge
         public void Tick(float dt, in EnemyWorldState world, EnemyFeedbackSettings feedback)
         {
             if (!(dt > 0f)) return; // paused: hold everything
-            if (telegraphing)
+            if (attackRunning)
             {
-                if (telegraphJustStarted) telegraphJustStarted = false;
-                else telegraphTime += dt;
-                // Start the swing a snap-time early, so the blade arrives just as the hit window opens.
-                float snap = Mathf.Max(0f, PosesOf(feedback).StrikeSnapTime);
-                if (!telegraphRanged && !swingStarted && snap > 0f && telegraphDuration - telegraphTime <= snap) BeginSwing(0, feedback);
-                ApplyTelegraphGlow(feedback);
+                if (attackJustStarted) attackJustStarted = false;
+                else attackTime += dt;
+                if (!attackRanged) StartSwingsEarly(feedback);
+                if (telegraphing) ApplyTelegraphGlow(feedback);
             }
             UpdateCrossbowAim(dt, in world, PosesOf(feedback));
         }
 
         // ---------------------------------------------------------------- helpers
 
+        // Each swing starts a snap-time before its strike's hit window opens, so the blade arrives just as the
+        // hit can land instead of teleporting there on the first dangerous frame.
+        void StartSwingsEarly(EnemyFeedbackSettings feedback)
+        {
+            float snap = Mathf.Max(0f, PosesOf(feedback).StrikeSnapTime);
+            if (!(snap > 0f) || attack == null || attack.Move == null) return;
+            int hits = Mathf.Max(1, attack.HitCount);
+            float interval = Mathf.Max(0f, attack.HitInterval);
+            while (nextSwing < hits && attackTime >= attack.Move.Startup + nextSwing * interval - snap)
+            {
+                BeginSwing(nextSwing, feedback);
+                nextSwing++;
+            }
+        }
+
         void BeginSwing(int hitIndex, EnemyFeedbackSettings feedback)
         {
-            swingStarted = true;
             if (rig == null) return;
             EnemyPoseSettings poses = PosesOf(feedback);
-            StrikePose(telegraphKind, hitIndex, poses, out Vector3 pose, out float lean);
-            EnemyAttackData attack = telegraphAttack;
             MoveData move = attack != null ? attack.Move : null;
+            StrikeAim(attackKind, hitIndex, poses, out Vector2 aim, out float lean);
+            Vector3 hand = FitStrikeHand(aim, move, poses);
             float snap = Mathf.Max(0f, poses.StrikeSnapTime);
             float active = move != null ? Mathf.Max(0f, move.Active) : 0f;
+            float interval = attack != null ? Mathf.Max(0f, attack.HitInterval) : 0f;
             // Between the strikes of a combo, drift back until the next one; after the last, pull back over the
             // recovery (the slow pull-back is the visible punish window).
             bool moreToCome = attack != null && hitIndex < attack.HitCount - 1;
-            float after = moreToCome ? Mathf.Max(0f, attack.HitInterval - active) : RecoveryPullBack(move, poses);
-            rig.Strike(Limb.Weapon, pose, snap, active, after);
-            if (lean != 0f && snap + active > 0f) rig.Lean(lean, (snap + active) / LeanPeakShare());
+            float after = moreToCome ? Mathf.Max(0f, interval - active) : RecoveryPullBack(move, poses);
+            rig.Strike(Limb.Weapon, hand, snap, active, after);
+            // Lean into the strike. Mid-combo the lean is upright again by the next swing, so that swing lands
+            // where it's aimed too.
+            float leanTime = moreToCome ? interval : (snap + active) / LeanPeakShare();
+            if (lean != 0f && leanTime > 0f) rig.Lean(lean, leanTime);
             StartSwish(feedback);
+        }
+
+        // Where the weapon hand must go (fighter space) so the blade tip lands exactly on the edge of the attack's
+        // hit area. The rig points the blade along the line from the shoulder through the hand, so the tip sits at
+        // shoulder + (arm + blade) * direction. The hit area is a circle of radius Range around the strike origin,
+        // OriginForward ahead of the feet (the hit test adds the target's radius, so a tip on that circle touches
+        // the body of a target at the very edge of the reach). Solving |shoulder + d * direction - origin| = Range
+        // for d (flat, ignoring height) gives the tip distance; the arm is what's left after the blade.
+        Vector3 FitStrikeHand(Vector2 aim, MoveData move, EnemyPoseSettings poses)
+        {
+            Vector3 shoulder = GreyboxRigParts.TorsoPivot + rig.Style.SwordShoulder;
+            Vector3 direction = Directions.FromYawPitch(aim.x, aim.y).ToUnity();
+            float armMin = Mathf.Max(0f, poses.StrikeArmMin);
+            float armMax = Mathf.Max(armMin, poses.StrikeArmMax);
+            float flatSq = direction.x * direction.x + direction.z * direction.z;
+            if (move == null || !(flatSq > Epsilon)) return shoulder + direction * armMin; // straight down: nothing to fit
+
+            float range = Mathf.Max(0f, move.Range);
+            float fromOriginX = shoulder.x;
+            float fromOriginZ = shoulder.z - move.OriginForward;
+            float b = 2f * (direction.x * fromOriginX + direction.z * fromOriginZ);
+            float c = fromOriginX * fromOriginX + fromOriginZ * fromOriginZ - range * range;
+            float tipDistance = (-b + Mathf.Sqrt(Mathf.Max(0f, b * b - 4f * flatSq * c))) / (2f * flatSq);
+            float arm = tipDistance - BladeLength();
+            if (arm < armMin || arm > armMax)
+            {
+                WarnReachOnce(move, arm, armMin, armMax);
+                arm = Mathf.Clamp(arm, armMin, armMax);
+            }
+            return shoulder + direction * arm;
+        }
+
+        // Hand to tip, as the rig actually draws it (0 without a weapon: the fist itself is the tip).
+        float BladeLength()
+        {
+            if (!rig.HasWeapon) return 0f;
+            Transform tip = rig.GetAnchor(Limb.Weapon);
+            Transform hand = rig.GetAnchor(Limb.RightFist);
+            return tip != hand ? Vector3.Distance(hand.position, tip.position) : 0f;
+        }
+
+        void WarnReachOnce(MoveData move, float arm, float armMin, float armMax)
+        {
+            if (warnedReach) return;
+            warnedReach = true;
+            Debug.LogWarning(string.Format(CultureInfo.InvariantCulture,
+                "{0}: the blade can't show the reach of '{1}' exactly (the hand would have to be {2:0.00} m from the shoulder; "
+                + "the limit is {3:0.00}-{4:0.00} m). Change WeaponLength (or StrikeArmMin/Max) in its EnemyTuningAsset: Feedback > Poses.",
+                rig.name, move.DisplayName, arm, armMin, armMax), rig);
         }
 
         void ApplyTelegraphGlow(EnemyFeedbackSettings feedback)
         {
             if (rig == null) return;
-            float u = Mathf.Clamp01(telegraphTime / telegraphDuration);
+            float u = Mathf.Clamp01(attackTime / telegraphDuration);
             float intensity = telegraphPeak * Mathf.Lerp(feedback.TelegraphStartShare, 1f, u * u);
-            if (feedback.TelegraphFlareTime > 0f && telegraphDuration - telegraphTime <= feedback.TelegraphFlareTime)
+            if (feedback.TelegraphFlareTime > 0f && telegraphDuration - attackTime <= feedback.TelegraphFlareTime)
                 intensity *= Mathf.Max(1f, feedback.TelegraphFlareBoost);
             rig.SetTelegraph(telegraphColor, intensity);
         }
@@ -265,7 +350,6 @@ namespace VaatusRevenge
         void StopTelegraph()
         {
             telegraphing = false;
-            telegraphJustStarted = false;
             if (rig != null) rig.SetTelegraph(telegraphColor, 0f);
         }
 
@@ -383,26 +467,26 @@ namespace VaatusRevenge
             }
         }
 
-        static void StrikePose(TelegraphKind kind, int hitIndex, EnemyPoseSettings poses, out Vector3 pose, out float lean)
+        static void StrikeAim(TelegraphKind kind, int hitIndex, EnemyPoseSettings poses, out Vector2 aim, out float lean)
         {
             if (hitIndex % 2 == 1)
             {
-                pose = poses.BackhandStrike; // combos alternate direction, so each strike reads separately
+                aim = poses.BackhandStrikeAim; // combos alternate direction, so each strike reads separately
                 lean = poses.SlashStrikeLean;
                 return;
             }
             switch (kind)
             {
                 case TelegraphKind.Heavy:
-                    pose = poses.OverheadStrike;
+                    aim = poses.OverheadStrikeAim;
                     lean = poses.OverheadStrikeLean;
                     return;
                 case TelegraphKind.Delayed:
-                    pose = poses.ThrustStrike;
+                    aim = poses.ThrustStrikeAim;
                     lean = poses.ThrustStrikeLean;
                     return;
                 default:
-                    pose = poses.SlashStrike;
+                    aim = poses.SlashStrikeAim;
                     lean = poses.SlashStrikeLean;
                     return;
             }

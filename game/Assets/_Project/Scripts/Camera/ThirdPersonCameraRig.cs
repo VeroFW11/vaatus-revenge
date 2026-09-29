@@ -123,7 +123,8 @@ namespace VaatusRevenge
             if (target != null) Model.BeginRecenter(target.eulerAngles.y);
         }
 
-        // Moves the camera smoothly to the other shoulder (the L3 / V button does this through the input reader).
+        // Moves the camera smoothly to the other shoulder straight away. Holding L3 / V does the same through
+        // the input reader, after CameraTuning.ShoulderSwapHoldTime.
         public void SwapShoulder()
         {
             Model.SwapShoulder();
@@ -190,7 +191,8 @@ namespace VaatusRevenge
             {
                 Look = frame.Look,
                 LookIsMouse = frame.LookIsMouse,
-                SwapShoulder = frame.SwapShoulder.Pressed,
+                // Held, not pressed: the camera only swaps once the button has been held a moment (CameraTuning).
+                SwapShoulderHeld = frame.SwapShoulder.Held,
             };
             LockOnController lockOn = LockOnController.Instance;
             Combatant lockTarget = lockOn != null ? lockOn.Target : null;

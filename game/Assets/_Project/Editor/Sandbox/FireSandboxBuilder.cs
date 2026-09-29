@@ -11,10 +11,11 @@ namespace VaatusRevenge.EditorTools
     // One click to a playable sandbox: Vaatu's Revenge > Build Fire Combat Sandbox, then press Play.
     //
     // The build (a) creates any missing tuning assets in Assets/_Project/Tuning (never overwriting tuned ones),
-    // (b) makes a fresh scene with a warm low sun, the grey-box arena, the player, the camera rig, a "Systems"
-    // object (input, lock-on, enemy encounter, sandbox director, HUD), three sparring dummies, two dao soldiers
-    // and two crossbowmen, then (c) saves it as Assets/_Project/Scenes/FireCombatSandbox.unity, makes it the
-    // first scene in Build Settings and selects the player.
+    // (b) makes a fresh scene with a warm low sun, bloom (a global Volume plus post-processing on the camera,
+    // see SandboxPostProcessing), the grey-box arena, the player, the camera rig, a "Systems" object (input,
+    // lock-on, enemy encounter, sandbox director, HUD), three sparring dummies, two dao soldiers and two
+    // crossbowmen, then (c) saves it as Assets/_Project/Scenes/FireCombatSandbox.unity, makes it the first scene
+    // in Build Settings and selects the player.
     //
     // Building the scene from code instead of by hand means it can always be rebuilt identically after the code
     // changes, and nobody has to remember which component needs which reference. Tweaks you want to keep belong
@@ -166,6 +167,10 @@ namespace VaatusRevenge.EditorTools
                 ThirdPersonCameraRig rig = camera.GetComponent<ThirdPersonCameraRig>();
                 if (rig == null) rig = camera.gameObject.AddComponent<ThirdPersonCameraRig>();
                 rig.Configure(tuning.Camera, player.transform);
+
+                step = "turning on bloom";
+                // Never fails the build: if URP's types can't be found it logs one warning and the scene has no bloom.
+                SandboxPostProcessing.SetUp(camera, UndoName);
 
                 step = "creating the Systems object";
                 Progress(step, 0.6f);

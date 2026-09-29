@@ -10,7 +10,7 @@ namespace VaatusRevenge
     //   F2       debug slow motion, for studying moves
     //   F4       respawn the player at the spawn point (while dead: skip the wait)
     //   F5 / F6  switch the player to the Fluid / Punishing tuning preset, live, to compare the two feels
-    //   T        reset every enemy and sparring dummy
+    //   T        reset every enemy and sparring dummy (projectiles in flight are cleared too)
     //   Esc      pause / resume (PlayerInputReader also releases the mouse on Esc)
     // F1 (controls) and F3 (debug panel) belong to CombatHud. None of these keys is bound to a gameplay action.
     //
@@ -289,8 +289,9 @@ namespace VaatusRevenge
         void FinishDeathRespawn()
         {
             respawnPending = false;
+            if (resetEnemiesOnDeath) ResetAllEnemies(false); // also clears projectiles in flight
+            else FireProjectile.ClearAll();                   // a leftover bolt mustn't hit the fresh player at the spawn
             RespawnPlayerAtSpawn();
-            if (resetEnemiesOnDeath) ResetAllEnemies(false);
         }
 
         bool RespawnPlayerAtSpawn()
@@ -342,6 +343,8 @@ namespace VaatusRevenge
         void ResetAllEnemies(bool announce)
         {
             allDeadRemaining = -1f;
+            // Projectiles in flight (bolts and fire blasts) belong to the fight being reset, so they go too.
+            FireProjectile.ClearAll();
             GatherEnemies();
             for (int i = 0; i < enemyBuffer.Count; i++) enemyBuffer[i].ResetEnemy();
             GatherDummies();
@@ -376,6 +379,7 @@ namespace VaatusRevenge
             if (allDeadRemaining > 0f) return;
 
             allDeadRemaining = -1f;
+            FireProjectile.ClearAll();
             for (int i = 0; i < enemyBuffer.Count; i++) enemyBuffer[i].ResetEnemy();
             ShowToast("All enemies down: here they come again");
         }

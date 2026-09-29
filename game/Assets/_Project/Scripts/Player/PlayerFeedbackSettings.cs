@@ -41,6 +41,9 @@ namespace VaatusRevenge
         public FeedbackPulse PlungeLanding = new FeedbackPulse(0.14f, 0.2f, 0.6f, 0.4f, 0.15f);
         [Tooltip("A short buzz when the heavy's charge reaches the fa jin sweet spot: a timing cue you can feel.")]
         public FeedbackPulse SweetSpot = new FeedbackPulse(0f, 0f, 0f, 0.45f, 0.06f);
+        [Tooltip("A light tick at the heavy's \"get ready\" point, the move set's Charge.ReadyCueLead seconds before the "
+                 + "sweet spot. Reacting to the sweet-spot cue itself is usually too late, so this one says: let go soon.")]
+        public FeedbackPulse ReadyCue = new FeedbackPulse(0f, 0f, 0f, 0.2f, 0.035f);
         [Tooltip("Landing from a big fall (see HardLandingSpeed).")]
         public FeedbackPulse HardLanding = new FeedbackPulse(0.06f, 0.12f, 0.3f, 0.2f, 0.1f);
         [Tooltip("Landings at least this fast (metres per second, downwards) count as hard.")]
@@ -60,6 +63,9 @@ namespace VaatusRevenge
         [Tooltip("An attack started inside the counter window after a perfect dodge (it deals bonus damage).")]
         public Color CounterFlashColor = new Color(1f, 0.5f, 0.1f);
         public float CounterFlashTime = 0.2f;
+        [Tooltip("The faint glow at the heavy's \"get ready\" point. Keep it much dimmer than the sweet-spot flash.")]
+        public Color ReadyCueFlashColor = new Color(0.32f, 0.2f, 0.07f);
+        public float ReadyCueFlashTime = 0.1f;
         public Color HealFlashColor = new Color(0.35f, 0.85f, 1f);
         public float HealFlashTime = 0.35f;
         [Tooltip("Pressed heal with no charges left.")]

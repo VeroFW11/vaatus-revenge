@@ -312,7 +312,8 @@ namespace VaatusRevenge
             heal = AddButton("Heal", "<Gamepad>/buttonWest", "<Keyboard>/r");
             lockOn = AddButton("LockOn", "<Gamepad>/rightStickPress", "<Keyboard>/tab");
             lockOnMouse = AddButton("LockOnMouse", "<Mouse>/middleButton", null);
-            // Camera only: flips the over-the-shoulder view to the other side.
+            // Camera only: held for a moment, flips the over-the-shoulder view to the other side. The hold time is
+            // the camera's rule (CameraTuning.ShoulderSwapHoldTime); this just reports the button as usual.
             swapShoulder = AddButton("SwapShoulder", "<Gamepad>/leftStickPress", "<Keyboard>/v");
 
             // Right-stick flicks are detected by LockOnController from Look; these are the keyboard/mouse ways.

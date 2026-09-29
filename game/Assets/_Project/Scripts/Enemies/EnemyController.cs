@@ -33,7 +33,8 @@ namespace VaatusRevenge
             string displayName = EnemyBuilder.NameFor(data, EnemyTuning.CreateDaoSoldier());
             bool melee = archetype != EnemyArchetype.Ranged;
 
-            GameObject go = EnemyBuilder.Create(parent, position, yaw, displayName, EnemyBuilder.ColorFor(archetype, feedback), melee);
+            GameObject go = EnemyBuilder.Create(parent, position, yaw, displayName, EnemyBuilder.ColorFor(archetype, feedback), melee,
+                EnemyBuilder.WeaponLengthFor(feedback));
             EnemyController enemy = go.AddComponent<EnemyController>();
             if (!melee) enemy.SetCrossbow(EnemyBuilder.AddCrossbow(go.GetComponent<GreyboxRig>()));
             enemy.Configure(tuning);

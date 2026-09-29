@@ -15,10 +15,10 @@ namespace VaatusRevenge.Core
         public EnemyArchetype Archetype = EnemyArchetype.Melee;
 
         // --- Health, poise, stagger ---
-        public float MaxHealth = 110f;
+        public float MaxHealth = 180f;
         public bool Unkillable = false;              // training dummy: health never drops below 1
         public float HealthRefillDelay = 0f;         // > 0: health refills after this long without being hit
-        public float MaxPoise = 35f;
+        public float MaxPoise = 45f;                 // more than one light chain (39), so mashing alone doesn't stagger
         public float PoiseRegenDelay = 2f;           // poise refills this long after the last poise damage...
         public float PoiseRegenRate = 60f;           // ...at this many points per second
         public float StaggerDuration = 1.0f;         // stunned time when poise breaks
@@ -55,6 +55,8 @@ namespace VaatusRevenge.Core
         public float KeepAwayMin = 8f;               // ranged: tries to stay between these distances
         public float KeepAwayMax = 14f;
         public float RetreatTriggerDistance = 5f;    // ranged: backs off at RetreatSpeed when the player is this close
+        public float LeashRadius = 0f;               // > 0: never wanders further than this from its home point (where it stood
+                                                     // on its first frame or after Reset), e.g. an archer holding a platform
 
         // --- Attack rhythm ---
         public float AttackIntervalMin = 1.2f;       // pause between attacks (random in range). The dummy uses Min as its fixed rhythm
@@ -79,9 +81,10 @@ namespace VaatusRevenge.Core
             t.MaxPoise = 20f;
             t.AggroRange = 24f;
             t.ChaseSpeed = 3.0f;
-            t.AttackIntervalMin = 1.5f;
-            t.AttackIntervalMax = 2.5f;
-            t.UsesAttackToken = false;
+            t.AttackIntervalMin = 2.5f;
+            t.AttackIntervalMax = 3.5f;
+            t.LeashRadius = 3f;
+            t.UsesAttackToken = true;                // shares the encounter's tokens with the soldiers (ENEMY-01, pending David)
             t.Attacks = new[]
             {
                 new EnemyAttackData
@@ -122,58 +125,69 @@ namespace VaatusRevenge.Core
             {
                 new EnemyAttackData
                 {
-                    Telegraph = TelegraphKind.Normal, MinRange = 0f, MaxRange = 3f,
-                    Move = Melee("Practice Swing", 0.6f, 0.12f, 0.5f, 5f, 5f, 2.4f, 120f, 0f, 240f)
+                    Telegraph = TelegraphKind.Normal, MinRange = 0f, MaxRange = SwordReach,
+                    Move = Melee("Practice Swing", 0.6f, 0.12f, 0.5f, 5f, 5f, SwordReach, 120f, 0f, 240f)
                 }
             };
             return t;
         }
 
+        // Weapon reach from the enemy's centre to the blade tip, matching what the grey-box fighter draws. The hit
+        // test adds the target's body radius, so a swing lands when the tip reaches the body, never from further off.
+        const float SwordReach = 2.1f;
+        const float ThrustReach = 2.6f;
+        const float StrikeOriginForward = 0.3f;
+
         static EnemyAttackData[] CreateDaoSoldierAttacks()
         {
-            MoveData heavy = Melee("Heavy Overhead", 0.95f, 0.14f, 0.95f, 26f, 40f, 2.6f, 60f, 0.6f, 180f);
+            MoveData heavy = Melee("Heavy Overhead", 0.95f, 0.14f, 0.95f, 26f, 40f, SwordReach, 60f, 0.6f, 180f);
             heavy.Kind = HitKind.Heavy;
-            heavy.HyperArmor = true;                 // can't be jabbed out of it: dodge or deflect
+            heavy.HyperArmor = true;                 // from halfway through the wind-up: mash into it and you get hit
+            heavy.HyperArmorFrom = heavy.Startup * 0.5f;
             heavy.Knockback = 1.2f;
             heavy.Hitstop = 0.09f;
             heavy.GuardStaminaDamage = 35f;
-            MoveData thrust = Melee("Delayed Thrust", 1.15f, 0.12f, 0.7f, 18f, 20f, 3.2f, 30f, 1.0f, 240f);
+            MoveData thrust = Melee("Delayed Thrust", 1.15f, 0.12f, 0.7f, 18f, 20f, ThrustReach, 30f, 1.0f, 240f);
             thrust.Kind = HitKind.Heavy;
+            thrust.HyperArmor = true;
+            thrust.HyperArmorFrom = thrust.Startup * 0.5f;
             return new[]
             {
                 new EnemyAttackData
                 {
-                    Telegraph = TelegraphKind.Normal, Weight = 3f, MaxRange = 2.4f,
-                    Move = Melee("Quick Slash", 0.50f, 0.12f, 0.55f, 12f, 15f, 2.4f, 100f, 0.5f, 300f)
+                    Telegraph = TelegraphKind.Normal, Weight = 3f, MaxRange = SwordReach,    // no armour: jab it out of the wind-up
+                    Move = Melee("Quick Slash", 0.50f, 0.12f, 0.55f, 12f, 15f, SwordReach, 100f, 0.5f, 300f)
                 },
                 new EnemyAttackData
                 {
-                    Telegraph = TelegraphKind.Heavy, Weight = 2f, MaxRange = 2.6f, Cooldown = 3f,
+                    Telegraph = TelegraphKind.Heavy, Weight = 2f, MaxRange = SwordReach, Cooldown = 3f,
                     Move = heavy
                 },
                 new EnemyAttackData
                 {
-                    Telegraph = TelegraphKind.Normal, Weight = 2f, MaxRange = 2.4f, Cooldown = 2f,
+                    Telegraph = TelegraphKind.Normal, Weight = 2f, MaxRange = SwordReach, Cooldown = 2f,
                     HitCount = 2, HitInterval = 0.35f,
-                    Move = Melee("Double Slash", 0.50f, 0.12f, 0.60f, 10f, 12f, 2.4f, 100f, 0.5f, 300f)
+                    Move = Melee("Double Slash", 0.50f, 0.12f, 0.60f, 10f, 12f, SwordReach, 100f, 0.5f, 300f)
                 },
                 new EnemyAttackData
                 {
-                    Telegraph = TelegraphKind.Delayed, Weight = 1.5f, MinRange = 1.2f, MaxRange = 3.2f, Cooldown = 4f,
+                    Telegraph = TelegraphKind.Delayed, Weight = 1.5f, MinRange = 1.2f, MaxRange = ThrustReach, Cooldown = 4f,
                     Move = thrust
                 }
             };
         }
 
+        // reach = distance from the enemy's centre to the weapon tip (Range is measured from the strike origin).
         static MoveData Melee(string name, float startup, float active, float recovery, float damage, float poise,
-            float range, float arc, float lunge, float tracking)
+            float reach, float arc, float lunge, float tracking)
         {
             return new MoveData
             {
                 DisplayName = name, Kind = HitKind.Light, Limb = Limb.Weapon,
                 Startup = startup, Active = active, Recovery = recovery,
                 Damage = damage, PoiseDamage = poise, GuardStaminaDamage = damage * 1.25f, Knockback = 0.3f, Hitstop = 0.05f,
-                Range = range, ArcDegrees = arc, LungeDistance = lunge, LungeTime = 0.2f, TrackingTurnRate = tracking,
+                OriginForward = StrikeOriginForward, Range = reach - StrikeOriginForward,
+                ArcDegrees = arc, LungeDistance = lunge, LungeTime = 0.2f, TrackingTurnRate = tracking,
                 ComboWindowStart = 0f, ComboWindowEnd = 0f, ChainCancelAt = startup + active + recovery, DodgeCancelAt = startup + active + recovery,
                 StaminaCost = 0f, MomentumGain = 0f
             };

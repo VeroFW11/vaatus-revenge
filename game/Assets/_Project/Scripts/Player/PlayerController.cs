@@ -384,7 +384,15 @@ namespace VaatusRevenge
                 Grounded = body != null && body.enabled && body.isGrounded, // from last frame's Move
                 CameraYaw = cameraYaw,
                 SelfRadius = combatant != null ? combatant.Radius : 0f,
+                SelfHeight = combatant != null ? combatant.Height : 0f,
+                RealDeltaTime = Time.unscaledDeltaTime, // the heavy's charge clock runs on real time (slow-mo doesn't shift it)
             };
+            Combatant nearest = NearestEnemy(position);  // backing away from it drains Momentum, even without lock-on
+            if (nearest != null)
+            {
+                world.HasNearestEnemy = true;
+                world.NearestEnemyPosition = nearest.Feet.ToNumerics();
+            }
 
             LockOnController lockOn = LockOnController.Instance;
             lockTarget = UsableTarget(lockOn != null ? lockOn.Target : null);
@@ -436,6 +444,24 @@ namespace VaatusRevenge
                 if (CombatPhysics.IsBlocked(eye, candidate.AimPoint.position)) continue;
                 best = candidate;
                 bestScore = score;
+            }
+            return best;
+        }
+
+        // The closest living enemy, any distance (the model decides what's near enough to count).
+        Combatant NearestEnemy(Vector3 position)
+        {
+            Combatant best = null;
+            float bestDistanceSq = float.MaxValue;
+            List<Combatant> all = Combatant.All;
+            for (int i = 0; i < all.Count; i++)
+            {
+                Combatant candidate = UsableTarget(all[i]);
+                if (candidate == null) continue;
+                float distanceSq = (candidate.Feet - position).sqrMagnitude;
+                if (distanceSq >= bestDistanceSq) continue;
+                best = candidate;
+                bestDistanceSq = distanceSq;
             }
             return best;
         }

@@ -24,6 +24,11 @@ namespace VaatusRevenge
         const float MaxCorpseFallSeconds = 3f;
         const float SeedPrecision = 100f; // spawn position in centimetres for the brain's random seed
         const float FallbackEyeHeightShare = 0.72f; // about chest height, where Spawn puts the aim point
+        // Ledge check: the ground is probed this far beyond the end of each step (so the body never hangs over
+        // an edge), with a tiny sphere to tell "inside a wall" from "over a drop".
+        const float LedgeProbeAhead = 0.2f;
+        const float LedgeProbeRadius = 0.05f;
+        const float MinStepLength = 1e-5f;
 
         static readonly string[] StateNames = System.Enum.GetNames(typeof(EnemyState));
         static AttackTokenPool fallbackTokens;
@@ -242,7 +247,7 @@ namespace VaatusRevenge
             float dt = Time.deltaTime;
             EnemyWorldState world = BuildWorldState(b);
             EnemyTickResult result = b.Tick(dt, in world);
-            if (dt > 0f) ApplyMotion(in result, dt);
+            if (dt > 0f) ApplyMotion(b, in result, dt);
             bool strikeOpened = HandleEvents(result.Events, b);
             // Keep sweeping an open swing each frame (not on the frame it opened: that query already ran).
             if (dt > 0f && !strikeOpened && b.IsAttackActive) strikes.ContinueMelee(b, transform.position, Feedback);
@@ -313,14 +318,38 @@ namespace VaatusRevenge
             return transform.position + Vector3.up * (height * FallbackEyeHeightShare);
         }
 
-        void ApplyMotion(in EnemyTickResult result, float dt)
+        void ApplyMotion(EnemyBrain b, in EnemyTickResult result, float dt)
         {
             if (!float.IsNaN(result.FacingYaw) && !float.IsInfinity(result.FacingYaw))
                 transform.rotation = Quaternion.Euler(0f, result.FacingYaw, 0f);
             if (Planted || controller == null || !controller.enabled) return;
             Vector3 velocity = result.Velocity.ToUnity();
             if (float.IsNaN(velocity.x) || float.IsNaN(velocity.y) || float.IsNaN(velocity.z)) return;
+            // Brains don't know where the edges are, so their own steps (walking, strafing, lunging) stop at a
+            // ledge. Knockback only happens while staggered, and being knocked off a ledge is fine.
+            if (b.IsAlive && b.State != EnemyState.Staggered
+                && WouldStepOffLedge(new Vector3(velocity.x * dt, 0f, velocity.z * dt)))
+            {
+                velocity.x = 0f;
+                velocity.z = 0f;
+            }
             controller.Move(velocity * dt); // the one move this frame
+        }
+
+        // True when this horizontal step would take the enemy over a drop bigger than the controller can step
+        // down (e.g. off the raised platform). It looks at the ground a little beyond the end of the step: ground
+        // within a step up or down is fine (floors, ramps, stairs). No ground there is a drop, unless the probe
+        // started inside something solid (a wall, a tall step): the controller simply bumps into that, and
+        // refusing the step would stop the enemy sliding along walls.
+        bool WouldStepOffLedge(Vector3 step)
+        {
+            float length = step.magnitude;
+            if (length < MinStepLength) return false;
+            Vector3 ahead = transform.position + step * ((length + LedgeProbeAhead) / length);
+            float stepHeight = controller.stepOffset + controller.skinWidth;
+            Vector3 probeTop = ahead + Vector3.up * stepHeight;
+            if (CombatPhysics.IsBlocked(probeTop, ahead - Vector3.up * stepHeight)) return false;
+            return !CombatPhysics.IsOverlapping(probeTop, LedgeProbeRadius);
         }
 
         bool HandleEvents(in EventList<EnemyEvent> events, EnemyBrain b)

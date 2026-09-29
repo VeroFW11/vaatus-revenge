@@ -53,7 +53,8 @@ namespace VaatusRevenge.Core
         // --- Costs and rewards ---
         public float StaminaCost = 9f;
         public float MomentumGain = 8f;              // Momentum earned when this move lands a clean hit
-        public bool HyperArmor = false;              // true = poise can't break during startup and active (damage still hurts)
+        public bool HyperArmor = false;              // true = poise can't break from HyperArmorFrom until active ends (damage still hurts)
+        public float HyperArmorFrom = 0f;            // seconds from move start when hyper armour begins (0 = from the start)
 
         // --- Projectile (Fire Blast, crossbow bolts) ---
         public bool LaunchesProjectile = false;      // true = launches Projectile when startup ends instead of a melee arc

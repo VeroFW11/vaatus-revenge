@@ -14,7 +14,7 @@ namespace VaatusRevenge.Core
         PlungeImpact,       // Move, AttackId, Origin (landing point, feet), Radius. One-shot sphere query, then EndAttack
         AttackEnded,        // Move, AttackId. The move finished or was cut short (reset the pose)
         ChargeStarted,      // Move (the heavy)
-        ChargeSweetSpot,    // Move. The fa jin window just opened: flash now!
+        ChargeSweetSpot,    // Move. The fa jin window just opened (see also ChargeReadyCue, which comes earlier)
         ChargeCancelled,    // Move
         DodgeStarted,       // Direction (dash direction), Amount (distance), IsBackstep
         DodgeEnded,
@@ -38,7 +38,9 @@ namespace VaatusRevenge.Core
         StaggerEnded,
         Parried,            // an enemy deflected your attack (a Staggered event follows)
         Died,
-        Respawned
+        Respawned,
+        ChargeReadyCue      // Move. "Get ready": ChargeSettings.ReadyCueLead before the sweet spot, so a person reacting to
+                            // this cue lets go inside the window. Once per charge. (Added last to keep existing numbering.)
     }
 
     public struct PlayerEvent

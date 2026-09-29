@@ -9,15 +9,22 @@ namespace VaatusRevenge.Core
     // WHEN CAN A BUFFERED PRESS RUN? ("the earliest legal point")
     //   Light / Heavy / Skill: when free (Locomotion, Sprinting, Guarding); during an attack from its
     //     ChainCancelAt; during a dodge from Dodge.AttackCancelAt; after a plunge landing from its ChainCancelAt.
-    //     In the air, Light/Heavy become the plunge. Skill waits for the ground.
+    //     In the air, Light/Heavy become the plunge once you've been off the ground for Plunge.MinAirTime
+    //     (earlier presses are dropped, not saved for later). Skill waits for the ground.
     //   Dodge: when free on the ground; during an attack from DodgeCancelAt; during a dodge from NextDodgeAt;
     //     while charging if Charge.CanDodgeCancelCharge; after a plunge landing from its DodgeCancelAt.
     //   Jump: like Dodge (a dodge allows it from AttackCancelAt), and only with ground under you or within coyote time.
+    //   Guard (the press): like Dodge, but not out of a charge or in the air. Held guard raises it when free; a
+    //     buffered press only raises it if guard is still held or its deflect window (timed from the real press)
+    //     hasn't run out.
     //   Heal: only when free on the ground (drinking is a committed action, never a cancel).
     //   Nothing runs while staggered, healing, mid-plunge, or dead; presses there still wait in the buffer.
     // LIGHT CHAIN: a light press arriving (or still buffered) while the current light move is inside its combo
-    //   window is queued as the next move and fires at the cancel point. A press after the window restarts the
-    //   chain from the first move. After the last move the chain loops.
+    //   window is queued as the next move and fires at the cancel point (or is dropped once it's older than
+    //   QueuedPressMaxAge). A press after the window restarts the chain from the first move. After the last
+    //   move the chain loops.
+    // SPRINT ATTACK: light while sprinting for SprintAttackMinSprintTime, or within SprintAttackGrace after such
+    //   a sprint ends while still moving at full running speed (strafe speed when locked on).
     public sealed partial class PlayerCombatModel
     {
         void TryRunBufferedCommand(in PlayerWorldState world)
@@ -35,6 +42,7 @@ namespace VaatusRevenge.Core
                 case PlayerCommand.Dodge: TryDodge(world); break;
                 case PlayerCommand.Jump: TryJump(); break;
                 case PlayerCommand.Heal: TryHeal(); break;
+                case PlayerCommand.Guard: TryGuardPress(); break;
             }
         }
 
@@ -101,7 +109,7 @@ namespace VaatusRevenge.Core
             }
             if (!stamina.CanAct) return;
 
-            if (state == PlayerState.Sprinting && sprintTime >= moveSet.SprintAttackMinSprintTime && moveSet.SprintAttack != null)
+            if (moveSet.SprintAttack != null && WantsSprintAttack(world))
             {
                 buffer.Clear();
                 StartAttack(moveSet.SprintAttack, PlayerAttackKind.Sprint, -1, ChargeTier.None, ConsumeCounterWindow(), true, world);
@@ -114,6 +122,17 @@ namespace VaatusRevenge.Core
             }
             buffer.Clear();
             StartAttack(moveSet.LightChain[next], PlayerAttackKind.Light, next, ChargeTier.None, ConsumeCounterWindow(), true, world);
+        }
+
+        bool WantsSprintAttack(in PlayerWorldState world)
+        {
+            float minSprint = moveSet.SprintAttackMinSprintTime;
+            if (state == PlayerState.Sprinting) return sprintTime >= minSprint;
+            if (!IsFree || lastSprintDuration < minSprint || clock - sprintEndedClock > moveSet.SprintAttackGrace + Epsilon) return false;
+            // Still carrying the sprint: at least full running speed. (Deceleration settles exactly on run speed, so a
+            // strict "faster than" would shrink the grace to the few frames it takes to slow down.)
+            float fullSpeed = world.HasLockTarget ? tuning.LockOnStrafeSpeed : tuning.RunSpeed;
+            return Directions.Flatten(moveVelocity).Length() >= fullSpeed - Epsilon;
         }
 
         void TryHeavy(in PlayerWorldState world)
@@ -137,6 +156,12 @@ namespace VaatusRevenge.Core
 
         void TryPlunge(in PlayerWorldState world)
         {
+            // Too soon after leaving the ground: the press does nothing, and isn't saved to plunge later either.
+            if (airTime < Plunge.MinAirTime)
+            {
+                buffer.Clear();
+                return;
+            }
             if (!stamina.CanAct) return;
             buffer.Clear();
             if (moveSet.PlungeAttack != null) StartPlunge(world);
@@ -179,7 +204,7 @@ namespace VaatusRevenge.Core
             chargeTier = tier;
             isCounter = counter;
             activeOpen = false;
-            if (payStamina) stamina.Spend(move.StaminaCost, tuning.StaminaRegenDelay);
+            if (payStamina) SpendStamina(move.StaminaCost);
             currentAttackId = CombatIds.Next();
             RememberAttack(currentAttackId, tier == ChargeTier.FaJin ? Charge.FaJinMomentumGain : move.MomentumGain);
             moveVelocity = Vector3.Zero;
@@ -282,21 +307,38 @@ namespace VaatusRevenge.Core
             attackKind = PlayerAttackKind.Heavy;
             chainIndex = -1;
             chargeTier = ChargeTier.None;
-            chargeTime = 0f;
+            chargeTime = HeldHeavyCredit();
             sweetSpotAnnounced = false;
+            readyCueAnnounced = false;
             isCounter = ConsumeCounterWindow();   // committing to the heavy inside the window makes it the counter
             currentAttackId = 0;
-            stamina.Spend(currentMove.StaminaCost, tuning.StaminaRegenDelay);
+            SpendStamina(currentMove.StaminaCost);
             moveVelocity = Vector3.Zero;
             action.Begin();
             EmitMoveEvent(PlayerEventType.ChargeStarted);
             UpdateCharge(world);                  // a tap already released: quick heavy straight away
         }
 
+        // A heavy pressed during another move starts charging only at that move's cancel point. If the button has
+        // been held all along, that time counts, capped just before the ready cue so the cue still shows.
+        float HeldHeavyCredit()
+        {
+            if (!heavyHeld) return 0f;
+            ChargeSettings charge = Charge;
+            float held = (float)(realClock - heavyPressRealClock);
+            float cap = Math.Max(0f, charge.SweetSpotStart - charge.ReadyCueLead - Epsilon);
+            return Angles.Clamp(held, 0f, cap);
+        }
+
+        // The charge clock is advanced (on real time) by AdvanceAction before this runs.
         void UpdateCharge(in PlayerWorldState world)
         {
-            chargeTime = action.Time;
             ChargeSettings charge = Charge;
+            if (!readyCueAnnounced && chargeTime >= charge.SweetSpotStart - charge.ReadyCueLead)
+            {
+                readyCueAnnounced = true;
+                EmitMoveEvent(PlayerEventType.ChargeReadyCue);
+            }
             if (!sweetSpotAnnounced && chargeTime >= charge.SweetSpotStart)
             {
                 sweetSpotAnnounced = true;
@@ -337,7 +379,7 @@ namespace VaatusRevenge.Core
             plungeFalling = false;
             plungeLanded = false;
             landingTime = 0f;
-            stamina.Spend(currentMove.StaminaCost, tuning.StaminaRegenDelay);
+            SpendStamina(currentMove.StaminaCost);
             currentAttackId = CombatIds.Next();
             RememberAttack(currentAttackId, currentMove.MomentumGain);
             moveVelocity = Vector3.Zero;
@@ -436,7 +478,10 @@ namespace VaatusRevenge.Core
             switch (state)
             {
                 case PlayerState.Attacking: UpdateAttack(world); break;
-                case PlayerState.Charging: UpdateCharge(world); break;
+                case PlayerState.Charging:
+                    chargeTime += frameRealDt;   // real time: a practised hold isn't thrown off by slow motion
+                    UpdateCharge(world);
+                    break;
                 case PlayerState.Plunging: UpdatePlunge(world); break;
                 case PlayerState.Dodging: UpdateDodge(); break;
                 case PlayerState.Healing: UpdateHeal(); break;
@@ -489,6 +534,8 @@ namespace VaatusRevenge.Core
                     break;
                 case PlayerState.Sprinting:
                     Emit(PlayerEventType.SprintEnded);
+                    sprintEndedClock = clock;         // for the sprint attack's grace period
+                    lastSprintDuration = sprintTime;
                     sprintTime = 0f;
                     break;
             }

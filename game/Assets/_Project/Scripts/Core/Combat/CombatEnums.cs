@@ -19,8 +19,9 @@ namespace VaatusRevenge.Core
     // Where the current move is in its frame data.
     public enum AttackPhase { None, Startup, Active, Recovery }
 
-    // Button presses the input buffer can hold (guard is a held state, so it isn't buffered).
-    public enum PlayerCommand { None, Light, Heavy, Dodge, Jump, Skill, Heal }
+    // Button presses the input buffer can hold. Guard is the press that raises the guard (holding it keeps it up).
+    // (Guard was added last to keep the existing numbering.)
+    public enum PlayerCommand { None, Light, Heavy, Dodge, Jump, Skill, Heal, Guard }
 
     // How long the heavy was charged (see ChargeSettings).
     public enum ChargeTier { None, Quick, Partial, FaJin, Charged }

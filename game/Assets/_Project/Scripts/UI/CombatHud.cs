@@ -10,7 +10,8 @@ namespace VaatusRevenge
     //                multiplier, heal charges, current element and "not learned yet" messages
     //   top-centre   the lock-on target's name and health; sparring dummies also show combo, damage and DPS
     //   top-right    the tuning preset (F5 / F6) and the F2 slow-motion indicator
-    //   centre       the heavy attack's charge meter with its sweet spot, messages, "You died", "Paused"
+    //   centre       the heavy attack's charge meter (get-ready mark, gold sweet-spot band), messages,
+    //                "You died", "Paused"
     //   F1           controls overlay        F3   debug panel (state, frame data, FPS, time scale)
     //
     // It allocates no memory while playing: styles and the one texture are made once and numbers are turned
@@ -51,6 +52,8 @@ namespace VaatusRevenge
         [SerializeField] private Color chargeColor = new Color(1f, 0.55f, 0.15f, 1f);
         [SerializeField] private Color overchargeColor = new Color(0.85f, 0.25f, 0.1f, 1f);
         [SerializeField] private Color sweetSpotColor = new Color(1f, 0.92f, 0.5f, 1f);
+        [Tooltip("The charge meter's \"get ready\" mark and zone, just before the gold sweet-spot band.")]
+        [SerializeField] private Color readyColor = new Color(0.9f, 0.95f, 1f, 1f);
         [SerializeField] private Color accentColor = new Color(1f, 0.78f, 0.35f, 1f);
 
         readonly HudPainter painter = new HudPainter();
@@ -278,27 +281,48 @@ namespace VaatusRevenge
                 start = end;
                 end = swap;
             }
+            float ready = ReadyPoint01(player, start);
             float level = HudPainter.Clamp01(player.ChargeLevel01);
             bool sweet = player.InSweetSpot;
+            // The "get ready" zone runs from the ready mark to the gold band. People need about a fifth of a second
+            // to react, so letting go when the band lights up is usually too late: the meter brightens here as the
+            // warning, and a practised player lets go as the fill enters the gold (playtest report HUD-01).
+            bool readying = !sweet && ready < start && level >= ready && level < start;
+            float glow = painter.U(5f);
+            var glowRect = new Rect(bar.x - glow, bar.y - glow, bar.width + glow * 2f, bar.height + glow * 2f);
 
-            // Inside the sweet spot the whole meter flashes: release now for the fa jin burst.
+            // Inside the sweet spot the whole meter flashes: the fa jin window is open.
             if (sweet)
             {
                 float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * SweetSpotPulseSpeed);
-                float glow = painter.U(5f);
-                painter.Fill(new Rect(bar.x - glow, bar.y - glow, bar.width + glow * 2f, bar.height + glow * 2f),
-                    WithAlpha(sweetSpotColor, 0.3f + 0.45f * pulse));
+                painter.Fill(glowRect, WithAlpha(sweetSpotColor, 0.3f + 0.45f * pulse));
+            }
+            else if (readying)
+            {
+                painter.Fill(glowRect, WithAlpha(readyColor, 0.22f));
             }
             painter.Fill(bar, BarBackground);
+            if (ready < start)
+            {
+                painter.Fill(new Rect(bar.x + width * ready, bar.y, width * (start - ready), height), WithAlpha(readyColor, readying ? 0.3f : 0.1f));
+            }
             var band = new Rect(bar.x + width * start, bar.y, width * (end - start), height);
             painter.Fill(band, WithAlpha(sweetSpotColor, 0.3f));
-            Color fill = sweet ? sweetSpotColor : (level > end ? overchargeColor : chargeColor);
+            Color fill = sweet ? sweetSpotColor
+                : level > end ? overchargeColor
+                : readying ? Color.Lerp(chargeColor, sweetSpotColor, 0.55f)
+                : chargeColor;
             painter.Fill(new Rect(bar.x, bar.y, width * level, height), fill);
             float tick = Mathf.Max(1f, painter.U(2f));
             float tickOverhang = painter.U(4f);
             painter.Fill(new Rect(band.x - tick * 0.5f, bar.y - tickOverhang, tick, height + tickOverhang * 2f), sweetSpotColor);
             painter.Fill(new Rect(band.xMax - tick * 0.5f, bar.y - tickOverhang, tick, height + tickOverhang * 2f), sweetSpotColor);
-            painter.Outline(bar, 1f, BarOutline);
+            if (ready < start)
+            {
+                painter.Fill(new Rect(bar.x + width * ready - tick * 0.5f, bar.y - tickOverhang * 0.5f, tick, height + tickOverhang), WithAlpha(readyColor, 0.9f));
+            }
+            if (readying) painter.Outline(bar, Mathf.Max(1f, painter.U(1.5f)), WithAlpha(readyColor, 0.85f));
+            else painter.Outline(bar, 1f, BarOutline);
 
             string moveName = player.MoveName;
             if (!string.IsNullOrEmpty(moveName))
@@ -306,6 +330,16 @@ namespace VaatusRevenge
                 painter.Text(new Rect(bar.x - width, bar.y - painter.U(28f), width * 3f, painter.U(22f)), moveName, painter.SmallCenter,
                     sweet ? sweetSpotColor : Color.white);
             }
+        }
+
+        // Where the "get ready" mark sits on the 0..1 meter: the move set's Charge.ReadyCueLead seconds before the
+        // sweet spot opens. Returns sweetSpotStart01 (no ready zone) when there's no model yet or no lead is set.
+        static float ReadyPoint01(PlayerController player, float sweetSpotStart01)
+        {
+            PlayerCombatModel model = player.Model;
+            ChargeSettings charge = model != null && model.MoveSet != null ? model.MoveSet.Charge : null;
+            if (charge == null || !(charge.MaxChargeTime > 0f) || !(charge.ReadyCueLead > 0f)) return sweetSpotStart01;
+            return Mathf.Min(sweetSpotStart01, HudPainter.Clamp01(sweetSpotStart01 - charge.ReadyCueLead / charge.MaxChargeTime));
         }
 
         // ---- Top-centre: the lock-on target ----

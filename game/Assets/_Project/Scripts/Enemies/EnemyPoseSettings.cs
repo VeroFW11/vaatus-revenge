@@ -10,12 +10,19 @@ namespace VaatusRevenge
     // before they land. Slash = sword cocked over the shoulder, overhead = sword straight up with the body
     // rearing back, thrust = sword drawn in level and pointing at you, then a dead-still pause.
     //
+    // Fairness is the other point: when a strike lands, the blade tip sits exactly on the edge of what the
+    // attack can hit (its OriginForward + Range, read from the attack data), so a hit never comes from beyond
+    // the visible blade. Strikes are set as a direction; how far the hand reaches out is worked out from the
+    // attack's reach, so retuning a Range moves the blade with it.
+    //
     // Hand positions are in the fighter's own space, measured from its feet: x right, y up, z forward (the same
     // space as GreyboxRig.Strike). The rig points the blade along the line from the shoulder to the hand, so
     // raising the hand raises the blade.
     [Serializable]
     public class EnemyPoseSettings
     {
+        public const float DefaultWeaponLength = 1.35f;
+
         [Header("Timing (seconds)")]
         [Tooltip("How fast the weapon rises into its wind-up pose. It's then held until the strike, so a long wind-up reads as a held threat.")]
         public float WindUpRiseTime = 0.22f;
@@ -28,24 +35,34 @@ namespace VaatusRevenge
         [Tooltip("How fast an interrupted wind-up drops back to guard.")]
         public float ReturnToGuardTime = 0.2f;
 
-        [Header("Sword hand (fighter space from the feet: x right, y up, z forward)")]
+        [Header("Weapon")]
+        [Tooltip("Dao / practice stick length from the hand to the tip, in metres. Long enough that the hand doesn't have to float far from the body to show the attacks' reach.")]
+        public float WeaponLength = DefaultWeaponLength;
+
+        [Header("Wind-ups: where the sword hand goes (fighter space from the feet: x right, y up, z forward)")]
         public Vector3 SlashWindUp = new Vector3(0.42f, 1.62f, -0.05f);
-        [Tooltip("Strikes end fully extended so the blade shows the attack's reach (keep them in step with the moves' Range).")]
-        public Vector3 SlashStrike = new Vector3(-0.25f, 1.22f, 0.72f);
-        [Tooltip("Every second strike of a combo swings back the other way.")]
-        public Vector3 BackhandStrike = new Vector3(0.52f, 1.3f, 0.68f);
         public Vector3 OverheadWindUp = new Vector3(0.12f, 2.0f, -0.15f);
-        public Vector3 OverheadStrike = new Vector3(0.08f, 0.88f, 0.8f);
         public Vector3 ThrustWindUp = new Vector3(0.22f, 1.42f, 0.12f);
-        public Vector3 ThrustStrike = new Vector3(0.12f, 1.38f, 1.0f);
+
+        [Header("Strikes: where the blade points as the hit lands (x = degrees right of straight ahead, y = degrees below level)")]
+        [Tooltip("How far the hand reaches out is worked out from the attack's reach, so the blade tip lands exactly on the edge of what the attack can hit.")]
+        public Vector2 SlashStrikeAim = new Vector2(-28f, 8f);
+        [Tooltip("Every second strike of a combo swings back the other way.")]
+        public Vector2 BackhandStrikeAim = new Vector2(30f, 8f);
+        public Vector2 OverheadStrikeAim = new Vector2(3f, 10f);
+        [Tooltip("The thrust's reach is longest, so the hand drives furthest out.")]
+        public Vector2 ThrustStrikeAim = new Vector2(-3f, 4f);
+        [Tooltip("How far the hand may reach from the shoulder, in metres. If an attack's reach needs more or less, the blade can't match it and a warning says to change WeaponLength.")]
+        public float StrikeArmMin = 0.3f;
+        public float StrikeArmMax = 1.4f;
 
         [Header("Body lean in degrees (+ forward, - back)")]
         public float SlashWindUpLean = -5f;
-        public float SlashStrikeLean = 8f;
+        public float SlashStrikeLean = 5f;
         public float OverheadWindUpLean = -10f;
-        public float OverheadStrikeLean = 14f;
+        public float OverheadStrikeLean = 8f;
         public float ThrustWindUpLean = -9f;
-        public float ThrustStrikeLean = 10f;
+        public float ThrustStrikeLean = 6f;
 
         [Header("Crossbow")]
         [Tooltip("Where the crossbow hand goes while aiming: raised to the chest, near where the bolt leaves.")]

@@ -59,13 +59,15 @@ namespace VaatusRevenge.Core
 
         bool insideTick;
         double clock;                 // seconds of game time this model has lived (double: stays precise for hours)
+        double realClock;             // the same in real (unscaled) time: slow motion and hitstop don't slow it
+        float bodyHeight;             // PlayerWorldState.SelfHeight, for the perfect-dodge "would it have landed" test
+        float frameRealDt;            // real seconds this frame (PlayerWorldState.RealDeltaTime, or dt when not given)
         PlayerState state;
         float health;
         int healCharges;
 
         // Buttons: last frame's held state, so a press is never missed even if a Pressed flag was.
         bool lightHeld, heavyHeld, jumpHeld, guardHeld, skillHeld, healHeld;
-        bool guardPressPending;       // a guard press waiting to be handled this frame
         Vector2 moveStick;
 
         // Current action (attack, charge, plunge, dodge, heal, stagger).
@@ -80,8 +82,10 @@ namespace VaatusRevenge.Core
         bool isCounter;
         bool releasingCharge;
         ChargeTier chargeTier;
-        float chargeTime;
+        float chargeTime;             // real seconds the heavy has been held (a practised rhythm survives slow motion)
         bool sweetSpotAnnounced;
+        bool readyCueAnnounced;
+        double heavyPressRealClock = double.NegativeInfinity;   // when heavy last went down (credits a buffered charge)
         bool plungeFalling;
         bool plungeLanded;
         float landingTime;            // action time when the plunge landed
@@ -186,8 +190,11 @@ namespace VaatusRevenge.Core
                 }
 
                 clock += dt;
+                frameRealDt = world.RealDeltaTime > 0f ? world.RealDeltaTime : dt;
+                realClock += frameRealDt;
+                bodyHeight = world.SelfHeight;
                 ReadInput(input, dt);
-                buffer.Expire(clock, tuning.InputBufferWindow);
+                buffer.Expire(clock, tuning.InputBufferWindow, tuning.QueuedPressMaxAge);
                 UpdateGrounding(dt, world);
                 UpdateTimers(dt);
                 AdvanceAction(dt, world);
@@ -221,28 +228,27 @@ namespace VaatusRevenge.Core
 
             bool lightPressed = Pressed(input.Light, ref lightHeld);
             bool heavyPressed = Pressed(input.Heavy, ref heavyHeld);
+            if (heavyPressed) heavyPressRealClock = realClock;
             bool jumpPressed = Pressed(input.Jump, ref jumpHeld);
             bool skillPressed = Pressed(input.Skill, ref skillHeld);
             bool healPressed = Pressed(input.Heal, ref healHeld);
             bool guardPressed = Pressed(input.Guard, ref guardHeld);
-            if (guardPressed) guardPressPending = true;
 
             bool dodgePressed = input.Dodge.Pressed || (input.Dodge.Held && !dodgeButton.IsHeld);
             bool dodgeTap = dodgeButton.Update(dodgePressed, input.Dodge.Released, input.Dodge.Held, dt,
                 tuning.DodgeTrigger, tuning.TapHoldThreshold);
 
             if (state == PlayerState.Dead) return;
-            // The buffer keeps only the latest press. Pushed in this order so that if two buttons go down in
-            // the same frame, the defensive one wins.
-            if (healPressed) buffer.Push(PlayerCommand.Heal, clock);
-            if (skillPressed) buffer.Push(PlayerCommand.Skill, clock);
-            if (heavyPressed) buffer.Push(PlayerCommand.Heavy, clock);
-            if (lightPressed) buffer.Push(PlayerCommand.Light, clock);
-            if (jumpPressed) buffer.Push(PlayerCommand.Jump, clock);
-            if (dodgeTap) buffer.Push(PlayerCommand.Dodge, clock);
-            // Guard isn't buffered (it's held), but pressing it is still the latest intention: an attack pressed
-            // earlier must not fire the moment the guard goes up and knock it straight back down.
-            if (guardPressed && !dodgeTap) buffer.Clear();
+            // The buffer keeps one press (see InputBuffer for which press wins). Pushed in this order so that if
+            // two buttons go down in the same frame, the defensive one wins, and the dodge over the guard.
+            bool defensiveWins = tuning.DefensivePressesWin;
+            if (healPressed) buffer.Push(PlayerCommand.Heal, clock, defensiveWins);
+            if (skillPressed) buffer.Push(PlayerCommand.Skill, clock, defensiveWins);
+            if (heavyPressed) buffer.Push(PlayerCommand.Heavy, clock, defensiveWins);
+            if (lightPressed) buffer.Push(PlayerCommand.Light, clock, defensiveWins);
+            if (jumpPressed) buffer.Push(PlayerCommand.Jump, clock, defensiveWins);
+            if (guardPressed) buffer.Push(PlayerCommand.Guard, clock, defensiveWins);
+            if (dodgeTap) buffer.Push(PlayerCommand.Dodge, clock, defensiveWins);
         }
 
         // A press is the Pressed flag, or "held now but not last frame" (covers a skipped frame).
@@ -251,6 +257,12 @@ namespace VaatusRevenge.Core
             bool pressed = button.Pressed || (button.Held && !wasHeld);
             wasHeld = button.Held;
             return pressed;
+        }
+
+        // Every stamina cost goes through here: the regen pause is longer when the bar hits empty.
+        void SpendStamina(float amount)
+        {
+            stamina.Spend(amount, tuning.StaminaRegenDelay, tuning.EmptyStaminaRegenDelay);
         }
 
         void Emit(PlayerEvent evt)
@@ -429,7 +441,6 @@ namespace VaatusRevenge.Core
             healCharges = MaxHealCharges;
             buffer.Clear();
             dodgeButton.Reset();
-            guardPressPending = false;
             currentMove = null;
             attackKind = PlayerAttackKind.None;
             currentAttackId = 0;
@@ -440,6 +451,8 @@ namespace VaatusRevenge.Core
             releasingCharge = false;
             chargeTier = ChargeTier.None;
             chargeTime = 0f;
+            readyCueAnnounced = false;
+            heavyPressRealClock = double.NegativeInfinity;
             counterWindowUntil = double.NegativeInfinity;
             ResetDefense();
             ResetLocomotion(newFacingYaw);

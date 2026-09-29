@@ -18,7 +18,9 @@ namespace VaatusRevenge.Core
         public MoveData Heavy = CreateFireHeavy();               // Startup counts from the release of the charge
         public ChargeSettings Charge = new ChargeSettings();
         public MoveData SprintAttack = CreateFireSprintAttack();
-        public float SprintAttackMinSprintTime = 0.3f;           // light while sprinting at least this long = sprint attack
+        public float SprintAttackMinSprintTime = 0.2f;           // light while sprinting at least this long = sprint attack
+        public float SprintAttackGrace = 0.15f;                  // ...or this soon after such a sprint ends, while still moving at
+                                                                 // full running speed (let go of sprint a moment early, still kick)
         // Jump attack. Its Startup, Active, Range and Arc are not used: it hangs for Plunge.HangTime, falls until
         // it lands, bursts in a Plunge.RingRadius ring, then Recovery is the landing recovery. Its cancel times
         // (ChainCancelAt, DodgeCancelAt) count from the landing.
@@ -44,6 +46,7 @@ namespace VaatusRevenge.Core
             MoveData[] all = { set.LightChain[0], set.LightChain[1], set.LightChain[2], set.Heavy, set.SprintAttack, set.Skill };
             foreach (MoveData move in all) move.DodgeCancelAt = move.ActiveEnd + move.Recovery * 0.6f;
             set.Charge.CanDodgeCancelCharge = false;
+            set.PlungeAttack.DodgeCancelAt = set.PlungeAttack.Recovery;   // no dodging out of a landing
 
             DodgeProfile d = set.Dodge;
             d.StaminaCost = 16f;
@@ -84,7 +87,7 @@ namespace VaatusRevenge.Core
                 Damage = 15f, PoiseDamage = 22f, GuardStaminaDamage = 15f, Knockback = 0.8f, Hitstop = 0.06f,
                 Range = 3.0f, ArcDegrees = 200f, OriginForward = 0f, LungeDistance = 0.6f,
                 ComboWindowStart = 0.36f, ComboWindowEnd = 0.70f, ChainCancelAt = 0.50f, DodgeCancelAt = 0.34f,
-                StaminaCost = 13f, MomentumGain = 8f
+                StaminaCost = 13f, MomentumGain = 10f                // the committed finisher earns a little more
             };
             return new[] { jab, cross, kick };
         }
@@ -120,11 +123,11 @@ namespace VaatusRevenge.Core
             return new MoveData
             {
                 DisplayName = "Falling Axe Kick", Kind = HitKind.Plunge, Limb = Limb.RightFoot,
-                Startup = 0f, Active = 0f, Recovery = 0.35f,
+                Startup = 0f, Active = 0f, Recovery = 0.55f,             // a long landing: the axe kick is a commitment
                 Damage = 18f, PoiseDamage = 25f, GuardStaminaDamage = 18f, Knockback = 1.0f, Hitstop = 0.07f,
                 Range = 0f, ArcDegrees = 360f, LungeDistance = 0f,
-                ComboWindowStart = 0f, ComboWindowEnd = 0f, ChainCancelAt = 0.35f, DodgeCancelAt = 0.15f,
-                StaminaCost = 14f, MomentumGain = 14f
+                ComboWindowStart = 0f, ComboWindowEnd = 0f, ChainCancelAt = 0.55f, DodgeCancelAt = 0.35f,
+                StaminaCost = 20f, MomentumGain = 14f
             };
         }
 
@@ -137,7 +140,7 @@ namespace VaatusRevenge.Core
                 Damage = 13f, PoiseDamage = 10f, GuardStaminaDamage = 13f, Knockback = 0.4f, Hitstop = 0.03f,
                 Range = 0f, ArcDegrees = 0f, OriginHeight = 1.3f, OriginForward = 0.5f, LungeDistance = 0f,
                 ComboWindowStart = 0f, ComboWindowEnd = 0f, ChainCancelAt = 0.40f, DodgeCancelAt = 0.30f,
-                StaminaCost = 18f, MomentumGain = 8f,
+                StaminaCost = 22f, MomentumGain = 8f,
                 LaunchesProjectile = true,
                 Projectile = new ProjectileSpec { Speed = 30f, Radius = 0.3f, MaxRange = 26f, VisualScale = 1f }
             };

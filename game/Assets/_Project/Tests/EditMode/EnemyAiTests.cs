@@ -263,6 +263,7 @@ namespace VaatusRevenge.Tests
         public void RangedEnemyBacksOffWhenCrowdedAndHoldsItsBand()
         {
             EnemyTuning t = EnemyTuning.CreateCrossbowman();
+            t.LeashRadius = 0f;                                  // free-roaming archer (the default one keeps to a 3 m leash)
             var close = new EnemyDriver(t);
             for (int i = 0; i < 90; i++)
             {
@@ -292,6 +293,7 @@ namespace VaatusRevenge.Tests
         public void CornerednRangedEnemyShootsAnyway()
         {
             EnemyTuning t = EnemyTuning.CreateCrossbowman();
+            t.LeashRadius = 0f;
             var d = new EnemyDriver(t);
             d.SetTarget(new Vector3(0f, 0f, 3f));
             for (int i = 0; i < 60 * 8; i++)
@@ -351,20 +353,34 @@ namespace VaatusRevenge.Tests
             Assert.AreEqual(strikes[0].Direction, strikes[1].Direction);
         }
 
+        // Updated in the playtest fix round (ENEMY-02): hyper armour now starts halfway through the wind-up, so an
+        // early hit still interrupts it but mashing into the second half of the telegraph gets you hit.
         [Test]
-        public void HeavyOverheadCannotBeStaggeredDuringItsWindUp()
+        public void HeavyOverheadIsArmouredOnlyFromHalfwayThroughItsWindUp()
         {
+            DamageInfo Jab()
+            {
+                DamageInfo hit = PlayerDriver.EnemyHit(8f, 100f, new Vector3(0f, 0f, 1f));
+                hit.SourceTeam = Team.Player;
+                return hit;
+            }
+
             EnemyTuning t = EnemyDriver.OnlyAttack(EnemyTuning.CreateDaoSoldier(), 1);
-            var d = new EnemyDriver(t);
-            d.SetTarget(new Vector3(0f, 0f, 2f));
-            d.RunUntil(x => x.Brain.IsTelegraphing, 900);
-            DamageInfo jab = PlayerDriver.EnemyHit(8f, 100f, new Vector3(0f, 0f, 1f));
-            jab.SourceTeam = Team.Player;
-            HitResult result = d.Brain.ReceiveHit(jab, Vector3.Zero);
-            Assert.AreEqual(HitOutcome.Hit, result.Outcome);
+            var early = new EnemyDriver(t);
+            early.SetTarget(new Vector3(0f, 0f, 2f));
+            early.RunUntil(x => x.Brain.IsTelegraphing, 900);
+            Assert.AreEqual(TelegraphKind.Heavy, early.All(EnemyEventType.TelegraphStarted)[0].Telegraph);
+            Assert.IsTrue(early.Brain.ReceiveHit(Jab(), Vector3.Zero).PoiseBroken, "the start of the wind-up can be interrupted");
+
+            var late = new EnemyDriver(t);
+            late.SetTarget(new Vector3(0f, 0f, 2f));
+            late.RunUntil(x => x.Brain.IsTelegraphing, 900);
+            late.Run((int)Math.Ceiling(t.Attacks[0].Move.HyperArmorFrom / late.Dt) + 1);
+            Assert.IsTrue(late.Brain.IsTelegraphing);
+            HitResult result = late.Brain.ReceiveHit(Jab(), Vector3.Zero);
+            Assert.AreEqual(HitOutcome.Hit, result.Outcome, "armour still takes damage");
             Assert.IsFalse(result.PoiseBroken);
-            Assert.AreEqual(EnemyState.Attacking, d.Brain.State);
-            Assert.AreEqual(TelegraphKind.Heavy, d.All(EnemyEventType.TelegraphStarted)[0].Telegraph);
+            Assert.AreEqual(EnemyState.Attacking, late.Brain.State);
         }
 
         [Test]

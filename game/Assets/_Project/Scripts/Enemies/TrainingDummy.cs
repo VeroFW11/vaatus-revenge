@@ -35,7 +35,8 @@ namespace VaatusRevenge
             EnemyTuning data = tuning != null ? tuning.Tuning : null;
             EnemyFeedbackSettings feedback = tuning != null ? tuning.Feedback : null;
             string displayName = EnemyBuilder.NameFor(data, EnemyTuning.CreateSparringDummy());
-            GameObject go = EnemyBuilder.Create(parent, position, yaw, displayName, EnemyBuilder.ColorFor(EnemyArchetype.Dummy, feedback), true);
+            GameObject go = EnemyBuilder.Create(parent, position, yaw, displayName, EnemyBuilder.ColorFor(EnemyArchetype.Dummy, feedback), true,
+                EnemyBuilder.WeaponLengthFor(feedback));
             TrainingDummy dummy = go.AddComponent<TrainingDummy>();
             dummy.Configure(tuning, swings);
             EnemyBuilder.Finish(go);

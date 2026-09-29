@@ -10,7 +10,8 @@ namespace VaatusRevenge.Core
         public bool LookIsMouse;         // PlayerInputFrame.LookIsMouse
         public bool HasLockTarget;       // locked on? Look is then ignored and the camera frames the target
         public Vector3 LockTargetPoint;  // the lock-on target's aim point, world space
-        public bool SwapShoulder;        // PlayerInputFrame.SwapShoulder.Pressed: flip to the other shoulder
+        public bool SwapShoulder;        // swap shoulders right now (a script or menu; no hold needed)
+        public bool SwapShoulderHeld;    // PlayerInputFrame.SwapShoulder.Held: swaps after ShoulderSwapHoldTime, once per hold
         public bool HasFoe;              // is any living foe around? (for the combat pull-back)
         public float NearestFoeDistance; // metres from the player to the nearest living foe, when HasFoe
     }
@@ -62,6 +63,8 @@ namespace VaatusRevenge.Core
 
         // Shoulder: which side the player picked, whether a wall swapped it for now, and the offset itself.
         int chosenSide = 1;          // +1 = the side the tuning's offset points to, -1 = the other one (swap button)
+        float swapHoldTime;          // how long the swap button has been held
+        bool swapHoldUsed;           // this hold already swapped; release to swap again
         bool autoSwapped;
         float swapBackTimer;
         float wantedOffset;          // eased towards side x size; walls not considered yet
@@ -232,6 +235,7 @@ namespace VaatusRevenge.Core
         {
             float dt = CameraMath.SafeDeltaTime(realDeltaTime);
             if (input.SwapShoulder) SwapShoulder();
+            UpdateSwapHold(input.SwapShoulderHeld, dt);
 
             bool lockNow = input.HasLockTarget && CameraMath.IsFinite(input.LockTargetPoint);
             if (lockNow != locked)
@@ -361,7 +365,7 @@ namespace VaatusRevenge.Core
                 // Aim from the shoulder point, not the pivot: turning a little extra puts the target on the centre
                 // line while the fighter stays off to the side, so both are framed.
                 float targetYaw = Directions.YawOf(toTarget, Yaw) - ShoulderAimCorrection(horizontal);
-                Yaw = Angles.Wrap180(Smooth.DampAngle(Yaw, targetYaw, ref yawVelocity, tuning.LockOnYawSmoothTime, dt));
+                TurnYawTowards(targetYaw, dt);
             }
             else
             {
@@ -377,6 +381,46 @@ namespace VaatusRevenge.Core
             float below = Math.Max(0f, tuning.LockOnFramingBelow);
             float desired = ClampPitch(Angles.Clamp(tuning.LockOnPitch, pitchToTarget - below, pitchToTarget + above));
             Pitch = ClampPitch(Smooth.Damp(Pitch, desired, ref pitchVelocity, tuning.LockOnPitchSmoothTime, dt));
+        }
+
+        // Swings the yaw towards targetYaw like a spring (always the short way), but never faster than
+        // LockOnMaxYawSpeed. A target passing overhead flips its direction by about 180 degrees in an instant, and
+        // an uncapped spring would whip the view round by 18 degrees in one frame. The spring's own speed limit
+        // keeps the swing smooth; the clamp after it makes the limit a guarantee.
+        void TurnYawTowards(float targetYaw, float dt)
+        {
+            float maxSpeed = tuning.LockOnMaxYawSpeed > 0f && CameraMath.IsFinite(tuning.LockOnMaxYawSpeed)
+                ? tuning.LockOnMaxYawSpeed
+                : float.PositiveInfinity;
+            float before = Yaw;
+            // DampAngle never overshoots, so its result is a plain step from 'before' (no wrap to undo).
+            float step = Smooth.DampAngle(before, targetYaw, ref yawVelocity, tuning.LockOnYawSmoothTime, dt, maxSpeed) - before;
+            if (dt > 0f && !float.IsPositiveInfinity(maxSpeed) && Math.Abs(step) > maxSpeed * dt)
+            {
+                step = step > 0f ? maxSpeed * dt : -maxSpeed * dt;
+                yawVelocity = step / dt;
+            }
+            Yaw = Angles.Wrap180(before + step);
+        }
+
+        // The swap button has to be held for ShoulderSwapHoldTime, and each hold swaps once. L3 is the left stick,
+        // which the player is pushing hard while sprinting or dodging, so a plain click swapped sides by accident.
+        // Real time, like all input handling.
+        void UpdateSwapHold(bool held, float dt)
+        {
+            if (!held)
+            {
+                swapHoldTime = 0f;
+                swapHoldUsed = false;
+                return;
+            }
+            if (swapHoldUsed) return;
+            swapHoldTime += dt;
+            if (swapHoldTime >= Math.Max(0f, Finite(tuning.ShoulderSwapHoldTime)))
+            {
+                SwapShoulder();
+                swapHoldUsed = true;
+            }
         }
 
         // Degrees to turn left (right for a left shoulder) so the target sits on the screen's centre line even

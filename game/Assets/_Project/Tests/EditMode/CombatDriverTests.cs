@@ -38,7 +38,7 @@ namespace VaatusRevenge.Tests
         {
             Dt = 1f / fps;
             Model = new PlayerCombatModel(tuning ?? PlayerTuning.CreateFluid(), moveSet ?? ElementMoveSet.CreateFireFluid(), 1);
-            World = new PlayerWorldState { Grounded = true, SelfRadius = 0.4f };
+            World = new PlayerWorldState { Grounded = true, SelfRadius = 0.4f, SelfHeight = 1.8f };
         }
 
         public static PlayerDriver Punishing(float fps = 60f)

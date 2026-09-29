@@ -8,8 +8,10 @@ namespace VaatusRevenge.Core
     // I-FRAMES: during part of a dodge, hits pass through you ("invincibility frames"). A new dodge's
     //   i-frames can never start sooner than Dodge.ChainIFrameGap after the previous dodge's ended, however
     //   the numbers are tuned, so spamming dodge always leaves you open for a moment.
-    // PERFECT DODGE: a hit arriving within Dodge.PerfectWindow of the dodge starting (and inside the i-frames)
-    //   is a PerfectEvade: Momentum, a counter window and a slow-motion event. Once per dodge.
+    // PERFECT DODGE: once per dodge, a strike landing within Dodge.PerfectWindow of the dodge starting, while the
+    //   i-frames are up, earns Momentum (more when you dashed toward the attacker), a counter window and a slow-motion
+    //   event. With PerfectRule = WouldHaveLanded, a strike that misses because you dashed away still counts if its
+    //   arc covered where you started: the enemy side reports every strike with NotifyEnemyStrike.
     // GUARD: blocks hits from the front arc for stamina; not enough stamina = guard break (stagger).
     // DEFLECT: a guard press within Guard.DeflectWindow before a parryable hit lands deflects it for free and
     //   the attacker is told HitOutcome.Parried. A press that deflects nothing locks deflecting out briefly.
@@ -26,6 +28,8 @@ namespace VaatusRevenge.Core
         double iFrameEnd = double.NegativeInfinity;
         double lastIFrameEnd = double.NegativeInfinity;
         bool perfectRewardGiven;
+        Vector3 dodgeStartPosition;    // where the dodge began: "would the strike have landed?" is asked here
+        float dodgeStartRadius;
 
         double guardHeldUntil;                         // a tapped guard stays up at least this long
         bool deflectArmed;
@@ -76,8 +80,10 @@ namespace VaatusRevenge.Core
             // Not locked on: face where you dash. Locked on: keep facing the target (a strafe dodge).
             if (!dodgeIsBackstep && !world.HasLockTarget) facingYaw = Directions.YawOf(dodgeDirection, facingYaw);
 
-            stamina.Spend(dodge.StaminaCost, tuning.StaminaRegenDelay);
+            SpendStamina(dodge.StaminaCost);
             dodgeStartClock = clock;
+            dodgeStartPosition = world.Position;
+            dodgeStartRadius = Math.Max(0f, world.SelfRadius);
             iFrameStart = Math.Max(clock + dodge.IFrameStart, lastIFrameEnd + Math.Max(0f, dodge.ChainIFrameGap));
             iFrameEnd = clock + dodge.IFrameEnd;
             perfectRewardGiven = false;
@@ -109,8 +115,19 @@ namespace VaatusRevenge.Core
             return CanDefensiveCancel(false) && state != PlayerState.Charging;
         }
 
-        // pressed = a fresh press this frame (opens the deflect window) rather than a held button.
-        void EnterGuard(bool pressed)
+        // A buffered guard press, run at the earliest point guarding is allowed.
+        void TryGuardPress()
+        {
+            if (!CanGuardNow()) return;
+            double pressTime = buffer.PressTime;
+            buffer.Clear();
+            // Still wanted? Guard held, or a tap whose deflect window (timed from the real press) is still open.
+            if (!guardHeld && clock - pressTime > Guard.DeflectWindow + Epsilon) return;
+            EnterGuard(true, pressTime);
+        }
+
+        // pressed = a guard press (opens the deflect window, timed from pressClock) rather than a held button.
+        void EnterGuard(bool pressed, double pressClock)
         {
             if (state != PlayerState.Guarding)
             {
@@ -119,12 +136,14 @@ namespace VaatusRevenge.Core
                 Emit(PlayerEventType.GuardStarted);
             }
             if (!pressed) return;
-            guardHeldUntil = clock + Guard.DeflectWindow;
-            if (!deflectArmed && clock >= deflectLockoutUntil)
+            GuardSettings guard = Guard;
+            guardHeldUntil = Math.Max(guardHeldUntil, pressClock + guard.DeflectWindow);
+            bool windowLeft = clock - pressClock <= guard.DeflectWindow + Epsilon;
+            if (!deflectArmed && windowLeft && clock >= deflectLockoutUntil)
             {
                 deflectArmed = true;
                 deflectCaught = false;
-                deflectPressClock = clock;
+                deflectPressClock = pressClock;
             }
         }
 
@@ -147,7 +166,7 @@ namespace VaatusRevenge.Core
             if (state == PlayerState.Dead || hit.SourceTeam == Team.Player) return HitResult.Ignored;
             if (hit.AttackId != 0 && Array.IndexOf(recentHitsTaken, hit.AttackId) >= 0) return HitResult.Ignored;
 
-            if (IsInvulnerable) return Evade();
+            if (IsInvulnerable) return Evade(hit);
 
             // Evaded hits aren't remembered, so a lingering hitbox can still catch you after your i-frames.
             if (hit.AttackId != 0)
@@ -170,11 +189,11 @@ namespace VaatusRevenge.Core
                 float cost = Math.Max(0f, hit.GuardStaminaDamage);
                 if (stamina.Current >= cost)
                 {
-                    stamina.Spend(cost, tuning.StaminaRegenDelay);
+                    SpendStamina(cost);
                     Emit(new PlayerEvent { Type = PlayerEventType.Blocked, Amount = cost, Direction = hit.Direction });
                     return new HitResult { Outcome = HitOutcome.Blocked };
                 }
-                stamina.Spend(cost, tuning.StaminaRegenDelay);
+                SpendStamina(cost);
                 Emit(new PlayerEvent { Type = PlayerEventType.GuardBroken, Duration = guard.GuardBreakStagger, Direction = hit.Direction });
                 Stagger(guard.GuardBreakStagger);
                 return new HitResult { Outcome = HitOutcome.GuardBroken, PoiseBroken = true };
@@ -199,27 +218,62 @@ namespace VaatusRevenge.Core
             return result;
         }
 
-        HitResult Evade()
+        HitResult Evade(in DamageInfo hit)
+        {
+            if (!CanStillEarnPerfect()) return new HitResult { Outcome = HitOutcome.Evaded };
+            AwardPerfectDodge(-hit.Direction);
+            return new HitResult { Outcome = HitOutcome.PerfectEvade };
+        }
+
+        // The enemy side calls this when an enemy strike's active frames begin (AttackActiveStart), whether or not
+        // it touches the player. If you started a dodge within PerfectWindow before it, your i-frames are up, and
+        // the strike's arc covers where you started, that's a perfect dodge in whatever direction you dashed: the
+        // hit "would have landed". Returns true when it awarded one. (PerfectRule = SwingMustReachYou ignores it.)
+        public bool NotifyEnemyStrike(Vector3 origin, Vector3 forward, MoveData move, Vector3 attackerFeet)
+        {
+            if (move == null || Dodge.PerfectRule != PerfectDodgeRule.WouldHaveLanded) return false;
+            if (!IsInvulnerable || !CanStillEarnPerfect()) return false;
+            // Unknown body height: treat the body as tall, so only a strike from far below misses it.
+            float height = bodyHeight > 0f ? bodyHeight : float.MaxValue * 0.5f;
+            if (!HitGeometry.InArc(origin, forward, move.Range, move.ArcDegrees, move.VerticalReach,
+                    dodgeStartPosition, height, dodgeStartRadius)) return false;
+            AwardPerfectDodge(attackerFeet - dodgeStartPosition);
+            return true;
+        }
+
+        bool CanStillEarnPerfect()
         {
             DodgeProfile dodge = Dodge;
-            bool perfect = dodge.PerfectDodgeEnabled && !perfectRewardGiven
+            return state == PlayerState.Dodging && dodge.PerfectDodgeEnabled && !perfectRewardGiven
                 && clock - dodgeStartClock <= dodge.PerfectWindow + Epsilon;
-            if (!perfect) return new HitResult { Outcome = HitOutcome.Evaded };
+        }
 
+        // toAttacker: direction from the player to the attacker (any length; Zero if unknown).
+        void AwardPerfectDodge(Vector3 toAttacker)
+        {
+            DodgeProfile dodge = Dodge;
             perfectRewardGiven = true;
-            momentum.Gain(dodge.PerfectMomentumGain, MomentumRules);
+            float gain = dodge.PerfectMomentumGain;
+            // Fire's forward pressure: dashing into or through the attack earns a little more.
+            Vector3 flat = Directions.Flatten(toAttacker);
+            if (!dodgeIsBackstep && flat.LengthSquared() > 1e-8f)
+            {
+                float cos = Vector3.Dot(dodgeDirection, Vector3.Normalize(flat));
+                float angle = (float)Math.Acos(Angles.Clamp(cos, -1f, 1f)) * Directions.Rad2Deg;
+                if (angle <= dodge.PerfectTowardMaxAngle) gain += Math.Max(0f, dodge.PerfectTowardBonus);
+            }
+            momentum.Gain(gain, MomentumRules);
             counterWindowUntil = clock + Math.Max(0f, dodge.CounterWindow);
             Emit(new PlayerEvent
             {
                 Type = PlayerEventType.PerfectDodge, TimeScale = dodge.PerfectSlowMoScale, Duration = dodge.PerfectSlowMoDuration,
-                Amount = dodge.PerfectMomentumGain
+                Amount = gain
             });
-            return new HitResult { Outcome = HitOutcome.PerfectEvade };
         }
 
-        // Hyper armour: during a heavy move's startup and active frames poise can't break (you trade hits).
+        // Hyper armour: from HyperArmorFrom until the active frames end, poise can't break (you trade hits).
         bool HasHyperArmor => state == PlayerState.Attacking && currentMove != null && currentMove.HyperArmor
-            && action.Time < currentMove.ActiveEnd;
+            && action.Time >= currentMove.HyperArmorFrom && action.Time < currentMove.ActiveEnd;
 
         // hitDirection points attacker -> defender. Unknown direction (Zero) counts as frontal.
         static bool IsFromFront(Vector3 hitDirection, Vector3 forward, float arcDegrees)

@@ -199,6 +199,42 @@ namespace VaatusRevenge.Tests
             }
         }
 
+        // A locked target flies 2.5 m over the player's head at 3 m/s. Returns the biggest yaw change in one frame.
+        static float OverheadPassBiggestStep(CameraTuning tuning)
+        {
+            var camera = NewCamera(tuning);
+            float pivotHeight = tuning.PivotHeight;
+            float biggest = 0f;
+            float previous = camera.Yaw;
+            for (int i = 0; i < 240; i++)
+            {
+                var target = new Vector3(0.1f, pivotHeight + 2.5f, 6f - 3f * i * Frame);
+                camera.UpdatePivot(Vector3.Zero, Frame);
+                camera.UpdateOrientation(LockOn(target), Frame);
+                camera.UpdateDistance(float.PositiveInfinity, Frame);
+                AssertFinite(camera);
+                biggest = Math.Max(biggest, Math.Abs(Angles.Delta(previous, camera.Yaw)));
+                previous = camera.Yaw;
+            }
+            Assert.Greater(Math.Abs(camera.Yaw), 150f, "ends up facing the target behind the player");
+            return biggest;
+        }
+
+        [Test]
+        public void LockOnTurnSpeedIsCappedWhenATargetPassesOverhead()
+        {
+            foreach (CameraTuning tuning in new[] { CameraTuning.CreateCentred(), new CameraTuning() })
+            {
+                float cap = tuning.LockOnMaxYawSpeed * Frame; // 540 deg/s = 9 degrees per frame
+                Assert.LessOrEqual(OverheadPassBiggestStep(tuning), cap + 1e-3f);
+            }
+
+            // Without the cap the same pass whips the camera much further in one frame, so this really tests the cap.
+            CameraTuning uncapped = CameraTuning.CreateCentred();
+            uncapped.LockOnMaxYawSpeed = 0f;
+            Assert.Greater(OverheadPassBiggestStep(uncapped), 12f);
+        }
+
         [Test]
         public void LockOnAcrossTheWrapTakesTheShortWay()
         {

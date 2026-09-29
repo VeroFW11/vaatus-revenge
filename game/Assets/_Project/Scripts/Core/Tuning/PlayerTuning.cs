@@ -24,7 +24,8 @@ namespace VaatusRevenge.Core
         public float MaxHealth = 100f;
         public float MaxStamina = 100f;
         public float StaminaRegen = 45f;             // stamina per second once regen has started
-        public float StaminaRegenDelay = 0.45f;      // pause after spending stamina before regen starts
+        public float StaminaRegenDelay = 0.6f;       // pause after spending stamina before regen starts
+        public float EmptyStaminaRegenDelay = 1.0f;  // longer pause when a spend empties the bar: running dry should hurt
         public float GuardRegenMultiplier = 0.5f;    // regen speed while guarding (so turtling isn't free)
         public float SprintStaminaDrain = 0f;        // stamina per second while sprinting (0 = free sprint)
         public float SprintResumeStamina = 15f;      // after sprinting dry, sprint returns once stamina is back to this
@@ -49,7 +50,12 @@ namespace VaatusRevenge.Core
         // --- Input feel ---
         public float InputBufferWindow = 0.25f;      // presses made while busy are remembered this long (see InputBuffer)
         public float TapHoldThreshold = 0.22f;       // Dodge button: shorter = tap (dodge), longer = hold (sprint) in OnRelease mode
+        public float QueuedPressMaxAge = 0.35f;      // a light press queued as the next chain move is dropped if it gets older than
+                                                     // this before it can fire (e.g. waiting for stamina), so it never fires late
         public DodgeTrigger DodgeTrigger = DodgeTrigger.OnPress;
+        public bool DefensivePressesWin = true;      // a buffered dodge or guard survives later attack presses (attacks still replace
+                                                     // attacks), so a nervous extra light press can't cancel your escape.
+                                                     // false = the last press always wins (Elden Ring). Pending David (CTRL-01)
 
         // --- Poise and stagger ---
         public float MaxPoise = 30f;                 // stagger resistance: enemy PoiseDamage wears it down, 0 = staggered
@@ -68,7 +74,8 @@ namespace VaatusRevenge.Core
 
         // --- Aiming ---
         public float SoftLockRange = 4f;             // not locked on: attacks aim at the nearest enemy this close...
-        public float SoftLockAngle = 60f;            // ...and at most this many degrees off the direction you're aiming
+        public float SoftLockAngle = 60f;            // ...and at most this many degrees off the direction you're aiming...
+        public float SoftLockMaxHeightDifference = 1.5f; // ...and no more than this far above or below you (not up on a ledge)
         public float LungeStopGap = 0.3f;            // lunges stop this far from the target's body so you never run through it
 
         public static PlayerTuning CreateFluid()
@@ -83,6 +90,7 @@ namespace VaatusRevenge.Core
             t.PresetName = "Punishing";
             t.StaminaRegen = 32f;
             t.StaminaRegenDelay = 0.8f;
+            t.EmptyStaminaRegenDelay = 1.4f;
             t.SprintStaminaDrain = 6f;
             t.InputBufferWindow = 0.2f;
             t.DodgeTrigger = DodgeTrigger.OnRelease;

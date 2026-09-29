@@ -201,18 +201,29 @@ namespace VaatusRevenge
         }
 
         // Wobble and dim while staggered. Starting a stagger interrupts the fighter, so it also pulls the limbs
-        // back and turns off any wind-up glow or charge.
+        // back and turns off any wind-up glow or charge. Safe to call every frame with the current state: a
+        // stagger that's already showing keeps going (use RestartStagger for a new stagger on top of it).
         public void SetStaggered(bool on)
         {
-            if (on && !staggered)
-            {
-                staggerTime = 0f;
-                if (IsBuilt) ReleaseLimbs();
-                telegraphIntensity = 0f;
-                chargeLevel = 0f;
-                chargeSweetSpot = false;
-            }
+            if (on && !staggered) BeginStagger();
             staggered = on;
+        }
+
+        // A new stagger while already staggered (poise broken again, or deflected): the wobble starts over from
+        // its strongest kick, so the second stagger reads as clearly as the first. Extra to the spec.
+        public void RestartStagger()
+        {
+            BeginStagger();
+            staggered = true;
+        }
+
+        void BeginStagger()
+        {
+            staggerTime = 0f;
+            if (IsBuilt) ReleaseLimbs();
+            telegraphIntensity = 0f;
+            chargeLevel = 0f;
+            chargeSweetSpot = false;
         }
 
         public void SetDead(bool isDead)

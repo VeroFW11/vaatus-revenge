@@ -25,6 +25,9 @@ namespace VaatusRevenge.Core
         public float ShoulderOffset = 0.55f;          // metres to the side; + = over the right shoulder (fighter left of centre)
         public float LockedShoulderOffset = 0.35f;    // smaller while locked on, so the target stays readable near the centre
         public float ShoulderSmoothTime = 0.2f;       // easing whenever the offset changes: swapping shoulders, locking on/off
+        public float ShoulderSwapHoldTime = 0.25f;    // seconds the swap button (L3 / V) must be held; one swap per hold.
+                                                      // L3 is the stick you push hard while sprinting, so a plain click
+                                                      // swapped sides by accident. 0 = swap on press
         public bool AutoSwapShoulderWhenBlocked = true; // a wall hugging the shoulder side swaps to the other shoulder
                                                         // until it clears, instead of squashing the view against it
         public float ShoulderBlockedFraction = 0.5f;  // that side counts as blocked when less than this share of the offset fits
@@ -67,6 +70,8 @@ namespace VaatusRevenge.Core
 
         // Lock-on framing. The camera swings round behind the player to face the target.
         public float LockOnYawSmoothTime = 0.12f;  // how quickly it swings round
+        public float LockOnMaxYawSpeed = 540f;     // degrees per second it may swing at most (9 per frame at 60 fps), so a
+                                                   // target passing overhead can't whip the view round. 0 = no cap
         public float LockOnPitch = 18f;            // resting pitch while locked on
         public float LockOnPitchSmoothTime = 0.25f;
         public float LockOnFramingAbove = 20f;     // the target may sit this far above the screen centre before the camera

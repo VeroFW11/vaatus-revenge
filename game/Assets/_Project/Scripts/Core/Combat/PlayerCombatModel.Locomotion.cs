@@ -24,6 +24,8 @@ namespace VaatusRevenge.Core
         bool jumpedThisTick;
         float airSpeedCap;            // air control steers toward this speed (keeps a sprint jump's speed)
         float sprintTime;
+        double sprintEndedClock = double.NegativeInfinity;
+        float lastSprintDuration;
         bool sprintExhausted;         // ran dry while sprinting: sprint returns at SprintResumeStamina
         PushMotion knockback;
         Vector3 actionStep;           // this frame's dash or lunge movement, in metres (see AdvanceAction)
@@ -40,6 +42,8 @@ namespace VaatusRevenge.Core
             jumpedThisTick = false;
             airSpeedCap = tuning.RunSpeed;
             sprintTime = 0f;
+            sprintEndedClock = double.NegativeInfinity;
+            lastSprintDuration = 0f;
             sprintExhausted = false;
             knockback.Stop();
             actionStep = Vector3.Zero;
@@ -112,22 +116,13 @@ namespace VaatusRevenge.Core
 
         void UpdateHeldStates(float dt)
         {
-            if (state == PlayerState.Dead)
-            {
-                guardPressPending = false;
-                return;
-            }
+            if (state == PlayerState.Dead) return;
 
-            // A fresh guard press can also cut an attack or dodge short (from its defensive cancel point) and
-            // opens the deflect window; a held guard only raises the guard from walking or sprinting.
-            if (guardPressPending)
+            // A guard press is a buffered command (it can cut an attack or dodge short and opens the deflect
+            // window); here a held guard just raises the guard from walking or sprinting.
+            if (guardHeld && (state == PlayerState.Locomotion || state == PlayerState.Sprinting) && OnGroundish)
             {
-                guardPressPending = false;
-                if (CanGuardNow()) EnterGuard(true);
-            }
-            else if (guardHeld && (state == PlayerState.Locomotion || state == PlayerState.Sprinting) && OnGroundish)
-            {
-                EnterGuard(false);
+                EnterGuard(false, clock);
             }
             if (state == PlayerState.Guarding && !guardHeld && clock >= guardHeldUntil)
             {
@@ -155,7 +150,7 @@ namespace VaatusRevenge.Core
             if (state != PlayerState.Sprinting) return;
             sprintTime += dt;
             if (!drains) return;
-            stamina.Drain(tuning.SprintStaminaDrain, dt, tuning.StaminaRegenDelay);
+            stamina.Drain(tuning.SprintStaminaDrain, dt, tuning.StaminaRegenDelay, tuning.EmptyStaminaRegenDelay);
             if (stamina.CanAct) return;
             sprintExhausted = true;
             ExitAction(false);
@@ -310,21 +305,31 @@ namespace VaatusRevenge.Core
             return along <= allowed ? step : step - dir * (along - allowed);
         }
 
-        // Backing away from a locked target drains Momentum (Northern Shaolin rewards pressing forward).
+        // Backing away from the fight drains Momentum (Northern Shaolin rewards pressing forward): away from the
+        // lock target, or when not locked on, away from the nearest enemy within BackOffRadius.
         void UpdateMomentum(float dt, in PlayerWorldState world)
         {
+            MomentumSettings rules = MomentumRules;
             bool backingOff = false;
-            if (world.HasLockTarget)
+            bool hasThreat = world.HasLockTarget;
+            Vector3 threat = world.LockTargetPosition;
+            if (!hasThreat && world.HasNearestEnemy
+                && Directions.Flatten(world.NearestEnemyPosition - world.Position).Length() <= rules.BackOffRadius)
             {
-                Vector3 toTarget = Directions.Flatten(world.LockTargetPosition - world.Position);
-                float distance = toTarget.Length();
+                hasThreat = true;
+                threat = world.NearestEnemyPosition;
+            }
+            if (hasThreat)
+            {
+                Vector3 toThreat = Directions.Flatten(threat - world.Position);
+                float distance = toThreat.Length();
                 if (distance > 1e-4f)
                 {
-                    float awaySpeed = -Vector3.Dot(Directions.Flatten(lastVelocity), toTarget / distance);
-                    backingOff = awaySpeed > MomentumRules.BackOffSpeedThreshold;
+                    float awaySpeed = -Vector3.Dot(Directions.Flatten(lastVelocity), toThreat / distance);
+                    backingOff = awaySpeed > rules.BackOffSpeedThreshold;
                 }
             }
-            momentum.Tick(dt, MomentumRules, backingOff);
+            momentum.Tick(dt, rules, backingOff);
         }
     }
 }

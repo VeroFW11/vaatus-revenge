@@ -26,6 +26,7 @@ namespace VaatusRevenge
         FireVfxHandle rightFootTrail;
         Limb poseLimb = Limb.RightFist;   // the limb(s) the current move's pose uses, eased back when it ends
         bool charging;
+        bool readyCueDone;                // the "get ready" cue has played (or been skipped) for the charge in progress
         bool guardRaised;
         float guardHoldTimer;
         bool plungeLandedThisFrame;
@@ -140,7 +141,7 @@ namespace VaatusRevenge
                 // After a perfect dodge the fists glow while the counter (bonus damage) is ready.
                 rig.SetTelegraph(s.CounterGlowColor, !dead && model.IsCounterWindowOpen ? s.CounterGlowIntensity : 0f);
             }
-            UpdateCharge(model);
+            UpdateCharge(model, s);
             UpdateGuardHold(dt, s);
             UpdateFov(!dead && s.SprintFovBoost && model.IsSprinting);
         }
@@ -281,19 +282,24 @@ namespace VaatusRevenge
             rig.Strike(poseLimb, PoseFor(p.Chamber, poseLimb), p.ChamberTime, hold, p.InterruptRetractTime);
         }
 
-        void UpdateCharge(PlayerCombatModel model)
+        void UpdateCharge(PlayerCombatModel model, PlayerFeedbackSettings s)
         {
             bool nowCharging = model.State == PlayerState.Charging;
             if (nowCharging)
             {
                 float level = model.ChargeLevel;
-                if (!charging && rig != null)
+                if (!charging)
                 {
-                    MoveData heavy = model.CurrentMove;
-                    chargeGlow = FireVfx.ChargeGlow(rig.GetAnchor(ChamberLimb(heavy != null ? heavy.Limb : Limb.RightFist)));
+                    readyCueDone = false;
+                    if (rig != null)
+                    {
+                        MoveData heavy = model.CurrentMove;
+                        chargeGlow = FireVfx.ChargeGlow(rig.GetAnchor(ChamberLimb(heavy != null ? heavy.Limb : Limb.RightFist)));
+                    }
                 }
                 chargeGlow.SetLevel(level);
-                // The rig flashes white-gold the moment InSweetSpot turns true: the "release now" cue.
+                UpdateReadyCue(model, s);
+                // The rig flashes white-gold the moment InSweetSpot turns true: the sweet spot is open.
                 if (rig != null) rig.SetCharge(level, model.InSweetSpot);
             }
             else if (charging)
@@ -301,6 +307,29 @@ namespace VaatusRevenge
                 StopChargeGlow();
             }
             charging = nowCharging;
+        }
+
+        // A faint glow and a light rumble tick Charge.ReadyCueLead seconds before the sweet spot opens. People need
+        // about a fifth of a second to react, so releasing on the sweet-spot flash itself is usually too late; this
+        // earlier "get ready" cue lets you let go inside the window (playtest report HUD-01). It's read from the
+        // model's charge time every frame rather than from an event, so it plays once per charge and can't be missed.
+        void UpdateReadyCue(PlayerCombatModel model, PlayerFeedbackSettings s)
+        {
+            if (readyCueDone) return;
+            ChargeSettings charge = model.MoveSet != null ? model.MoveSet.Charge : null;
+            if (charge == null || !(charge.ReadyCueLead > 0f))
+            {
+                readyCueDone = true; // no lead set: no cue this charge
+                return;
+            }
+            float readyAt = charge.SweetSpotStart - charge.ReadyCueLead;
+            if (model.ChargeTime < readyAt) return;
+            readyCueDone = true;
+            // Skip it when it would come too early to mean anything (a lead longer than the wait for the sweet spot)
+            // or too late (the charge began at or past the sweet spot, which then gives its own cue).
+            if (!(readyAt > 0f) || model.ChargeTime >= charge.SweetSpotStart) return;
+            Pulse(s.ReadyCue);
+            Flash(s.ReadyCueFlashColor, s.ReadyCueFlashTime);
         }
 
         // ---------------------------------------------------------------- defence

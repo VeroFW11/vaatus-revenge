@@ -6,7 +6,8 @@ namespace VaatusRevenge.Core
     // backs off quickly (RetreatSpeed) when the player gets within RetreatTriggerDistance, walks back when a
     // little too close, closes in when too far or when it can't see the player, and strafes while in its band.
     // Shoots when its attack timer allows, the player is visible and within an attack's range. It won't
-    // shoot while it's escaping, unless it has been retreating for ApproachTimeout (cornered).
+    // shoot while it's escaping, unless it's cornered: retreating for ApproachTimeout, or held by its leash
+    // (LeashRadius, e.g. an archer that keeps to its platform strafes inside the leash and shoots from there).
     public sealed class RangedEnemyBrain : EnemyBrain
     {
         float circleSign = 1f;
@@ -30,7 +31,7 @@ namespace VaatusRevenge.Core
             Vector3 toTarget = DirectionTo(world);
             bool tooClose = range < t.RetreatTriggerDistance;
             retreatingFor = tooClose ? retreatingFor + dt : 0f;
-            bool cornered = retreatingFor > t.ApproachTimeout;
+            bool cornered = retreatingFor > t.ApproachTimeout || (tooClose && LeashLimited);
 
             if (AttackTimer <= 0f && !world.TargetHidden && (!tooClose || cornered) && CanUseTokenNow)
             {
