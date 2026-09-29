@@ -25,16 +25,34 @@ namespace VaatusRevenge
         int openAttackId;
 
         // The strike's active window just opened: sweep its arc from where it was aimed.
-        public void OpenMelee(in EnemyEvent e, EnemyBrain brain, EnemyFeedbackSettings feedback)
+        // attackerFeet: where the enemy stands (its pivot), so the player's perfect-dodge reward knows which way
+        // "toward the attacker" is.
+        public void OpenMelee(in EnemyEvent e, EnemyBrain brain, Vector3 attackerFeet, EnemyFeedbackSettings feedback)
         {
             MoveData move = e.Move;
             if (brain == null || move == null || move.LaunchesProjectile) return;
             if (openAttackId != 0 && openAttackId != e.AttackId) MeleeHitQuery.EndAttack(openAttackId); // never leave a record behind
             openAttackId = e.AttackId;
+            NotifyPlayerOfStrike(in e, move, attackerFeet);
             DamageInfo damage = brain.BuildDamage(in e);
             reports.Clear();
             MeleeHitQuery.Arc(e.Origin.ToUnity(), e.Direction.ToUnity(), move.Range, move.ArcDegrees, move.VerticalReach, damage, reports);
             React(brain, move, damage, feedback);
+        }
+
+        // Tell the player a strike just opened, BEFORE the arc query. Why: a dodge that carries you out of the
+        // swing makes the arc miss, so the hit query alone would never see it and a backward or sideways dodge
+        // could never be "perfect". The player's rules (PlayerCombatModel.NotifyEnemyStrike) ask instead whether
+        // the swing would have landed where the dodge started, and award the perfect dodge if so. Doing it before
+        // the query means a strike that still touches the dodging player then counts as an ordinary evade, so the
+        // reward is given once. Bolts never call this: they're judged when they actually arrive.
+        static void NotifyPlayerOfStrike(in EnemyEvent e, MoveData move, Vector3 attackerFeet)
+        {
+            PlayerController player = PlayerController.Instance;
+            if (player == null || player.IsDead) return;
+            PlayerCombatModel model = player.Model;
+            if (model == null) return;
+            model.NotifyEnemyStrike(e.Origin, e.Direction, move, attackerFeet.ToNumerics());
         }
 
         // Every later frame of the active window: same swing, from where the (lunging) enemy is now.

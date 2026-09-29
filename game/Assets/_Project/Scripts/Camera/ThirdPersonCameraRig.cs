@@ -47,8 +47,8 @@ namespace VaatusRevenge
 
         // Camera yaw in degrees (clockwise from +Z). The player moves relative to this.
         public float Yaw => Model.Yaw;
-        // Camera pitch in degrees, positive = looking down.
-        public float Pitch => Model.Pitch;
+        // Camera pitch in degrees, positive = looking down (as rendered, including the rise over the head near walls).
+        public float Pitch => Model.ViewPitch;
         public Camera Camera => ResolveCamera();
         public Transform FollowTarget => followTarget;
         // The numbers in use right now (the asset's, or the defaults when none is assigned).
@@ -220,6 +220,10 @@ namespace VaatusRevenge
         // lift), step out to the shoulder, then back away from the shoulder point. Each probe starts where the
         // previous one safely ended, so a wall on the shoulder side can never end up between the pivot and the
         // camera. Only the environment layer counts, so fighters walking past never shove the camera.
+        // Extra probes keep the view steady (report 02, NEW-03): sideways at the camera's end too, so the shoulder
+        // offset yields to a wall the camera is still passing; from the camera toward the player, which tells the
+        // model whether a wall is touching the camera itself (move in now) or only blocking the view (wait a moment,
+        // then glide); and a fatter copy of the distance probe that spots a pillar before it touches the camera.
         void ApplyCollision(CameraTuning tuning, float realDt)
         {
             OrbitCameraModel orbit = Model;
@@ -232,9 +236,41 @@ namespace VaatusRevenge
             float reach = orbit.ShoulderReach;
             float freeRight = Probe(lifted, right, reach, radius);
             float freeLeft = Probe(lifted, -right, reach, radius);
-            orbit.UpdateShoulder(freeRight, freeLeft, realDt);
+            Vector3 cameraEnd = orbit.CameraEndCentre.ToUnity();
+            float freeRightAtCamera = Probe(cameraEnd, right, reach, radius);
+            float freeLeftAtCamera = Probe(cameraEnd, -right, reach, radius);
+            orbit.UpdateShoulder(freeRight, freeLeft, freeRightAtCamera, freeLeftAtCamera, realDt);
 
-            orbit.UpdateDistance(Probe(orbit.ShoulderPoint.ToUnity(), -orbit.Forward.ToUnity(), orbit.DesiredDistance, radius), realDt);
+            Vector3 shoulder = orbit.ShoulderPoint.ToUnity();
+            Vector3 back = -orbit.Forward.ToUnity();
+            float maxDistance = Probe(shoulder, back, orbit.DesiredDistance, radius);
+            float cameraFree = CameraFree(shoulder, back, orbit.Distance, radius);
+            float lookAhead = tuning.CollisionLookAhead > 0f
+                ? LookAhead(shoulder, back, orbit.DesiredDistance, radius + tuning.CollisionLookAhead)
+                : float.PositiveInfinity;
+            orbit.UpdateDistance(maxDistance, cameraFree, lookAhead, realDt);
+        }
+
+        // The fatter distance probe. It only warns about something ahead: if the fat sphere already overlaps a wall where
+        // it starts (you're standing next to one), it has nothing useful to say, so it reports open space.
+        static float LookAhead(Vector3 shoulder, Vector3 back, float length, float fatRadius)
+        {
+            if (!(length > 0f) || !(fatRadius > 0f)) return float.PositiveInfinity;
+            if (Physics.CheckSphere(shoulder, fatRadius, Layers.EnvironmentMask, QueryTriggerInteraction.Ignore)) return float.PositiveInfinity;
+            RaycastHit hit;
+            return Physics.SphereCast(shoulder, fatRadius, back, out hit, length, Layers.EnvironmentMask, QueryTriggerInteraction.Ignore)
+                ? Mathf.Max(0f, hit.distance - ProbeSkin)
+                : float.PositiveInfinity;
+        }
+
+        // How far the camera's sphere, left at 'distance' behind the shoulder point, could slide toward it before
+        // touching level geometry. 0 when it already touches something where it is.
+        static float CameraFree(Vector3 shoulder, Vector3 back, float distance, float radius)
+        {
+            if (!(distance > 0f)) return 0f;
+            Vector3 position = shoulder + back * distance;
+            if (Physics.CheckSphere(position, Mathf.Max(radius, 0.001f), Layers.EnvironmentMask, QueryTriggerInteraction.Ignore)) return 0f;
+            return Probe(position, -back, distance, radius);
         }
 
         // How far the camera's collision sphere can travel from origin along direction before touching level
@@ -304,7 +340,8 @@ namespace VaatusRevenge
             Vector3 shake = withShake && Instance == this
                 ? CameraShake.Advance(realDt, tuning.ShakeFrequency, tuning.ShakeMaxAngle)
                 : Vector3.zero;
-            Quaternion rotation = Quaternion.Euler(orbit.Pitch + shake.x, orbit.Yaw + shake.y, shake.z);
+            // ViewPitch, not Pitch: it includes the rise over the head when a wall is close behind.
+            Quaternion rotation = Quaternion.Euler(orbit.ViewPitch + shake.x, orbit.Yaw + shake.y, shake.z);
             cam.transform.SetPositionAndRotation(orbit.CameraPosition.ToUnity(), rotation);
 
             // Smooth.Damp rather than Mathf.SmoothDamp: Unity's version produces NaN when deltaTime is 0 (paused).

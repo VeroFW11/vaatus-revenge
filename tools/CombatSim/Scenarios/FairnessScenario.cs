@@ -212,7 +212,7 @@ namespace VaatusRevenge.CombatSim
         {
             Out.Sub("The platform Crossbowman (sandbox spawn Crossbow_Platform, 2.5 m up on a 6 × 6 m block)");
             Out.Line("Where is it after 20 s? The player stands still at different spots (sandbox arena geometry).");
-            Out.Line("60cb8ee: LeashRadius 3 m around its first position, plus EnemyFighter's ledge check (mirrored here). 'Ledge stops' = frames the "
+            Out.Line("LeashRadius " + Out.N(EnemyTuning.CreateCrossbowman().LeashRadius, 1) + " m around its first position, plus EnemyFighter's ledge check (mirrored here). 'Ledge stops' = frames the "
                      + "ledge check had to zero its step, i.e. the leash alone would have let it reach the edge.");
             var t = new Table("Player at", "Distance at start", "Crossbowman after 20 s", "Still on the platform?", "Shots fired", "Max drift from spawn", "Ledge stops");
             foreach (var spot in new[] { (new Vector3(0f, 0f, -18f), "player spawn (south)"), (new Vector3(0f, 0f, 0f), "duel ring centre"),

@@ -69,18 +69,32 @@ namespace VaatusRevenge.EditorTools
                 return;
             }
 
+            // All or nothing: if any step fails (or throws), the half-made object is removed again, so a failed
+            // setup never leaves an empty or non-global "Global Volume" in the scene (report 02, NEW-07). Undo only
+            // learns about the object once it's complete.
+            int problemsBefore = problems.Count;
             var volumeObject = new GameObject(VolumeObjectName);
-            Undo.RegisterCreatedObjectUndo(volumeObject, undoName);
-            Component volume = volumeObject.AddComponent(volumeType);
-            if (volume == null)
+            bool complete = false;
+            try
             {
-                problems.Add("the Volume component couldn't be added");
-                return;
+                Component volume = volumeObject.AddComponent(volumeType);
+                if (volume == null)
+                {
+                    problems.Add("the Volume component couldn't be added");
+                    return;
+                }
+                // Global: applies everywhere in the scene, not just inside a trigger volume.
+                SetMember(volume, "isGlobal", true, problems);
+                SetMember(volume, "sharedProfile", profile, problems);
+                if (problems.Count != problemsBefore) return;
+                EditorUtility.SetDirty(volume);
+                complete = true;
             }
-            // Global: applies everywhere in the scene, not just inside a trigger volume.
-            SetMember(volume, "isGlobal", true, problems);
-            SetMember(volume, "sharedProfile", profile, problems);
-            EditorUtility.SetDirty(volume);
+            finally
+            {
+                if (complete) Undo.RegisterCreatedObjectUndo(volumeObject, undoName);
+                else UnityEngine.Object.DestroyImmediate(volumeObject);
+            }
         }
 
         static void EnableCameraPostProcessing(Camera camera, string undoName, List<string> problems)

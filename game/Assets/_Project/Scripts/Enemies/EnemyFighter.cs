@@ -369,7 +369,7 @@ namespace VaatusRevenge
                         break;
                     case EnemyEventType.AttackActiveStart:
                         presenter.OnStrike(in e, feedback);
-                        strikes.OpenMelee(in e, b, feedback);
+                        strikes.OpenMelee(in e, b, transform.position, feedback);
                         strikeOpened = true;
                         break;
                     case EnemyEventType.AttackActiveEnd:

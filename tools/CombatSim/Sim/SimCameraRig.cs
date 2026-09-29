@@ -35,6 +35,7 @@ namespace VaatusRevenge.CombatSim
         {
             this.world = world;
             CameraTuning = cameraTuning ?? new CameraTuning();
+            TuningOverrides.ApplyCamera(CameraTuning);
             LockOnTuning = lockOnTuning ?? new LockOnTuning();
             Orbit = new OrbitCameraModel(CameraTuning);
             Selector = new LockOnSelector(LockOnTuning);
@@ -201,10 +202,38 @@ namespace VaatusRevenge.CombatSim
             float reach = Orbit.ShoulderReach;
             LastFreeRight = Probe(lifted, right, reach, radius);
             LastFreeLeft = Probe(lifted, -right, reach, radius);
-            Orbit.UpdateShoulder(LastFreeRight, LastFreeLeft, realDt);
-            LastProbe = Probe(Orbit.ShoulderPoint, -Orbit.Forward, Orbit.DesiredDistance, radius);
-            Orbit.UpdateDistance(LastProbe, realDt);
+            // Round 2 (report 02, NEW-03): the offset must also fit at the camera's end.
+            Vector3 cameraEnd = Orbit.CameraEndCentre;
+            float freeRightAtCamera = Probe(cameraEnd, right, reach, radius);
+            float freeLeftAtCamera = Probe(cameraEnd, -right, reach, radius);
+            Orbit.UpdateShoulder(LastFreeRight, LastFreeLeft, freeRightAtCamera, freeLeftAtCamera, realDt);
+            Vector3 shoulder = Orbit.ShoulderPoint, back = -Orbit.Forward;
+            LastProbe = Probe(shoulder, back, Orbit.DesiredDistance, radius);
+            LastCameraFree = CameraFree(shoulder, back, Orbit.Distance, radius);
+            float lookAhead = CameraTuning.CollisionLookAhead > 0f
+                ? LookAhead(shoulder, back, Orbit.DesiredDistance, radius + CameraTuning.CollisionLookAhead)
+                : float.PositiveInfinity;
+            Orbit.UpdateDistance(LastProbe, LastCameraFree, lookAhead, realDt);
         }
+
+        // ThirdPersonCameraRig.LookAhead: the fatter probe; says nothing (open) when it starts overlapping a wall.
+        float LookAhead(Vector3 shoulder, Vector3 back, float length, float fatRadius)
+        {
+            if (!(length > 0f) || !(fatRadius > 0f)) return float.PositiveInfinity;
+            if (world.Level.IsOverlapping(shoulder, fatRadius)) return float.PositiveInfinity;
+            return world.Level.SphereCast(shoulder, fatRadius, back, length, out float hit) ? Math.Max(0f, hit - ProbeSkin) : float.PositiveInfinity;
+        }
+
+        // ThirdPersonCameraRig.CameraFree: how far the camera, left where it is, could slide toward the shoulder point.
+        float CameraFree(Vector3 shoulder, Vector3 back, float distance, float radius)
+        {
+            if (!(distance > 0f)) return 0f;
+            Vector3 position = shoulder + back * distance;
+            if (world.Level.IsOverlapping(position, Math.Max(radius, 0.001f))) return 0f;
+            return Probe(position, -back, distance, radius);
+        }
+
+        public float LastCameraFree { get; private set; }
 
         public float LastFreeRight { get; private set; }
         public float LastFreeLeft { get; private set; }

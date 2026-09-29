@@ -87,6 +87,22 @@ namespace VaatusRevenge.Core
         public float CollisionRadius = 0.25f;      // size of the camera's collision sphere. Must stay bigger than the
                                                    // near-clip corners (NearClipPlane) or walls get cut open up close
         public float CollisionEaseOutTime = 0.35f; // walls pull the camera in instantly; it eases back out over about this long
+        public float OcclusionGraceTime = 0.1f;    // something between the camera and the player that isn't touching the camera
+                                                   // (a pillar edge while orbiting, a roof edge) is ignored this long before the
+                                                   // camera moves in front of it. Many clear by themselves, so the view doesn't
+                                                   // hop in and out
+        public float CollisionPullInTime = 0.15f;  // ...then it glides in over about this long, up to the pillar's far side, and
+                                                   // only skips the pillar's own thickness in one frame. 0 = jump straight in
+        public float CollisionLookAhead = 0.2f;    // metres: a second, fatter probe (radius + this) spots a pillar about to touch the
+                                                   // camera (sliding in from the side as you strafe), so it glides in early
+                                                   // instead of jumping once it touches. 0 = no look-ahead
+        public float MinCollisionDistance = 1.1f;  // with a wall closer behind than this (a pillar at your back), the camera rises
+                                                   // and looks down over the player's head instead of sliding into it. 0 = off
+        public float MaxCollisionRisePitch = 85f;  // how steeply (degrees down) it may look while rising over the head (nearly top-down
+                                                   // with your back to a wall in the low corridor, where there is no other room)
+        public float CollisionRiseSmoothTime = 0.05f; // how quickly it rises and settles back...
+        public float CollisionRiseMaxSpeed = 8f;   // ...but the camera never moves faster than this (m/s) while doing it, so a
+                                                   // camera still far out swings up gently
         public float NearClipPlane = 0.1f;         // keep this well under CollisionRadius
 
         // Field of view (vertical, degrees).

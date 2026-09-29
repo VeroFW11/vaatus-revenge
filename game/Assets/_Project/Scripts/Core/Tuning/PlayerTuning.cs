@@ -25,7 +25,9 @@ namespace VaatusRevenge.Core
         public float MaxStamina = 100f;
         public float StaminaRegen = 45f;             // stamina per second once regen has started
         public float StaminaRegenDelay = 0.6f;       // pause after spending stamina before regen starts
-        public float EmptyStaminaRegenDelay = 1.0f;  // longer pause when a spend empties the bar: running dry should hurt
+        public float EmptyStaminaRegenDelay = 1.5f;  // longer pause when a spend empties the bar: running dry should hurt.
+                                                     // In Fluid, dodges are cheap, so in practice only mashing empties the
+                                                     // bar: this pause is what makes mashing a losing plan (report 02, NEW-02)
         public float GuardRegenMultiplier = 0.5f;    // regen speed while guarding (so turtling isn't free)
         public float SprintStaminaDrain = 0f;        // stamina per second while sprinting (0 = free sprint)
         public float SprintResumeStamina = 15f;      // after sprinting dry, sprint returns once stamina is back to this
@@ -88,9 +90,12 @@ namespace VaatusRevenge.Core
         {
             var t = new PlayerTuning();
             t.PresetName = "Punishing";
-            t.StaminaRegen = 32f;
-            t.StaminaRegenDelay = 0.8f;
-            t.EmptyStaminaRegenDelay = 1.4f;
+            // Punishing's cost is in the spending (16 per dodge, 13 per light): the regen is tuned so a player who
+            // dodges well can keep going, while one who runs the bar dry still waits over a second (report 02, NEW-02:
+            // 32/s after 0.8 s with a 1.4 s empty pause left dodging players empty half of every minute).
+            t.StaminaRegen = 38f;
+            t.StaminaRegenDelay = 0.65f;
+            t.EmptyStaminaRegenDelay = 1.1f;
             t.SprintStaminaDrain = 6f;
             t.InputBufferWindow = 0.2f;
             t.DodgeTrigger = DodgeTrigger.OnRelease;

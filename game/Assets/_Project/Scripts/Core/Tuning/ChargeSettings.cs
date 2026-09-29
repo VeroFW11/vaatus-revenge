@@ -16,9 +16,10 @@ namespace VaatusRevenge.Core
         public float QuickReleaseTime = 0.2f;
         public float SweetSpotStart = 0.65f;
         public float SweetSpotEnd = 0.95f;
-        public float ReadyCueLead = 0.25f;           // a "get ready" cue shows this long before the sweet spot, because
-                                                     // people need ~0.2-0.25 s to react: releasing on the sweet-spot flash
-                                                     // itself is usually too late (playtest report HUD-01)
+        public float ReadyCueLead = 0.12f;           // a "get ready" cue shows this long before the sweet spot opens. Timed so
+                                                     // that someone who REACTS to the cue (a human needs ~0.18-0.25 s) lets go
+                                                     // near the middle of the sweet spot, not at its very edge. At 0.25 s,
+                                                     // reacting to it released too early 20-96% of the time (report 02, NEW-04)
         public float ChargedDamageMultiplier = 1.2f;
         public float FaJinDamageMultiplier = 1.8f;
         public float FaJinPoiseMultiplier = 2f;

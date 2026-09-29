@@ -18,10 +18,10 @@ namespace VaatusRevenge.CombatSim
         const float LedgeProbeRadius = 0.05f;
         const float SkinWidth = 0.08f;        // CharacterController.skinWidth default (EnemyBuilder doesn't set it)
 
-        // PlayerCombatModel.NotifyEnemyStrike on every AttackActiveStart. The core's WouldHaveLanded perfect-dodge rule
-        // needs it, but as of 60cb8ee NO Unity script calls it (only the EditMode soak test does). Default false
-        // mirrors Unity; --notify-strikes shows what the core would do once it's wired up.
-        public static bool NotifyStrikes;
+        // PlayerCombatModel.NotifyEnemyStrike on every melee AttackActiveStart, before the hit query, as
+        // EnemyStrikes.OpenMelee does in Unity since the round-2 fixes (report 02, NEW-01). The core's WouldHaveLanded
+        // perfect-dodge rule needs it. --no-notify-strikes turns it off to reproduce the 60cb8ee Unity behaviour.
+        public static bool NotifyStrikes = true;
         public int LedgeStops;
 
         readonly SimWorld world;

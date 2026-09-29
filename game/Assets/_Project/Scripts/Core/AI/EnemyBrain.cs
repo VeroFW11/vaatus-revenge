@@ -709,15 +709,31 @@ namespace VaatusRevenge.Core
         }
 
         // Back to full health, unaware, with the same random sequence as a fresh brain (repeatable tests). Events
-        // still queued from before the reset are dropped: the Reset event tells the Unity side to reset its visuals.
-        // The home point (leash centre) is re-captured on the next Tick, so move the body before ticking again.
+        // still queued from before the reset are dropped (the Reset event tells the Unity side to reset its visuals),
+        // EXCEPT the ones that close a strike (AttackActiveEnd, AttackEnded): anything listening pairs a strike's
+        // start with its end (hit records, weapon trails), so every start it saw must still get its end. A swing the
+        // reset cuts short is closed the same way. They all arrive before the Reset event. The home point (leash
+        // centre) is re-captured on the next Tick, so move the body before ticking again.
         public void Reset(float newFacingYaw)
         {
+            KeepOnlyStrikeEndEvents();
             if (state == EnemyState.Attacking) ExitAttack();
             spawnYaw = Angles.Wrap180(newFacingYaw);
             ResetState();
-            pendingEvents.Clear();
             Emit(EnemyEventType.Reset);
+        }
+
+        // Drops queued events in place (no allocation), keeping the ones that close a strike.
+        void KeepOnlyStrikeEndEvents()
+        {
+            int kept = 0;
+            for (int i = 0; i < pendingEvents.Count; i++)
+            {
+                EnemyEventType type = pendingEvents[i].Type;
+                if (type != EnemyEventType.AttackActiveEnd && type != EnemyEventType.AttackEnded) continue;
+                pendingEvents[kept++] = pendingEvents[i];
+            }
+            pendingEvents.RemoveRange(kept, pendingEvents.Count - kept);
         }
 
         void ResetState()

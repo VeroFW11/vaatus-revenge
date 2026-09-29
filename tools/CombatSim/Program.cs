@@ -70,7 +70,7 @@ namespace VaatusRevenge.CombatSim
             Out.Line("# CombatSim: " + o.Scenario);
             Out.Line();
             Out.Line("Core sources: " + CoreFingerprint() + " · seeds " + o.Seed + ".." + (o.Seed + o.Seeds - 1) + " · " + o.Fps + " fps"
-                     + (SimEnemy.NotifyStrikes ? " · --notify-strikes (NOT what Unity does today)" : "")
+                     + (SimEnemy.NotifyStrikes ? "" : " · --no-notify-strikes (the 60cb8ee Unity behaviour, NOT what Unity does now)")
                      + (TuningOverrides.Any ? " · what-if: " + TuningOverrides.Describe() : ""));
             try
             {
@@ -123,7 +123,8 @@ namespace VaatusRevenge.CombatSim
                     case "--enemies": o.Enemies = Next(); break;
                     case "--seconds": o.Seconds = double.Parse(Next(), CultureInfo.InvariantCulture); break;
                     case "--quick": o.Quick = true; break;
-                    case "--notify-strikes": SimEnemy.NotifyStrikes = true; break;
+                    case "--notify-strikes": SimEnemy.NotifyStrikes = true; break;      // the default now; kept so old commands still run
+                    case "--no-notify-strikes": SimEnemy.NotifyStrikes = false; break;
                     case "--set": TuningOverrides.Add(Next()); break;
                     case "--preset":
                         string p = Next().ToLowerInvariant();
@@ -150,8 +151,8 @@ namespace VaatusRevenge.CombatSim
             Console.WriteLine();
             Console.WriteLine("Options: --seed N  --seeds N  --preset fluid|punishing|both  --fps N  --record file.json  --out results.md");
             Console.WriteLine("         --bot masher|react|anticipate|guard|aggressive|fajin|oracle|idle  --enemies soldier,soldier,crossbow,platform,dummy  --seconds N  --quick");
-            Console.WriteLine("         --notify-strikes  enemies call PlayerCombatModel.NotifyEnemyStrike (Unity doesn't yet, so off by default)");
-            Console.WriteLine("         --set target.Field=value  what-if tuning (targets: player, dodge, charge, soldier, crossbow), repeatable");
+            Console.WriteLine("         --no-notify-strikes  enemies don't call PlayerCombatModel.NotifyEnemyStrike (the 60cb8ee Unity behaviour; on by default, as Unity does now)");
+            Console.WriteLine("         --set target.Field=value  what-if tuning (targets: player, dodge, charge, soldier, crossbow, camera), repeatable");
         }
 
         // A short hash of the core sources measured, so results can be matched to a version of the code.

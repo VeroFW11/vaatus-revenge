@@ -46,8 +46,8 @@ Options:
 | `--seconds N` | `duel` only: time limit | 60 |
 | `--record file.json` | `duel` only: write a per-frame replay | off |
 | `--quick` | Shorter fuzz (60,000 frames per run), at most 12 seeds for `all` | off |
-| `--notify-strikes` | Enemies call `PlayerCombatModel.NotifyEnemyStrike` on every melee strike, so the core's `WouldHaveLanded` perfect-dodge rule works. **No Unity script calls it yet** (report 02, NEW-01), so it's off by default to mirror Unity | off |
-| `--set target.Field=value` | What-if tuning without touching game code, repeatable. Targets: `player` (PlayerTuning), `dodge` (DodgeProfile), `charge` (ChargeSettings), `soldier` / `crossbow` (EnemyTuning). E.g. `--set player.EmptyStaminaRegenDelay=0.8 --set soldier.MaxHealth=110` | none |
+| `--no-notify-strikes` | Enemies do **not** call `PlayerCombatModel.NotifyEnemyStrike`. Since the round-2 fixes (report 02, NEW-01) `EnemyStrikes.OpenMelee` calls it on every melee strike, so the harness does too by default; this flag reproduces the 60cb8ee Unity behaviour. (`--notify-strikes` is still accepted and is a no-op.) | notify on |
+| `--set target.Field=value` | What-if tuning without touching game code, repeatable. Targets: `player` (PlayerTuning), `dodge` (DodgeProfile), `charge` (ChargeSettings), `soldier` / `crossbow` (EnemyTuning), `camera` (CameraTuning, e.g. `--set camera.OcclusionGraceTime=0 --set camera.MinCollisionDistance=0` for the pre-round-2 wall rules). E.g. `--set player.EmptyStaminaRegenDelay=0.8 --set soldier.MaxHealth=110` | none |
 
 Examples:
 
@@ -117,12 +117,12 @@ LockOnController -50, PlayerController 0, enemies 10, FireProjectile 20, camera 
 | Unity side | In CombatSim | Simplification |
 |---|---|---|
 | `PlayerController` | `Sim/SimPlayer.cs`: builds `PlayerWorldState` (lock/soft target with line of sight, `SelfHeight`, `RealDeltaTime` = unscaled dt, nearest living enemy), ticks the model, moves, turns events into hit queries, projectiles, slow motion and hitstop | No animation or VFX. Rumble and screen shake are not modelled |
-| `EnemyFighter`, `EnemyStrikes`, `TrainingDummy` | `Sim/SimEnemy.cs`: brain tick, the ledge check (`WouldStepOffLedge`), one move per frame, melee sweeps on open and every later active frame, bolts, deflect reactions, corpses stop blocking. `NotifyEnemyStrike` only with `--notify-strikes` | Same rules. No presenter or visuals. The ledge probe reads box tops and the ramp's height field |
+| `EnemyFighter`, `EnemyStrikes`, `TrainingDummy` | `Sim/SimEnemy.cs`: brain tick, the ledge check (`WouldStepOffLedge`), one move per frame, melee sweeps on open and every later active frame, bolts, deflect reactions, corpses stop blocking. `NotifyEnemyStrike` on every melee strike before the hit query, as `EnemyStrikes.OpenMelee` does (off with `--no-notify-strikes`) | Same rules. No presenter or visuals. The ledge probe reads box tops and the ramp's height field |
 | `MeleeHitQuery`, `FireProjectile` | `Sim/SimHits.cs`: arc and sphere queries with per-attack hit records, chest and head line-of-sight rays, swept projectiles | Geometry is boxes only |
 | `CharacterController` | `Sim/SimPhysics.cs` `SimController`: kinematic capsule, slides on boxes and other fighters, step offset 0.3, `isGrounded` after each move | No skin width, no slope limit. The ramp is a height field |
 | Arena (`ArenaBuilder`) | `SimLevel.SandboxArena()`: floor, walls, pillar field, low corridor, raised platform, stairs, ramp, copied from the builder's constants | Axis-aligned boxes |
 | `TimeScaleController` | `SimTime`: hitstop 0.02×, slowest slow-mo wins, pause 0, timers on real time | Same rules |
-| `LockOnController`, `ThirdPersonCameraRig` | `Sim/SimCameraRig.cs`: lock-on selection, break and switching, the orbit model's pivot → orientation → lift → shoulder → distance order with sphere probes; the swap button is passed as held (`SwapShoulderHeld`), as the rig does since 60cb8ee | 16:9, 60° vertical FOV for screen positions. No shake or FOV boost |
+| `LockOnController`, `ThirdPersonCameraRig` | `Sim/SimCameraRig.cs`: lock-on selection, break and switching, the orbit model's pivot → orientation → lift → shoulder → distance order with sphere probes (since round 2 also the camera-end shoulder probes, the camera-to-shoulder `CameraFree` probe and the fatter look-ahead probe); the swap button is passed as held (`SwapShoulderHeld`), as the rig does since 60cb8ee | 16:9, 60° vertical FOV for screen positions. No shake or FOV boost |
 | `PlayerInputReader` | `Input/Pad.cs`: builds `PlayerInputFrame` press/hold/release flags | Values are what the reader would output after the Input System's own stick dead zone |
 
 ## Layout

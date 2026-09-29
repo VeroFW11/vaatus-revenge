@@ -100,7 +100,8 @@ namespace VaatusRevenge.Tests
         public void LeashedArcherNeverStraysFromHomeAndStillShoots()
         {
             EnemyTuning t = EnemyTuning.CreateCrossbowman();
-            Assert.AreEqual(3f, t.LeashRadius, 1e-5f);
+            Assert.AreEqual(2f, t.LeashRadius, 1e-5f);
+            Assert.Less(t.LeashRadius + 0.4f, 3f, "leash plus body radius fits inside the 6 m platform (report 02, NEW-06)");
             var d = new EnemyDriver(t);
             Vector3 home = new Vector3(4f, 2.5f, -3f);           // up on a platform
             d.World.Position = home;
@@ -206,20 +207,43 @@ namespace VaatusRevenge.Tests
         }
 
         [Test]
-        public void ResetDropsEventsQueuedBeforeIt()
+        public void ResetDropsEventsQueuedBeforeItButKeepsStrikeEnds()
         {
             var d = new EnemyDriver(EnemyTuning.CreateDaoSoldier());
             d.SetTarget(new Vector3(0f, 0f, 2f));
             d.RunUntil(x => x.Brain.IsAttackActive, 900);
-            d.Brain.ReceiveHit(PlayerHit(100f, 5f), Vector3.Zero);   // Damaged + Staggered queue up...
+            d.Brain.ReceiveHit(PlayerHit(100f, 5f), Vector3.Zero);   // Damaged + Staggered (+ the strike's end) queue up...
             d.Brain.Reset();                                     // ...then the enemy is reset before its next Tick
             d.Step();
-            Assert.AreEqual(EnemyEventType.Reset, d.Last.Events[0].Type, "Reset comes first");
-            foreach (EnemyEvent e in d.Last.Events)
+            int activeEnds = 0, attackEnds = 0, resetAt = -1;
+            for (int i = 0; i < d.Last.Events.Count; i++)
             {
+                EnemyEvent e = d.Last.Events[i];
                 Assert.AreNotEqual(EnemyEventType.Damaged, e.Type, "stale event from before the reset");
                 Assert.AreNotEqual(EnemyEventType.Staggered, e.Type, "stale event from before the reset");
-                Assert.AreNotEqual(EnemyEventType.AttackEnded, e.Type, "stale event from before the reset");
+                if (e.Type == EnemyEventType.AttackActiveEnd) { activeEnds++; Assert.AreEqual(-1, resetAt, "strike ends come before Reset"); }
+                if (e.Type == EnemyEventType.AttackEnded) { attackEnds++; Assert.AreEqual(-1, resetAt, "strike ends come before Reset"); }
+                if (e.Type == EnemyEventType.Reset) resetAt = i;
+            }
+            Assert.GreaterOrEqual(resetAt, 0);
+            Assert.AreEqual(1, activeEnds, "the open strike is closed exactly once (report 02, NEW-05)");
+            Assert.AreEqual(1, attackEnds);
+        }
+
+        [Test]
+        public void ResetMidSwingStillClosesTheStrike()
+        {
+            var d = new EnemyDriver(EnemyTuning.CreateDaoSoldier());
+            d.SetTarget(new Vector3(0f, 0f, 2f));
+            for (int round = 0; round < 3; round++)
+            {
+                d.RunUntil(x => x.Brain.IsAttackActive, 900);
+                Assert.AreEqual(d.Count(EnemyEventType.AttackActiveStart), d.Count(EnemyEventType.AttackActiveEnd) + 1, "one strike open");
+                d.Brain.Reset();                                 // mid-swing, nothing queued: the reset closes it
+                d.Step();
+                Assert.IsFalse(d.Brain.IsAttackActive);
+                Assert.AreEqual(d.Count(EnemyEventType.AttackActiveStart), d.Count(EnemyEventType.AttackActiveEnd), "every strike that opened also closed");
+                Assert.AreEqual(d.Count(EnemyEventType.TelegraphStarted), d.Count(EnemyEventType.AttackEnded));
             }
         }
     }

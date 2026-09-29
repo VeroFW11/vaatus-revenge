@@ -206,4 +206,78 @@ A replay render showed the camera "collapsing" near the low corridor. It's real,
 7. **Platform archer (ENEMY-03).** Walk to the duel ring and circle the platform: it should stay up and keep shooting. Check it doesn't perch half off the edge (NEW-06).
 8. **Enemy blades (new visuals).** Do strikes land exactly at the tip of the longer dao? Any "can't show the reach" warning in the Console?
 
-Reproduce any number with `dotnet run --project tools/CombatSim -c Release -- <scenario>` (add `--notify-strikes` or `--set ...` as in the tables).
+Reproduce any number with `dotnet run --project tools/CombatSim -c Release -- <scenario>` (add `--set ...` as in the tables; since round 2 strikes are notified by default, and `--no-notify-strikes` gives the 60cb8ee behaviour).
+
+---
+
+## 7. Round 2 fixes (29 Sep 2026)
+
+Measured with the same harness (Release, 40 seeds) on core fingerprint `sha1 df98bc788b` (`OrbitCameraModel.cs c0331c3d78`). The "before" columns are 60cb8ee with `NotifyEnemyStrike` wired up, so only the tuning differs. `compile-check.sh` passes and `run-core-tests.sh` gives 217/217 (11 new tests). Still not seen in the Editor.
+
+**Tuning assets:** the sandbox's tuning assets are only seeded from these defaults when first created. If you already built the sandbox, run *Vaatu's Revenge > Reset Sandbox Tuning To Defaults* to pick up the new numbers.
+
+### NEW-01: perfect dodge wired into Unity (fixed)
+- `EnemyStrikes.OpenMelee` now calls `PlayerController.Instance.Model.NotifyEnemyStrike(...)` (null-safe, skipped when the player is dead) **before** its hit query, for every melee strike. Soldiers and the sparring dummy's swing both go through it. Bolts don't. `EnemyFighter` passes its feet position.
+- The harness now notifies by default, like Unity. `--no-notify-strikes` reproduces 60cb8ee. The soak-test comment is fixed.
+- `abilities`, perfect window vs each soldier attack: back / side / toward **0 / 1 / 6 f → 6 / 6 / 6 f** (Delayed Thrust side 5 f). The anticipate bot vs one soldier gets 52 perfect dodges out of 121.
+
+### NEW-02: difficulty back to "fair but not free" (data only)
+- Punishing: `StaminaRegen` 32 → **38**, `StaminaRegenDelay` 0.8 → **0.65**, `EmptyStaminaRegenDelay` 1.4 → **1.1**. The normal pause now drops more than the empty one, because the masher only ever meets the empty pause and dodgers mostly meet the normal one. That is what lets the defenders pull ahead of the masher. A plain 0.9 s empty pause (the report's suggestion) left the masher level with react and anticipate (70 / 60 / 60%).
+- Fluid: `EmptyStaminaRegenDelay` 1.0 → **1.5**. In Fluid only mashing empties the bar (dodges cost 6), so this pause hits the masher and leaves the defenders alone.
+- Soldier HP stays at 180.
+
+| Win rate (40 seeds) | Punishing vs 2 soldiers, before → after | Fluid vs 1 soldier | Fluid vs 2 soldiers |
+|---|---|---|---|
+| masher | 23% → **50%** | 100% → 100% (9.7 → 12.7 s, damage 39 → 54) | 95% → **70%** |
+| react | 8% → **78%** | 100% → 100% | 98% → 98% |
+| anticipate | 3% → **68%** | 100% → 100% | 100% → 100% |
+| guard | 78% → 90% | 100% → 100% | 90% → 90% |
+| aggressive | 0% → 25% | 100% → 100% | 93% → 73% |
+| fajin | 98% → 95% | 100% → 100% | 98% → 98% |
+
+- Dodging bots' time at empty stamina in Punishing: 33 → 26–28 s per minute.
+- Report-01 goals still hold:
+  - Oracle hits per minute (Fluid / Punishing, 2 soldiers + crossbow): 0.23 / 0.75 (report 02: 0.20 / 0.85). Full ring: 0.12 / 1.15 (0.45 / 1.35).
+  - Against one dummy, plunge spam (197) still trails heavy tap (247) and fa jin (203). Light mashing fell from 187 to 164.
+  - Crowd plunge is unchanged (592).
+- **Open:** in Fluid the masher still beats one soldier 100% of the time. It just takes longer and costs more. No data-only change got below 100% without wrecking the defenders' fights: even a 2.0 s empty pause plus faster soldiers only raised the damage it takes to 79 of its 235 (health plus heals). Making it losable needs a rule: for example, a soldier hit 3 times in a row answers with an armoured counter. That's Jeremy's call.
+
+### NEW-03: camera near pillars and wall ends
+New rules in `OrbitCameraModel`, fed by three extra probes in `ThirdPersonCameraRig` and mirrored in the harness:
+- **The shoulder offset must also fit at the camera's end.** This is a sideways probe from `CameraEndCentre`.
+- **A wall touching the camera still moves it in on the same frame**, so the camera is never inside geometry.
+- **A pillar that only blocks the view** waits `OcclusionGraceTime` 0.1 s, then glides in over `CollisionPullInTime` 0.15 s, never past the pillar's far side. Only the pillar's thickness can be skipped in one frame.
+- **A 0.2 m fatter look-ahead probe** (`CollisionLookAhead`) starts that glide before a pillar touches the camera. It never brings the camera closer than 1.1 m.
+- **With a wall closer behind than `MinCollisionDistance` 1.1 m**, the camera rises and looks down over the head: `ViewPitch` = `Pitch` + `CollisionRise`, up to 85°. It eases over 0.05 s and never moves the camera faster than 8 m/s. The player's own `Pitch` is untouched.
+
+| Camera pops, shoulder camera (`camera`) | Before: largest one-frame jump / closest distance | After: largest jump / closest distance / closest to the head |
+|---|---|---|
+| Walk beside the corridor wall past its end | **2.99 m** / 0.29 m | **0.58 m** / 1.10 m / 1.37 m |
+| Strafe across the pillar rows | 1.64 m / 1.46 m | **0.42 m** / 1.26 m / 1.28 m |
+| Walk through the pillar field, orbiting | 1.39 m / 1.48 m | 0.86 m / 1.41 m / 1.40 m |
+| Orbit at the corridor mouth | 0.83 m / 1.73 m | 0.68 m / 1.61 m / 1.66 m |
+| Fight at the corridor mouth (10 × 30 s) | **3.90 m** / 0.00 m | **1.89 m** / 0.37 m / 0.38 m |
+| Fight in the pillar field (10 × 30 s) | **4.21 m** / 0.00 m | **2.53 m** / 0.36 m / 0.24 m |
+
+- In fights, the old rules measured in the new columns gave 25 / 32 frames with a jump over 1 m and 170 / 21 frames within 0.4 m of the head (corridor / pillars). The new rules give **5 / 13** and **3 / 6**. Those old-rule numbers come from `--set camera.OcclusionGraceTime=0 --set camera.CollisionPullInTime=0 --set camera.CollisionLookAhead=0 --set camera.MinCollisionDistance=0`, which keeps only the new shoulder probe.
+- It is still never inside geometry: 0 frames in every case. The 1.2 M-frame fuzz shows no camera NaN and nothing out of range.
+- **Left:** jumps of 1.9–2.5 m still happen in fights, about once every 20–25 s. They come when a lock-on swing sweeps a pillar's side face straight into the camera. The only ways out along the view line are through the pillar or in front of it. Stopping those would need a camera that slides around pillars, or fading the pillar out. Jeremy should judge them in the Editor (checklist 3).
+- **Other costs:**
+  - The camera now sits closer near walls (running through the low corridor: 3.20 → 2.63 m).
+  - With the camera-end probe, the shoulder offset can shrink by up to 0.23 m in one frame beside a wall (was 0.07).
+  - Rising over the head in the low corridor gives an almost top-down view for a moment.
+
+### NEW-04: fa jin ready cue (fixed)
+`ReadyCueLead` 0.25 → **0.12 s**, so the cue now comes at 0.53 s.
+
+| Reacting to the ready cue | 0.17 s | 0.18 s | 0.20 s | 0.22 s | 0.25 s | 0.30 s | 0.35 s |
+|---|---|---|---|---|---|---|---|
+| Fa jin, before | 4% | - | 20% | - | 80% | 100% | 100% |
+| Fa jin, after | **100%** | **100%** | **100%** | **100%** | **100%** | **100%** | **99%** |
+
+Reacting to the flash itself and timing by rhythm are unchanged.
+
+### NEW-05, NEW-06, NEW-07 (fixed)
+- **NEW-05:** `EnemyBrain.Reset` keeps queued strike-end events and closes a swing it cuts short, all before `Reset`. Fuzz: enemy hitboxes opened/closed are balanced in all 8 runs (report 02 had them off by 1–8). There are 2 new tests.
+- **NEW-06:** crossbowman `LeashRadius` 3 → **2 m**. The platform archer stays up from all 6 spots, drifts at most 2.00 m, and needs **0** ledge stops (was 249–740).
+- **NEW-07:** `SandboxPostProcessing` builds the "Global Volume" all or nothing. If adding the component or setting a member fails (or throws), the object is destroyed again, and Undo only records it once it's complete. The soak-test comment now names `EnemyStrikes.OpenMelee`.

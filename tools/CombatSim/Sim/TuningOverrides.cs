@@ -8,7 +8,8 @@ namespace VaatusRevenge.CombatSim
 {
     // --set target.Field=value (repeatable): what-if experiments on the default tuning without editing game code.
     // Targets: player (PlayerTuning), dodge (the move set's DodgeProfile), charge (ChargeSettings),
-    // soldier / crossbow (EnemyTuning of melee / ranged enemies). Public float, int and bool fields only.
+    // soldier / crossbow (EnemyTuning of melee / ranged enemies), camera (CameraTuning, both framings).
+    // Public float, int and bool fields only.
     public static class TuningOverrides
     {
         static readonly List<(string target, string field, string value)> sets = new List<(string, string, string)>();
@@ -28,6 +29,11 @@ namespace VaatusRevenge.CombatSim
             Apply("player", tuning);
             Apply("dodge", moves.Dodge);
             Apply("charge", moves.Charge);
+        }
+
+        public static void ApplyCamera(CameraTuning tuning)
+        {
+            Apply("camera", tuning);
         }
 
         public static void ApplyEnemy(EnemyTuning tuning)

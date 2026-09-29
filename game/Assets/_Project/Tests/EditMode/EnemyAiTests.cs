@@ -263,7 +263,7 @@ namespace VaatusRevenge.Tests
         public void RangedEnemyBacksOffWhenCrowdedAndHoldsItsBand()
         {
             EnemyTuning t = EnemyTuning.CreateCrossbowman();
-            t.LeashRadius = 0f;                                  // free-roaming archer (the default one keeps to a 3 m leash)
+            t.LeashRadius = 0f;                                  // free-roaming archer (the default one keeps to a 2 m leash)
             var close = new EnemyDriver(t);
             for (int i = 0; i < 90; i++)
             {

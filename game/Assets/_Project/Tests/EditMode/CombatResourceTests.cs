@@ -153,7 +153,9 @@ namespace VaatusRevenge.Tests
             d.Model.OnAttackLanded(new HitResult { Outcome = HitOutcome.Hit }, jabId);
             Assert.AreEqual(8f, d.Model.Momentum, 1e-4f, "+8 once per attack");
 
-            var capped = new PlayerDriver();
+            PlayerTuning plenty = PlayerTuning.CreateFluid();
+            plenty.MaxStamina = 10000f;                          // this test is about Momentum, not about running out of stamina
+            var capped = new PlayerDriver(plenty);
             for (int i = 0; i < 30; i++)
             {
                 capped.Step(Pad.Light);

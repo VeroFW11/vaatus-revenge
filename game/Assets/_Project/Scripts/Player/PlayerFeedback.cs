@@ -310,8 +310,8 @@ namespace VaatusRevenge
         }
 
         // A faint glow and a light rumble tick Charge.ReadyCueLead seconds before the sweet spot opens. People need
-        // about a fifth of a second to react, so releasing on the sweet-spot flash itself is usually too late; this
-        // earlier "get ready" cue lets you let go inside the window (playtest report HUD-01). It's read from the
+        // about a fifth of a second to react, so the cue comes a little early: reacting to it lets you go around the
+        // middle of the window (playtest reports 01 HUD-01 and 02 NEW-04). It's read from the
         // model's charge time every frame rather than from an event, so it plays once per charge and can't be missed.
         void UpdateReadyCue(PlayerCombatModel model, PlayerFeedbackSettings s)
         {

@@ -117,7 +117,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void HeldTimeCreditStopsJustBeforeTheReadyCue()
         {
-            // With the default 0.25 s buffer a buffered heavy can't have been held as long as the cue time (0.40 s);
+            // With the default 0.25 s buffer a buffered heavy can't have been held as long as the cue time (0.53 s);
             // a long buffer lets the press wait out a whole quick heavy, which is when the cap matters.
             var t = PlayerTuning.CreateFluid();
             t.InputBufferWindow = 1f;
@@ -224,8 +224,13 @@ namespace VaatusRevenge.Tests
         {
             var t = PlayerTuning.CreateFluid();
             Assert.AreEqual(0.6f, t.StaminaRegenDelay, 1e-5f);
-            Assert.AreEqual(1.0f, t.EmptyStaminaRegenDelay, 1e-5f);
-            Assert.AreEqual(1.4f, PlayerTuning.CreatePunishing().EmptyStaminaRegenDelay, 1e-5f);
+            Assert.AreEqual(1.5f, t.EmptyStaminaRegenDelay, 1e-5f);
+            // Round 2 (report 02, NEW-02): Punishing's pauses came back down so dodging players aren't empty half the fight.
+            PlayerTuning punishing = PlayerTuning.CreatePunishing();
+            Assert.AreEqual(0.65f, punishing.StaminaRegenDelay, 1e-5f);
+            Assert.AreEqual(1.1f, punishing.EmptyStaminaRegenDelay, 1e-5f);
+            Assert.AreEqual(38f, punishing.StaminaRegen, 1e-5f);
+            Assert.Greater(punishing.EmptyStaminaRegenDelay, punishing.StaminaRegenDelay, "running dry still costs extra");
 
             t.MaxStamina = 6f;                                   // one dodge empties it
             var empty = new PlayerDriver(t);
@@ -258,7 +263,7 @@ namespace VaatusRevenge.Tests
                 Assert.AreEqual(6f, set.Momentum.BackOffRadius, 1e-5f);
             }
             Assert.AreEqual(0.35f, PlayerTuning.CreateFluid().QueuedPressMaxAge, 1e-5f);
-            Assert.AreEqual(0.8f, PlayerTuning.CreatePunishing().StaminaRegenDelay, 1e-5f);
+            Assert.AreEqual(0.65f, PlayerTuning.CreatePunishing().StaminaRegenDelay, 1e-5f);   // round 2 (report 02, NEW-02)
         }
 
         // ---------------------------------------------------------------- Momentum back-off without lock-on

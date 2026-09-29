@@ -29,12 +29,27 @@ namespace VaatusRevenge.Core
     //
     // Call once per frame, in this order:
     //   1. UpdatePivot(playerFeet, gameDeltaTime)         - follow the player
-    //   2. UpdateOrientation(input, realDeltaTime)        - free look or lock-on framing, shoulder side, combat framing
+    //   2. UpdateOrientation(input, realDeltaTime)        - free look or lock-on framing, shoulder side, combat framing,
+    //                                                       and the rise over the head when a wall is close behind
     //   3. UpdateLift(freeUp, realDeltaTime)              - optional: room above Pivot, up to DesiredLift
-    //   4. UpdateShoulder(freeRight, freeLeft, realDt)    - optional: room either side of LiftedPivot, up to ShoulderReach
-    //   5. UpdateDistance(freeDistance, realDeltaTime)    - room behind ShoulderPoint along -Forward, up to DesiredDistance
-    // then place the camera at CameraPosition looking along Forward. Steps 3 and 4 are optional: skip them (as the
-    // headless harness does) and the camera simply ignores walls at the side and above.
+    //   4. UpdateShoulder(freeRight, freeLeft, [freeRightAtCamera, freeLeftAtCamera,] realDt)
+    //                                                     - optional: room either side of LiftedPivot (and of
+    //                                                       CameraEndCentre), up to ShoulderReach
+    //   5. UpdateDistance(freeDistance, [cameraFree,] realDeltaTime)
+    //                                                     - room behind ShoulderPoint along -Forward, up to DesiredDistance
+    //                                                       (and how far the camera could slide in from where it is)
+    // then place the camera at CameraPosition looking along Forward. Steps 3 and 4 are optional: skip them and the
+    // camera simply ignores walls at the side and above.
+    //
+    // WALLS (report 02, NEW-03). Three rules keep the view steady near pillars and wall ends:
+    //   - The camera never sits inside level geometry: if its sphere touches something, it moves in front of it on
+    //     the same frame.
+    //   - Something passing between the camera and the player (a pillar edge while orbiting, a roof edge) that the
+    //     camera itself isn't touching is ignored for OcclusionGraceTime. Most of those clear by themselves, so the
+    //     camera doesn't hop in and out; one that stays is cut in front of.
+    //   - Closer than MinCollisionDistance, the camera rises and tilts down over the player's head instead of
+    //     sliding into it (a pillar at your back). The shoulder offset also yields to walls at the camera's end, so
+    //     walking past the end of a wall doesn't swing the camera into the wall's end face.
     public sealed class OrbitCameraModel
     {
         // A frame hitch (loading, a breakpoint) never turns the camera further than this much stick time,
@@ -48,6 +63,8 @@ namespace VaatusRevenge.Core
         const float PitchLimit = 89f;
         // Offsets smaller than this count as "centred" (no shoulder, so nothing to swap).
         const float CentredOffset = 1e-4f;
+        // Probe results this small count as "touching".
+        const float CollisionEpsilon = 1e-3f;
 
         CameraTuning tuning;
         bool hasPivot;
@@ -82,6 +99,12 @@ namespace VaatusRevenge.Core
         float probedLift;
         float liftVelocity;
 
+        // Walls behind the camera: the rise over the head, and how long a pillar has been blocking the view.
+        float risePitch;             // degrees added to Pitch (looking further down from higher up)
+        float riseVelocity;
+        float roomBehind = float.PositiveInfinity; // horizontal room behind the shoulder point, from the last probe
+        float occludedTime;
+
         public OrbitCameraModel(CameraTuning tuning)
         {
             Tuning = tuning;
@@ -105,7 +128,15 @@ namespace VaatusRevenge.Core
         public bool IsRecentering => recentering;
         public bool HasPivot => hasPivot;
 
-        public Vector3 Forward => Directions.FromYawPitch(Yaw, Pitch);
+        // The pitch the camera actually looks at: the player's Pitch plus the rise over the head near walls. Use this
+        // (or Forward) to aim the rendered camera; Pitch alone is the player's own choice.
+        public float ViewPitch => ClampTotalPitch(Pitch + risePitch);
+        // The direction the camera looks.
+        public Vector3 Forward => Directions.FromYawPitch(Yaw, ViewPitch);
+        // Degrees the camera currently tilts down extra because a wall is close behind (0 in the open).
+        public float CollisionRise => risePitch;
+        // True while something blocks the view but not the camera (it waits, then glides in front: UpdateDistance).
+        public bool IsWaitingOutOcclusion => occludedTime > 0f;
         // Flat right-hand direction of the camera: the direction the shoulder offset is measured along.
         public Vector3 Right => Directions.RightFromYaw(Yaw);
 
@@ -137,6 +168,9 @@ namespace VaatusRevenge.Core
         // The point the camera looks past: the centre of the screen always passes through it.
         public Vector3 ShoulderPoint => LiftedPivot + Right * ShoulderOffset;
         public Vector3 CameraPosition => ShoulderPoint - Forward * Distance;
+        // Where the camera would be with no shoulder offset: the rig probes sideways from here too (UpdateShoulder),
+        // so the offset also fits at the camera's end, not just at the player's.
+        public Vector3 CameraEndCentre => LiftedPivot - Forward * Distance;
 
         // Cuts straight to a framing with no smoothing: game start, respawn, a new follow target.
         // Keeps the player's chosen shoulder.
@@ -266,6 +300,7 @@ namespace VaatusRevenge.Core
             UpdateCombatFraming(input, dt);
             baseDistance = Smooth.Damp(baseDistance, WantedDistance(), ref desiredDistanceVelocity, tuning.DistanceSmoothTime, dt);
             DesiredDistance = baseDistance + combatBlend * Math.Max(0f, Finite(tuning.CombatPullback));
+            UpdateRise(dt);
         }
 
         // Step 3 (optional). freeUp: how far the camera's collision sphere can rise from Pivot before touching a
@@ -286,11 +321,22 @@ namespace VaatusRevenge.Core
         // AutoSwapShoulderWhenBlocked) swaps to the other shoulder until the blocked side has cleared.
         public void UpdateShoulder(float freeRight, float freeLeft, float realDeltaTime)
         {
+            UpdateShoulder(freeRight, freeLeft, float.PositiveInfinity, float.PositiveInfinity, realDeltaTime);
+        }
+
+        // Same, plus the room either side of CameraEndCentre (probe up to ShoulderReach). The offset has to fit at both
+        // ends: walking beside a wall, the camera trails a few metres behind you, so when your shoulder clears the
+        // wall's end the camera is still alongside it. Easing the offset out then would drag the camera into the wall's
+        // end face and snap it in by metres (report 02, NEW-03). Auto-swap still looks only at the player's end.
+        public void UpdateShoulder(float freeRight, float freeLeft, float freeRightAtCamera, float freeLeftAtCamera, float realDeltaTime)
+        {
             float dt = CameraMath.SafeDeltaTime(realDeltaTime);
             float reach = ShoulderReach;
             float right = CameraMath.IsFinite(freeRight) ? Angles.Clamp(freeRight, 0f, reach) : reach;
             float left = CameraMath.IsFinite(freeLeft) ? Angles.Clamp(freeLeft, 0f, reach) : reach;
             UpdateAutoSwap(right, left, dt);
+            if (CameraMath.IsFinite(freeRightAtCamera)) right = Math.Min(right, Math.Max(0f, freeRightAtCamera));
+            if (CameraMath.IsFinite(freeLeftAtCamera)) left = Math.Min(left, Math.Max(0f, freeLeftAtCamera));
 
             // The room is tracked for whichever side the offset is on right now. Crossing sides can't pop,
             // because the offset is (almost) zero at the moment it crosses.
@@ -301,13 +347,88 @@ namespace VaatusRevenge.Core
         }
 
         // Step 5. maxDistance is how far the camera can go back from the ShoulderPoint before touching a wall this
-        // frame (DesiredDistance or more when nothing is in the way).
+        // frame (DesiredDistance or more when nothing is in the way). This version treats every wall as touching the
+        // camera: it pulls in on the same frame.
         public void UpdateDistance(float maxDistance, float realDeltaTime)
+        {
+            UpdateDistance(maxDistance, 0f, realDeltaTime);
+        }
+
+        // cameraFree: how far the camera's sphere could slide from where it is now (ShoulderPoint - Forward * Distance,
+        // with this frame's angles) toward ShoulderPoint before touching geometry; 0 = it already touches something.
+        public void UpdateDistance(float maxDistance, float cameraFree, float realDeltaTime)
+        {
+            UpdateDistance(maxDistance, cameraFree, float.PositiveInfinity, realDeltaTime);
+        }
+
+        // lookAheadDistance: the same probe as maxDistance with a fatter sphere (CollisionRadius + CollisionLookAhead).
+        // What it hits isn't touching the camera yet but soon may be (a pillar sliding in from the side as you strafe),
+        // so the camera starts gliding in early and usually never has to jump (report 02, NEW-03). Three cases:
+        //   - a wall touches the camera itself: in front of it on this frame (the camera never sits inside geometry);
+        //   - a wall is between the camera and the player but not touching the camera (only the VIEW is blocked): wait
+        //     OcclusionGraceTime (many pillar edges clear by themselves), then glide in over about CollisionPullInTime,
+        //     never past the wall's far side. Only the wall's own thickness is ever skipped in one frame;
+        //   - only the look-ahead probe is blocked: glide in, nothing is in the way.
+        public void UpdateDistance(float maxDistance, float cameraFree, float lookAheadDistance, float realDeltaTime)
         {
             float dt = CameraMath.SafeDeltaTime(realDeltaTime);
             float limit = DesiredDistance;
             if (CameraMath.IsFinite(maxDistance)) limit = Angles.Clamp(maxDistance, 0f, DesiredDistance);
-            Distance = EaseToLimit(Distance, limit, ref distanceVelocity, dt);
+            // The look-ahead only brings the camera in early; it never takes it closer than MinCollisionDistance (in a
+            // tight spot the fat probe grazes everything, and only real contact should bring the camera that close).
+            float early = limit;
+            if (CameraMath.IsFinite(lookAheadDistance))
+            {
+                float floor = Math.Min(limit, Math.Max(0f, Finite(tuning.MinCollisionDistance)));
+                early = Math.Max(floor, Math.Min(limit, lookAheadDistance));
+            }
+            RememberRoomBehind(early);
+
+            bool touching = !(CameraMath.IsFinite(cameraFree) && cameraFree > CollisionEpsilon);
+            if (limit < Distance && touching)
+            {
+                occludedTime = 0f;
+                distanceVelocity = 0f;
+                Distance = limit;
+                return;
+            }
+            if (early >= Distance)
+            {
+                occludedTime = 0f;
+                Distance = EaseToLimit(Distance, early, ref distanceVelocity, dt);   // open space: ease back out
+                return;
+            }
+            bool viewBlocked = limit < Distance;
+            float farSide = viewBlocked ? Distance - cameraFree : 0f;   // the camera can't come closer than this without entering the wall
+            if (!viewBlocked) occludedTime = 0f;
+            else if (occludedTime < Math.Max(0f, Finite(tuning.OcclusionGraceTime)))
+            {
+                occludedTime += dt;     // hold still for a moment
+                distanceVelocity = 0f;
+                KeepWithinDesired(farSide, limit);
+                return;
+            }
+            // Glide in, but never into the wall: at most up to its far side. Once there, the next frame's probe sees the
+            // camera touching it and moves it in front.
+            float smoothTime = Math.Max(0f, Finite(tuning.CollisionPullInTime)) / SmoothTimesToSettle;
+            float glided = Smooth.Damp(Distance, early, ref distanceVelocity, smoothTime, dt);
+            Distance = Math.Min(Distance, Math.Max(glided, farSide));
+            KeepWithinDesired(farSide, limit);
+        }
+
+        // While waiting or gliding, the wanted distance may shrink under the camera (e.g. locking off). Follow it in if
+        // that doesn't take the camera into the wall; otherwise move in front of the wall now.
+        void KeepWithinDesired(float farSide, float limit)
+        {
+            if (Distance <= DesiredDistance) return;
+            if (DesiredDistance >= farSide)
+            {
+                Distance = DesiredDistance;
+                return;
+            }
+            Distance = limit;
+            distanceVelocity = 0f;
+            occludedTime = 0f;
         }
 
         // Radial response curve for a stick: magnitude^exponent, same direction. Small tilts turn slowly for
@@ -505,6 +626,51 @@ namespace VaatusRevenge.Core
             }
         }
 
+        // Horizontal room behind the shoulder point, measured along this frame's look direction. A wall is (nearly)
+        // vertical, so this is the same whatever the pitch, which is what lets UpdateRise pick a pitch that fits.
+        // In the open it's a lower bound (the probe didn't hit anything), so the rise only ever comes down there.
+        void RememberRoomBehind(float limit)
+        {
+            float cos = (float)Math.Cos(ViewPitch * Directions.Deg2Rad);
+            roomBehind = Math.Max(0f, limit) * Math.Max(0f, cos);
+        }
+
+        // Rise over the head: with a wall close behind, tilting the look further down moves the camera up and over
+        // the player instead of forward into them. The pitch that keeps MinCollisionDistance of room along the view
+        // is acos(room / MinCollisionDistance); it eases there (CollisionRiseSmoothTime) and back to 0 in the open.
+        // Real time, like the rest of the camera.
+        void UpdateRise(float dt)
+        {
+            float target = 0f;
+            float minDistance = Math.Min(Math.Max(0f, Finite(tuning.MinCollisionDistance)), DesiredDistance);
+            float maxTotal = Angles.Clamp(Finite(tuning.MaxCollisionRisePitch), -PitchLimit, PitchLimit);
+            float basePitch = ClampPitch(Pitch);
+            if (minDistance > CollisionEpsilon && CameraMath.IsFinite(roomBehind) && roomBehind < minDistance && maxTotal > basePitch)
+            {
+                float needed = (float)Math.Acos(Angles.Clamp(roomBehind / minDistance, 0f, 1f)) * Directions.Rad2Deg;
+                target = Angles.Clamp(needed - basePitch, 0f, maxTotal - basePitch);
+            }
+            // Turning the view moves a far camera a long way, so the turn rate is capped by how fast the camera itself
+            // may move (CollisionRiseMaxSpeed): quick up close, where it matters, gentle while the camera is still far.
+            float maxSpeed = Finite(tuning.CollisionRiseMaxSpeed) > 0f
+                ? tuning.CollisionRiseMaxSpeed / Math.Max(Distance, CollisionEpsilon) * Directions.Rad2Deg
+                : float.PositiveInfinity;
+            float before = risePitch;
+            float next = Smooth.Damp(risePitch, target, ref riseVelocity, tuning.CollisionRiseSmoothTime, dt, maxSpeed);
+            if (dt > 0f && !float.IsPositiveInfinity(maxSpeed) && Math.Abs(next - before) > maxSpeed * dt)
+            {
+                next = before + (next > before ? maxSpeed * dt : -maxSpeed * dt);
+                riseVelocity = (next - before) / dt;
+            }
+            risePitch = Math.Max(0f, next);
+            if (!CameraMath.IsFinite(risePitch)) { risePitch = 0f; riseVelocity = 0f; }
+        }
+
+        float ClampTotalPitch(float pitch)
+        {
+            return CameraMath.IsFinite(pitch) ? Angles.Clamp(pitch, -PitchLimit, PitchLimit) : 0f;
+        }
+
         // Walls win instantly (pull in: easing in would spend frames inside the wall); open space comes back
         // gently (ease out, so the view doesn't pop every time a pillar stops blocking it).
         float EaseToLimit(float current, float limit, ref float velocity, float dt)
@@ -560,6 +726,10 @@ namespace VaatusRevenge.Core
             probedOffset = wantedOffset;
             probedLift = 0f;
             liftVelocity = 0f;
+            risePitch = 0f;
+            riseVelocity = 0f;
+            roomBehind = float.PositiveInfinity;
+            occludedTime = 0f;
         }
 
         float WantedDistance()

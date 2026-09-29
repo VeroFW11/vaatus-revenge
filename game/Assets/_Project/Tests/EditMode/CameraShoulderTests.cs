@@ -240,7 +240,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void CallersThatNeverProbeTheSidesStillGetTheOffset()
         {
-            // The headless harness only calls UpdatePivot, UpdateOrientation and UpdateDistance.
+            // A caller (e.g. a simple test rig) that only calls UpdatePivot, UpdateOrientation and UpdateDistance.
             var camera = NewCamera();
             for (int i = 0; i < 30; i++)
             {

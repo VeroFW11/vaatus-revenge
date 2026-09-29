@@ -187,7 +187,8 @@ namespace VaatusRevenge.Tests
                         else if (e.Type == EnemyEventType.AttackActiveStart)
                         {
                             f.ActiveBalance++;
-                            // As the Unity enemy code does: report every strike, so a dodge away can still be perfect.
+                            // As EnemyStrikes.OpenMelee does in Unity: report every melee strike before its hit query, so a dodge away
+                            // can still be perfect (the "would have landed" rule).
                             player.Model.NotifyEnemyStrike(e.Origin, e.Direction, e.Move, d.World.Position);
                             EnemyMelee(f, player, e.Origin, e.Direction, e.Move, d.Brain.BuildDamage(e), stats);
                         }

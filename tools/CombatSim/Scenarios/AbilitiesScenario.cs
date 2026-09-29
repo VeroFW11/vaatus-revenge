@@ -52,8 +52,8 @@ namespace VaatusRevenge.CombatSim
             float flashAt = charge.SweetSpotStart, cueAt = charge.SweetSpotStart - charge.ReadyCueLead;
             foreach (float mean in new[] { 0.17f, 0.20f, 0.25f })
                 t2.Row(RateRow("Flash reaction (" + Out.N(flashAt, 2) + " s), mean " + Out.N(mean, 2) + " s (σ 0.03)", trials, () => flashAt + 1f / o.Fps + Math.Max(0.1f, human.Normal(mean, 0.03f)), o.Fps));
-            // 60cb8ee: the ChargeReadyCue / HUD "get ready" mark comes ReadyCueLead before the sweet spot.
-            foreach (float mean in new[] { 0.17f, 0.20f, 0.25f, 0.30f, 0.35f })
+            // The ChargeReadyCue / HUD "get ready" mark comes ReadyCueLead before the sweet spot.
+            foreach (float mean in new[] { 0.17f, 0.18f, 0.20f, 0.22f, 0.25f, 0.30f, 0.35f })
                 t2.Row(RateRow("Ready-cue reaction (" + Out.N(cueAt, 2) + " s), mean " + Out.N(mean, 2) + " s (σ 0.03)", trials, () => cueAt + 1f / o.Fps + Math.Max(0.1f, human.Normal(mean, 0.03f)), o.Fps));
             t2.Print();
         }
@@ -327,7 +327,7 @@ namespace VaatusRevenge.CombatSim
             {
             SimEnemy.NotifyStrikes = notify;
             Out.Sub("Dodge timing vs each Dao Soldier attack: which leads give a perfect dodge (Fluid, "
-                    + (notify ? "enemies call NotifyEnemyStrike: the core's WouldHaveLanded rule as designed" : "as Unity runs today: no script calls NotifyEnemyStrike") + ")");
+                    + (notify ? "enemies call NotifyEnemyStrike, as Unity does since the round-2 fixes" : "without NotifyEnemyStrike, as Unity ran at 60cb8ee") + ")");
             Out.Line("The soldier is forced to use one attack; the player stands still (not locked on) at the distance the soldier "
                      + "starts that attack from, and dodges 'lead' frames before the strike's first active frame. "
                      + "P = perfect dodge, e = evaded (i-frames), . = whiffed (out of reach), H = hit.");

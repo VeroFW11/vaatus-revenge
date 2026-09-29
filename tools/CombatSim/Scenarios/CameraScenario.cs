@@ -77,9 +77,14 @@ namespace VaatusRevenge.CombatSim
         {
             Out.Sub("Camera pops near the low corridor and the pillars (sandbox arena, Fluid)");
             Out.Line("Pull-in = one-frame drop in the camera's distance behind the shoulder point. Jump = one-frame move of the camera "
-                     + "position itself (walking at 4.8 m/s plus orbiting at full stick is ~0.2 m per frame, so anything well above that is a visible pop). "
-                     + "Lift = the combat rise above the pivot. Fights: anticipate bot, locked on, one Dao Soldier, 10 seeds × 30 s.");
-            var t = new Table("Camera", "Case", "Min distance", "Largest pull-in", "Frames pulling in > 0.3 m", "Largest camera jump", "Largest lift drop", "Inside geometry (frames)");
+                     + "position itself (walking at 4.8 m/s plus orbiting at full stick is ~0.2 m per frame, and a locked-on swing at the 540°/s cap "
+                     + "moves a camera 4 m out ~0.6 m per frame, so a jump over 1 m is a visible pop). "
+                     + "Lift = the combat rise above the pivot. Head = the camera's distance to the player's head (feet + 1.65 m); under ~0.3 m "
+                     + "the near plane is in or at the head. Fights: anticipate bot, locked on, one Dao Soldier, 10 seeds × 30 s. "
+                     + "Round 2 (report 02, NEW-03): occluders not touching the camera wait CameraTuning.OcclusionGraceTime, walls closer than "
+                     + "MinCollisionDistance make the camera rise over the head, and the shoulder offset yields to walls at the camera's end.");
+            var t = new Table("Camera", "Case", "Min distance", "Closest to head", "Largest pull-in", "Frames pulling in > 0.3 m", "Largest camera jump",
+                "Frames jumping > 1 m", "Frames within 0.4 m of the head", "Largest lift drop", "Inside geometry (frames)");
             var cases = new (string name, Vector3 at, float yaw, Func<Session, int, Pad> pad, int frames, bool fight)[]
             {
                 ("stand at the corridor mouth, orbit 1.3 turns", new Vector3(18f, 0f, 4.6f), 0f, (s, f) => new Pad { Look = new Vector2(0.6f, 0f) }, 240, false),
@@ -98,8 +103,8 @@ namespace VaatusRevenge.CombatSim
             {
                 foreach (var c in cases)
                 {
-                    float minD = float.MaxValue, maxIn = 0f, maxJump = 0f, maxLiftDrop = 0f;
-                    int bigIn = 0, inside = 0;
+                    float minD = float.MaxValue, maxIn = 0f, maxJump = 0f, maxLiftDrop = 0f, minHead = float.MaxValue;
+                    int bigIn = 0, inside = 0, bigJumps = 0, nearHead = 0;
                     int runs = c.fight ? 10 : 1;
                     for (int run = 0; run < runs; run++)
                     {
@@ -123,14 +128,19 @@ namespace VaatusRevenge.CombatSim
                             maxIn = Math.Max(maxIn, dd);
                             if (dd > 0.3f) bigIn++;
                             maxLiftDrop = Math.Max(maxLiftDrop, l0 - orb.Lift);
-                            maxJump = Math.Max(maxJump, Vector3.Distance(p0, s.World.LockOn.CameraPosition));
+                            float jump = Vector3.Distance(p0, s.World.LockOn.CameraPosition);
+                            maxJump = Math.Max(maxJump, jump);
+                            if (jump > 1f) bigJumps++;
                             minD = Math.Min(minD, orb.Distance);
+                            float head = Vector3.Distance(s.World.LockOn.CameraPosition, s.Player.Feet + new Vector3(0f, 1.65f, 0f));
+                            minHead = Math.Min(minHead, head);
+                            if (head < 0.4f) nearHead++;
                             inside += Inside(s) ? 1 : 0;
                             if (bot != null && (!s.Model.IsAlive || s.World.AllEnemiesDead)) break;
                         }
                     }
-                    t.Row(centred ? "centred" : "shoulder", c.name, Out.N(minD, 2) + " m", Out.N(maxIn, 2) + " m", bigIn, Out.N(maxJump, 2) + " m",
-                        Out.N(maxLiftDrop, 2) + " m", inside);
+                    t.Row(centred ? "centred" : "shoulder", c.name, Out.N(minD, 2) + " m", Out.N(minHead, 2) + " m", Out.N(maxIn, 2) + " m", bigIn,
+                        Out.N(maxJump, 2) + " m", bigJumps, nearHead, Out.N(maxLiftDrop, 2) + " m", inside);
                 }
             }
             t.Print();

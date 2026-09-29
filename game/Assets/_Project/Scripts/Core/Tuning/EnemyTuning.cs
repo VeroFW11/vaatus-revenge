@@ -83,7 +83,8 @@ namespace VaatusRevenge.Core
             t.ChaseSpeed = 3.0f;
             t.AttackIntervalMin = 2.5f;
             t.AttackIntervalMax = 3.5f;
-            t.LeashRadius = 3f;
+            t.LeashRadius = 2f;                      // smaller than the sandbox platform's half-width (3 m) plus a body radius,
+                                                     // so the leash alone keeps it off the edge; the ledge check is only a backup
             t.UsesAttackToken = true;                // shares the encounter's tokens with the soldiers (ENEMY-01, pending David)
             t.Attacks = new[]
             {
