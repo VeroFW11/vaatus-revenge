@@ -24,6 +24,10 @@ namespace VaatusRevenge.Core
         public float ChargeLevel;           // 0..1 while charging a heavy
         public float AimPitch;              // degrees up toward the target (crossbow)
 
+        public bool HasTarget;              // who the fighter is striking at (for aiming a strike at it)
+        public Vector3 TargetLocal;         // the target's chest, in the fighter's frame, measured from its feet
+        public Limb StrikeLimb;             // which fist or foot the current strike uses
+
         public bool HitReaction;            // took a hit this frame: flinch away from it
         public Vector3 HitDirectionLocal;   // direction the blow travelled (attacker -> us), fighter frame
         public float HitStrength;           // 0..1 (a light jab ~0.4, a heavy ~1)
@@ -189,6 +193,7 @@ namespace VaatusRevenge.Core
             {
                 if (dt > 0f) travel += Math.Max(0f, velocity.Z) * dt;
                 EvaluateAction(key, in input, actionSpec, out bool upperOnly);
+                ApplyStrikeAim(in input, actionSpec, settings);
                 if (upperOnly) PoseSpec.Merge(actionSpec, locoSpec, targetSpec);
                 else targetSpec.CopyFrom(actionSpec);
                 lastActionTime = input.ActionTime;
@@ -205,6 +210,7 @@ namespace VaatusRevenge.Core
                 // Time advances first, so the very first frame of a blend already moves (no held frame, then a jump).
                 fadeTime += dt;
                 weight = AnimMath.SmoothStep(fadeTime / fadeDuration);
+                UnwrapTurnsToward(fadeFrom, targetSpec);
                 PoseSpec.Lerp(fadeFrom, targetSpec, weight, blended);
             }
             else
@@ -217,6 +223,8 @@ namespace VaatusRevenge.Core
             // ---- 4. secondary motion
             output.CopyFrom(blended);
             ApplySecondary(in input, velocity, dt, settings);
+            ApplyLeap(in input, velocity, action, settings);
+            UpdateFootLocks(in input, velocity, dt, settings);
 
             // ---- 5. solve
             PoseClip shown = action ? Clip(key) : null;
@@ -228,6 +236,7 @@ namespace VaatusRevenge.Core
                 EvaluateClip(AnimationKeys.Idle, 0f, default, false, 0f, output);
                 solver.Solve(output, pose);
             }
+            KeepPropAboveFloor(in input, settings);
 
             UpdateCues(key, action, in input, weight);
             lastVelocity = velocity;
@@ -332,7 +341,7 @@ namespace VaatusRevenge.Core
         {
             // Blend from exactly what was on screen last frame (before secondary motion, which carries on by itself).
             fadeFrom.CopyFrom(lastShown);
-            WrapTurns(fadeFrom);
+            aimValid = false;
             float fade = settings.DefaultFade;
             if (action)
             {
@@ -354,14 +363,277 @@ namespace VaatusRevenge.Core
             travel = 0f;
         }
 
-        // Big whole-body turns (a finished 360 spin, a tumble) are wrapped to within half a turn before blending
-        // out of them, so the body doesn't unwind the whole spin backwards.
-        static void WrapTurns(PoseSpec s)
+        // Whole-body turns are blended the short way round: the pose we blend from is re-expressed within half a
+        // turn of where we're blending to (a finished 360 spin doesn't unwind backwards, a tumble at -217 degrees
+        // lands on its back at -90 by going through -180, never up through 0 = standing upright).
+        static void UnwrapTurnsToward(PoseSpec from, PoseSpec to)
         {
-            s[PoseChannel.RootYaw] = Wrap180(s[PoseChannel.RootYaw]);
-            s[PoseChannel.PelvisPitch] = Wrap180(s[PoseChannel.PelvisPitch]);
-            s[PoseChannel.PelvisYaw] = Wrap180(s[PoseChannel.PelvisYaw]);
-            s[PoseChannel.PelvisRoll] = Wrap180(s[PoseChannel.PelvisRoll]);
+            Unwrap(from, to, PoseChannel.RootYaw);
+            Unwrap(from, to, PoseChannel.PelvisPitch);
+            Unwrap(from, to, PoseChannel.PelvisYaw);
+            Unwrap(from, to, PoseChannel.PelvisRoll);
+        }
+
+        static void Unwrap(PoseSpec from, PoseSpec to, PoseChannel c)
+        {
+            from[c] = to[c] + Wrap180(from[c] - to[c]);
+        }
+
+        // ------------------------------------------------------------------ aiming strikes
+
+        readonly PoseSpec aimSpec = new PoseSpec();
+        readonly BodyPose aimPose = new BodyPose();
+        PoseSolver aimSolver;
+        bool aimValid;
+        float aimYaw, aimPitch;
+
+        // The strike's fist or foot points at the target on the first active frame: the authored pose is checked at
+        // that moment and the body turned (and the limb tilted) by however much it would miss. Measured until the
+        // strike commits, like the combat rules' tracking, then held; eased in over the wind-up, out over recovery.
+        void ApplyStrikeAim(in FighterAnimInput input, PoseSpec spec, AnimatorSettings s)
+        {
+            if (!s.AimStrikes || !input.HasFrameData || !input.HasTarget) return;
+            PoseClip clip = Clip(input.ActionKey);
+            if (clip == null) return;
+            ClipTiming timing = input.Timing;
+            float t = input.ActionTime;
+            if (!AnimMath.IsFinite(t)) return;
+            if (!aimValid || t <= timing.Startup)
+            {
+                aimValid = true;
+                aimYaw = 0f;
+                aimPitch = 0f;
+                if (aimSolver == null) aimSolver = new PoseSolver(solver.Skeleton);
+                clip.Evaluate(timing.Startup, in timing, aimSpec);
+                aimSolver.Solve(aimSpec, aimPose);
+                LimbEnds(aimSolver, input.StrikeLimb, out Vector3 root, out Vector3 end);
+                Vector3 dir = end - root;
+                Vector3 to = input.TargetLocal - root;
+                if (AnimMath.IsFinite(to) && dir.LengthSquared() > 1e-4f && to.LengthSquared() > 1e-4f && to.Length() <= s.StrikeAimMaxDistance)
+                {
+                    float yawError = Wrap180(YawOf(to) - YawOf(dir));
+                    if (Math.Abs(yawError) <= s.StrikeAimGiveUpYaw)
+                    {
+                        aimYaw = AnimMath.Clamp(yawError, -s.StrikeAimMaxYaw, s.StrikeAimMaxYaw);
+                        aimPitch = AnimMath.Clamp(PitchOf(to) - PitchOf(dir), -s.StrikeAimMaxPitch, s.StrikeAimMaxPitch);
+                    }
+                }
+            }
+            float w;
+            if (t < timing.Startup) w = AnimMath.SmoothStep(timing.Startup > 0f ? t / timing.Startup : 1f);
+            else if (t <= timing.LastActiveEnd) w = 1f;
+            else w = 1f - AnimMath.SmoothStep((t - timing.LastActiveEnd) / Math.Max(0.05f, timing.Recovery * 0.6f));
+            if (!(w > 0f)) return;
+            spec[PoseChannel.RootYaw] += aimYaw * w;
+            switch (input.StrikeLimb)
+            {
+                case Limb.LeftFoot:
+                case Limb.RightFoot:
+                {
+                    BodySide side = input.StrikeLimb == Limb.LeftFoot ? BodySide.Left : BodySide.Right;
+                    if (spec[PoseSpec.Leg(side, 7)] > 0.5f) spec[PoseSpec.Leg(side, 9)] += aimPitch * w;
+                    break;
+                }
+                case Limb.LeftFist:
+                    spec[PoseSpec.Arm(BodySide.Left, 1)] += aimPitch * w;
+                    break;
+                case Limb.BothFists:
+                    spec[PoseSpec.Arm(BodySide.Left, 1)] += aimPitch * w;
+                    spec[PoseSpec.Arm(BodySide.Right, 1)] += aimPitch * w;
+                    break;
+                default:
+                    spec[PoseSpec.Arm(BodySide.Right, 1)] += aimPitch * w;
+                    break;
+            }
+        }
+
+        // Where a strike limb starts (shoulder / hip) and ends (wrist / ankle) in the last solve.
+        static void LimbEnds(PoseSolver s, Limb limb, out Vector3 root, out Vector3 end)
+        {
+            switch (limb)
+            {
+                case Limb.LeftFist:
+                    root = s.ModelPosition(BodyJoint.LeftUpperArm);
+                    end = s.ModelPosition(BodyJoint.LeftHand);
+                    return;
+                case Limb.RightFoot:
+                    root = s.ModelPosition(BodyJoint.RightUpperLeg);
+                    end = s.ModelPosition(BodyJoint.RightFoot);
+                    return;
+                case Limb.LeftFoot:
+                    root = s.ModelPosition(BodyJoint.LeftUpperLeg);
+                    end = s.ModelPosition(BodyJoint.LeftFoot);
+                    return;
+                case Limb.BothFists:
+                    root = (s.ModelPosition(BodyJoint.LeftUpperArm) + s.ModelPosition(BodyJoint.RightUpperArm)) * 0.5f;
+                    end = (s.ModelPosition(BodyJoint.LeftHand) + s.ModelPosition(BodyJoint.RightHand)) * 0.5f;
+                    return;
+                default:
+                    root = s.ModelPosition(BodyJoint.RightUpperArm);
+                    end = s.ModelPosition(BodyJoint.RightHand);
+                    return;
+            }
+        }
+
+        static float YawOf(Vector3 v)
+        {
+            return MathF.Atan2(v.X, v.Z) * AnimMath.Rad2Deg;
+        }
+
+        static float PitchOf(Vector3 v)
+        {
+            return MathF.Atan2(v.Y, MathF.Sqrt(v.X * v.X + v.Z * v.Z)) * AnimMath.Rad2Deg;
+        }
+
+        // ------------------------------------------------------------------ feet: leaps and locks
+
+        struct FootLock
+        {
+            public bool Locked;
+            public Vector2 Position;      // where the planted foot stands (fighter frame, this frame)
+            public bool Stepping;
+            public Vector2 From;
+            public float StepTime;
+            public float StepDuration;
+            public float StepHeight;
+            public Vector2 Offset;        // after a release: how far the foot still is from the pose (decays)
+        }
+
+        readonly FootLock[] footLocks = new FootLock[2];
+
+        // A grounded action covering ground faster than a person can step (a stretched lunge, a flying kick) becomes
+        // a leap: both feet leave the floor for the rush and land as it slows.
+        void ApplyLeap(in FighterAnimInput input, Vector3 velocity, bool action, AnimatorSettings s)
+        {
+            if (!action || !input.Grounded || input.Dead) return;
+            float speed = new Vector2(velocity.X, velocity.Z).Length();
+            float lift = AnimMath.Clamp((speed - s.LeapSpeed) * s.LeapLiftPerSpeed, 0f, s.MaxLeapLift);
+            if (!(lift > 0f)) return;
+            float k = 1f / Math.Max(0.1f, solver.Skeleton.Scale);
+            output[PoseChannel.HipsY] += lift * 0.6f * k;
+            output[PoseChannel.LFootY] += lift * k;
+            output[PoseChannel.RFootY] += lift * k;
+        }
+
+        // Planted feet stay where they touched down while the body moves and turns over them; when the pose wants a
+        // foot somewhere else, it takes a quick step there. The fighter's own motion (velocity, turning) is how a
+        // world-fixed spot is tracked without knowing where the fighter is in the world.
+        void UpdateFootLocks(in FighterAnimInput input, Vector3 velocity, float dt, AnimatorSettings s)
+        {
+            float k = Math.Max(0.1f, solver.Skeleton.Scale);
+            bool enabled = s.FootLocks && input.Grounded && !input.Dead;
+            float rootYaw = output[PoseChannel.RootYaw];
+            float turn = AnimMath.IsFinite(input.YawDelta) ? input.YawDelta : 0f;
+            var move = new Vector2(velocity.X, velocity.Z) * dt;
+            float decay = 1f - AnimMath.ExpBlend(s.ReleaseRate, dt);
+            for (int i = 0; i < 2; i++)
+            {
+                BodySide side = i == 0 ? BodySide.Left : BodySide.Right;
+                float sign = (float)side;
+                ref FootLock f = ref footLocks[i];
+                if (dt > 0f)
+                {
+                    // The body moved and turned: a spot fixed on the ground moves the other way in the body's frame.
+                    f.Position = RotateXZ(f.Position - move, -turn);
+                    f.From = RotateXZ(f.From - move, -turn);
+                    f.Offset *= decay;
+                }
+                Vector2 key = RotateXZ(new Vector2(sign * output[PoseSpec.Leg(side, 0)], output[PoseSpec.Leg(side, 2)]) * k, rootYaw);
+                bool planted = output[PoseSpec.Leg(side, 7)] < 0.5f && output[PoseSpec.Leg(side, 1)] * k < (0.08f + s.PlantHeight) * k;
+                Vector2 shown;
+                float lift = 0f;
+                if (!enabled || !planted)
+                {
+                    if (f.Locked) f.Offset = f.Position - key;
+                    f.Locked = false;
+                    f.Stepping = false;
+                    shown = key + f.Offset;
+                }
+                else if (!f.Locked)
+                {
+                    f.Locked = true;
+                    f.Position = key + f.Offset;
+                    f.Offset = Vector2.Zero;
+                    shown = f.Position;
+                }
+                else
+                {
+                    if (f.Stepping && dt > 0f)
+                    {
+                        f.StepTime += dt;
+                        if (f.StepTime >= f.StepDuration)
+                        {
+                            f.Stepping = false;
+                            f.Position = key;
+                        }
+                    }
+                    if (!f.Stepping)
+                    {
+                        float distance = Vector2.Distance(key, f.Position);
+                        bool otherStepping = footLocks[1 - i].Stepping;
+                        if (distance > s.StepDistance * k && (!otherStepping || distance > 2f * s.StepDistance * k))
+                        {
+                            f.Stepping = true;
+                            f.From = f.Position;
+                            f.StepTime = 0f;
+                            f.StepDuration = AnimMath.Clamp(distance / Math.Max(0.1f, s.StepSpeed), s.StepMinTime, s.StepMaxTime);
+                            f.StepHeight = Math.Min(s.StepMaxLift, distance * s.StepLiftPerMetre) * k;
+                        }
+                    }
+                    if (f.Stepping)
+                    {
+                        float u = AnimMath.Clamp01(f.StepTime / Math.Max(1e-3f, f.StepDuration));
+                        shown = Vector2.Lerp(f.From, key, AnimMath.SmoothStep(u));
+                        lift = f.StepHeight * MathF.Sin(MathF.PI * u);
+                        f.Position = shown;
+                    }
+                    else
+                    {
+                        shown = f.Position;
+                    }
+                }
+                if (!f.Locked && f.Offset.LengthSquared() < 1e-8f) continue;
+                Vector2 local = RotateXZ(shown, -rootYaw) / k;
+                output[PoseSpec.Leg(side, 0)] = sign * local.X;
+                output[PoseSpec.Leg(side, 2)] = local.Y;
+                output[PoseSpec.Leg(side, 1)] += lift / k;
+                if (f.Locked) output[PoseSpec.Leg(side, 11)] = 0f;   // the lock replaces the lunge anchor
+            }
+        }
+
+        // Rotates a point on the floor (x right, y = forward) by yaw degrees (+ = to the right, like the body).
+        static Vector2 RotateXZ(Vector2 p, float yawDegrees)
+        {
+            if (yawDegrees == 0f) return p;
+            float a = yawDegrees * AnimMath.Deg2Rad;
+            float c = MathF.Cos(a), sn = MathF.Sin(a);
+            return new Vector2(p.X * c + p.Y * sn, -p.X * sn + p.Y * c);
+        }
+
+        // ------------------------------------------------------------------ props
+
+        // Held weapon length (hand to tip); 0 = no prop. Set by whoever builds the body.
+        public float PropLength { get; set; }
+
+        // A sword or crossbow held by someone slumped, sprawled or dying mustn't stick through the floor: if the tip
+        // would be under it, the prop swings up just enough to rest on it.
+        void KeepPropAboveFloor(in FighterAnimInput input, AnimatorSettings s)
+        {
+            if (!(PropLength > 0f) || !input.Grounded) return;
+            Quaternion hand = solver.ModelRotation(BodyJoint.RightHand);
+            Vector3 grip = solver.ModelPosition(BodyJoint.RightHand) + AnimMath.Rotate(hand, new Vector3(solver.Skeleton.HandLength * 0.6f, 0f, 0f));
+            Vector3 dir = AnimMath.Rotate(hand * pose.PropLocal, Vector3.UnitZ);
+            float floor = s.PropFloorClearance;
+            if (grip.Y + dir.Y * PropLength >= floor) return;
+            float y = AnimMath.Clamp((floor - grip.Y) / PropLength, -1f, 1f);
+            var flat = new Vector2(dir.X, dir.Z);
+            if (flat.LengthSquared() < 1e-6f) flat = new Vector2(0f, 1f);
+            flat = Vector2.Normalize(flat) * MathF.Sqrt(Math.Max(0f, 1f - y * y));
+            var fixedDir = new Vector3(flat.X, y, flat.Y);
+            Vector3 local = AnimMath.Rotate(Quaternion.Inverse(hand), fixedDir);
+            Vector3 up = AnimMath.Rotate(Quaternion.Inverse(hand), Vector3.UnitY);
+            if (Math.Abs(Vector3.Dot(up, local)) > 0.95f) up = Vector3.UnitX;
+            pose.PropLocal = AnimMath.LookRotation(local, up);
         }
 
         void EvaluateAction(string key, in FighterAnimInput input, PoseSpec result, out bool upperOnly)

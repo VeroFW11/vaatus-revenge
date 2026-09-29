@@ -34,6 +34,7 @@ namespace VaatusRevenge.Core
         float reactionTime;
         float reactionDuration;
         bool reactionStarted;
+        bool reactionShown;
 
         // plunge (falling axe kick)
         bool plungeLanded;
@@ -106,6 +107,13 @@ namespace VaatusRevenge.Core
         // dt: this frame's scaled delta time (0 during hitstop: everything holds).
         public FighterAnimInput Build(PlayerCombatModel model, float dt)
         {
+            return Build(model, dt, false, Vector3.Zero, Vector3.Zero);
+        }
+
+        // With a target (lock-on, soft lock or the nearest enemy): strikes are aimed at its chest. feet = the
+        // player's own position, targetChest = the target's aim point, both in world space.
+        public FighterAnimInput Build(PlayerCombatModel model, float dt, bool hasTarget, Vector3 feet, Vector3 targetChest)
+        {
             if (model == null) return default;
             if (!AnimMath.IsFinite(dt) || dt < 0f) dt = 0f;
             float facing = model.FacingYaw;
@@ -146,6 +154,12 @@ namespace VaatusRevenge.Core
             }
 
             MoveData move = model.CurrentMove;
+            if (hasTarget && AnimMath.IsFinite(targetChest) && AnimMath.IsFinite(feet))
+            {
+                input.HasTarget = true;
+                input.TargetLocal = ToLocal(targetChest - feet, facing);
+            }
+            if (move != null) input.StrikeLimb = move.Limb;
             switch (state)
             {
                 case PlayerState.Dead:
@@ -193,6 +207,13 @@ namespace VaatusRevenge.Core
                 if (reactionTime >= reactionDuration || !free) ClearReaction();
                 else
                 {
+                    if (!reactionShown)
+                    {
+                        // Only a reaction that really shows starts a new blend (a hit taken mid-attack or while
+                        // launched must not restart what's playing).
+                        reactionShown = true;
+                        serial++;
+                    }
                     input.ActionKey = reactionKey;
                     input.ActionTime = reactionTime;
                     input.ActionDuration = reactionDuration;
@@ -271,7 +292,7 @@ namespace VaatusRevenge.Core
             reactionTime = 0f;
             reactionDuration = Math.Max(0.05f, duration);
             reactionStarted = false;
-            serial++;
+            reactionShown = false;
         }
 
         void ClearReaction()

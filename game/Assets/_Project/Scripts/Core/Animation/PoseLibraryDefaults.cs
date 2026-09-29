@@ -78,9 +78,10 @@ namespace VaatusRevenge.Core
         static PoseSpec CrossbowGuard()
         {
             PoseSpec s = Guard();
-            s.Hips(0f, -0.06f, 0f).Pelvis(0f, 15f).Torso(2f, 5f);
-            s.Arm(R, -12f, -40f, 0.55f, 15f, 0f).Arm(L, -35f, -35f, 0.62f, 10f, 0f);
-            s.Set(PoseChannel.PropAim, 0.85f).Set(PoseChannel.Blade, 0f);
+            // at ease: the crossbow hangs low at the right hip, pointing at the floor ahead
+            s.Hips(0f, -0.05f, 0f).Pelvis(0f, 12f).Torso(2f, 3f);
+            s.Arm(R, 12f, -68f, 0.82f, 10f, 0f).Arm(L, -25f, -45f, 0.7f, 10f, 0f);
+            s.Set(PoseChannel.PropAim, 0f).Set(PoseChannel.Blade, 25f);
             return s;
         }
 
@@ -172,7 +173,8 @@ namespace VaatusRevenge.Core
                 .K(KeyPhase.Startup, 1f, PoseEase.Snap, s =>
                 {
                     s.Hips(0f, -0.24f, 0.06f).Pelvis(0f, 5f).Torso(30f, 0f).Head(-20f, 0f);
-                    s.Foot(L, 0.13f, Ground, 0.42f, 5f).Foot(R, 0.15f, 0.12f, -0.42f, 20f, 35f);
+                    // fire-propelled: both feet skim just off the floor for the dash (no skating on a planted foot)
+                    s.Foot(L, 0.13f, Ground + 0.07f, 0.38f, 5f, -10f).Foot(R, 0.15f, 0.16f, -0.4f, 20f, 35f);
                     s.Arm(L, 25f, -45f, 0.95f, 10f).Arm(R, 20f, -50f, 0.95f, 10f).Set(PoseChannel.ArmFollow, 0.2f);
                 })
                 .K(KeyPhase.Active, 1f, PoseEase.Linear, s =>
@@ -279,31 +281,40 @@ namespace VaatusRevenge.Core
                 .K(KeyPhase.Recovery, 1f, PoseEase.InOut, guard)
                 .Build());
 
-            // Launched: thrown into the air, tumbling backwards head over heels with the limbs flailing.
+            // Launched: thrown into the air, flung onto the back with the limbs flailing, rocking as it rises and falls,
+            // and already lying flat by the time it comes down (so the landing is a bounce, never a flip). As the
+            // body tips flat the pelvis drops toward the capsule's base, so it lands on the floor, not above it.
             PoseSpec tumble = guard.Clone();
             tumble.Set(PoseChannel.LegFrame, 1f).Set(PoseChannel.ArmFollow, 1f).Set(PoseChannel.LookFront, 0f);
             tumble.Hips(0f, 0f, 0f).Pelvis(-20f, 0f).Torso(-25f, 0f).Head(-25f, 0f);
             tumble.Arm(L, 30f, 55f, 0.9f, 20f).Arm(R, 35f, 45f, 0.9f, 20f);
             tumble.Kick(L, 8f, -115f, 0.9f, 0f, 40f).Kick(R, 8f, -90f, 0.85f, 0f, 40f);
-            clips.Add(new ClipBuilder(AnimationKeys.Launched, ClipMode.Hold, tumble) { FadeIn = 0.06f }
-                .K(KeyPhase.Seconds, 0.35f, PoseEase.Out, s =>
+            clips.Add(new ClipBuilder(AnimationKeys.Launched, ClipMode.Hold, tumble) { FadeIn = 0.08f }
+                .K(KeyPhase.Seconds, 0.3f, PoseEase.Out, s =>
                 {
-                    s.Pelvis(-110f, 10f).Torso(-18f, 5f).Head(-20f, 10f);
+                    s.Hips(0f, -0.3f, 0f).Pelvis(-95f, 10f).Torso(-15f, 5f).Head(-15f, 10f);
                     s.Kick(L, 20f, -60f, 0.7f, 0f, 30f).Kick(R, 10f, -100f, 0.92f, 0f, 45f);
                     s.Arm(L, 80f, 10f, 0.9f, 20f).Arm(R, 60f, -30f, 0.9f, 20f);
                 })
-                .K(KeyPhase.Seconds, 0.75f, PoseEase.InOut, s =>
+                .K(KeyPhase.Seconds, 0.6f, PoseEase.InOut, s =>
                 {
-                    s.Pelvis(-205f, -5f).Torso(-12f, -5f).Head(-15f, -10f);
-                    s.Kick(L, 5f, -100f, 0.9f, 0f, 40f).Kick(R, 25f, -55f, 0.7f, 0f, 30f);
+                    s.Hips(0f, -0.55f, 0f).Pelvis(-128f, -5f).Torso(-8f, -5f).Head(10f, -10f);
+                    s.Kick(L, 5f, -95f, 0.9f, 0f, 40f).Kick(R, 25f, -55f, 0.7f, 0f, 30f);
                     s.Arm(L, 50f, -30f, 0.9f, 20f).Arm(R, 85f, 20f, 0.9f, 20f);
                 })
-                .K(KeyPhase.Seconds, 1.25f, PoseEase.InOut, s =>
+                .K(KeyPhase.Seconds, 1.0f, PoseEase.InOut, s =>
                 {
-                    s.Pelvis(-290f, 0f).Torso(-8f, 0f).Head(-10f, 0f);
-                    s.Kick(L, 10f, -80f, 0.8f, 0f, 30f).Kick(R, 12f, -95f, 0.9f, 0f, 35f);
-                    s.Arm(L, 70f, 20f, 0.9f, 20f).Arm(R, 65f, 25f, 0.9f, 20f);
+                    s.Hips(0f, -0.62f, 0f).Pelvis(-108f, 5f).Torso(-4f, 0f).Head(15f, 5f);
+                    s.Kick(L, 15f, -70f, 0.8f, 0f, 30f).Kick(R, 8f, -100f, 0.9f, 0f, 35f);
+                    s.Arm(L, 75f, 25f, 0.9f, 20f).Arm(R, 55f, -20f, 0.9f, 20f);
                 })
+                .K(KeyPhase.Seconds, 1.4f, PoseEase.InOut, s =>
+                {
+                    s.Pelvis(-122f, -4f).Head(8f, -5f);
+                    s.Kick(L, 8f, -100f, 0.9f, 0f, 35f).Kick(R, 20f, -65f, 0.75f, 0f, 30f);
+                    s.Arm(L, 55f, -25f, 0.9f, 20f).Arm(R, 80f, 25f, 0.9f, 20f);
+                })
+                .K(KeyPhase.Seconds, 1.9f, PoseEase.InOut, s => s.Pelvis(-106f, 0f).Head(12f, 0f))
                 .Build());
 
             // Knockdown: flat on the back after a juggle, a bounce off the floor, then lying still.
@@ -315,7 +326,7 @@ namespace VaatusRevenge.Core
             PoseSpec bounce = lying.Clone();
             bounce.Hips(0f, -0.74f, 0f).Pelvis(-78f, 0f).Head(20f, 0f);
             bounce.Kick(L, 8f, -60f, 0.8f, 10f, 30f).Kick(R, 5f, -75f, 0.9f, 5f, 35f);
-            clips.Add(new ClipBuilder(AnimationKeys.Knockdown, ClipMode.Hold, lying) { FadeIn = 0.06f }
+            clips.Add(new ClipBuilder(AnimationKeys.Knockdown, ClipMode.Hold, lying) { FadeIn = 0.1f }
                 .K(KeyPhase.Seconds, 0.12f, PoseEase.Out, bounce)
                 .K(KeyPhase.Seconds, 0.32f, PoseEase.In, lying)
                 .K(KeyPhase.Seconds, 0.6f, PoseEase.InOut, s => s.Head(4f, 12f))
@@ -593,8 +604,9 @@ namespace VaatusRevenge.Core
                     s.Torso(-10f, 5f).Arm(L, 50f, 40f, 0.8f, 10f).Arm(R, 40f, 30f, 0.8f, 10f).Set(PoseChannel.ArmFollow, 0.5f);
                 })
                 .K(KeyPhase.Active, 1f, PoseEase.Linear, s => s.Torso(-5f, 5f))
-                .K(KeyPhase.Recovery, 0.08f, PoseEase.Snap, s =>
+                .K(KeyPhase.Recovery, 0.16f, PoseEase.Out, s =>
                 {
+                    // the chop lands over about five frames, not one
                     s.Hips(0f, -0.3f, 0.05f).Pelvis(0f, 5f).Torso(26f, 0f);
                     s.Kick(R, 5f, -52f, 1f, 0f, 20f).Foot(L, 0.13f, Ground, -0.22f, 25f);
                     s.Arm(L, 10f, -30f, 0.9f, 10f).Arm(R, 5f, -28f, 0.9f, 10f).Set(PoseChannel.ArmFollow, 0.3f);
@@ -674,7 +686,7 @@ namespace VaatusRevenge.Core
                     s.Set(PoseChannel.RootYaw, 20f).Set(PoseChannel.LookFront, 0.4f).Set(PoseChannel.ArmFollow, 0.3f);
                     s.Hips(0f, -0.52f, 0.02f).Pelvis(15f, 0f).Torso(22f, 0f, 14f);
                     s.Foot(L, 0.04f, Ground, 0.12f, 20f, 0f, 25f);
-                    s.Kick(R, 90f, -30f, 1f, 30f, 35f);
+                    s.Kick(R, 90f, -25f, 1f, 30f, 8f);   // shin skimming just above the floor
                     s.Arm(L, 25f, -70f, 1f, 10f).Arm(R, 70f, 0f, 0.8f, 10f);
                 })
                 .K(KeyPhase.Active, 0f, PoseEase.Linear, s => s.Set(PoseChannel.RootYaw, 0f))
@@ -858,11 +870,13 @@ namespace VaatusRevenge.Core
             //    telegraph, kicks with the shot and settles.
             PoseSpec crossbow = CrossbowGuard();
             PoseSpec aimed = crossbow.Clone();
-            aimed.Pelvis(0f, 25f).Torso(0f, 22f).Head(4f, -6f).Set(PoseChannel.ArmFollow, 0f).Set(PoseChannel.PropAim, 1f);
-            aimed.Arm(R, -18f, 8f, 0.52f, 35f, 0f).Arm(L, -30f, 4f, 0.8f, 10f, 0f);
+            // raised and aimed: side-on, stock to the shoulder, elbow up, cheek down on it, the other hand under the bow
+            aimed.Pelvis(0f, 38f).Torso(2f, 30f).Head(10f, -14f, -8f).Set(PoseChannel.ArmFollow, 0f).Set(PoseChannel.PropAim, 1f);
+            aimed.Arm(R, -22f, 12f, 0.46f, 70f, 0f).Arm(L, -28f, 4f, 0.82f, 5f, 0f).Shrug(R, 8f);
+            aimed.Hips(0f, -0.1f, 0f);
             PoseSpec recoil = aimed.Clone();
             recoil.Torso(-6f, 24f).Head(-4f, -6f);
-            recoil.Arm(R, -18f, 16f, 0.46f, 35f, 0f).Arm(L, -30f, 12f, 0.74f, 10f, 0f);
+            recoil.Arm(R, -22f, 20f, 0.42f, 70f, 0f).Arm(L, -28f, 12f, 0.76f, 5f, 0f);
             clips.Add(new ClipBuilder(AnimationKeys.CrossbowShot, ClipMode.Action, crossbow) { Aims = true }
                 .K(KeyPhase.Startup, 0.3f, PoseEase.InOut, aimed)
                 .K(KeyPhase.Startup, 1f, PoseEase.Linear, aimed)

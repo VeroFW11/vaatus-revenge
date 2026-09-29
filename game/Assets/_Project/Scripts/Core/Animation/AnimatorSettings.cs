@@ -33,6 +33,33 @@ namespace VaatusRevenge.Core
         public float ChargeTremble = 1.6f;           // degrees at full charge
         public float ChargeTrembleRate = 17f;        // Hz
 
+        // ---- Aiming strikes: at the first active frame the striking fist or foot points at the target. The body
+        // turns (and the limb tilts up or down) by however far the authored pose would miss, eased in over the
+        // wind-up and out over the recovery. Beyond these limits it doesn't try (the target is behind you).
+        public bool AimStrikes = true;
+        public float StrikeAimMaxYaw = 80f;
+        public float StrikeAimMaxPitch = 55f;
+        public float StrikeAimGiveUpYaw = 150f;
+        public float StrikeAimMaxDistance = 7f;      // metres: further targets aren't aimed at
+
+        // ---- Foot locking: a planted foot stays exactly where it touched down while the body moves over it, and
+        // takes a quick step when the pose wants it somewhere else (no skating).
+        public bool FootLocks = true;
+        public float PlantHeight = 0.025f;           // a foot this close to the floor counts as planted
+        public float StepDistance = 0.2f;            // step when the pose wants the foot this far from where it stands
+        public float StepSpeed = 5f;                 // m/s of a step (sets its duration)...
+        public float StepMinTime = 0.07f;            // ...within these limits
+        public float StepMaxTime = 0.16f;
+        public float StepLiftPerMetre = 0.35f;       // how high a step lifts the foot, per metre stepped
+        public float StepMaxLift = 0.12f;
+        public float ReleaseRate = 16f;              // how quickly a released foot catches up with the pose (1/s)
+        public float LeapSpeed = 6f;                 // a grounded action moving faster than this (m/s) leaps: both feet leave the floor
+        public float LeapLiftPerSpeed = 0.03f;       // metres of leap per m/s above LeapSpeed
+        public float MaxLeapLift = 0.16f;
+
+        // ---- Props: a weapon never goes through the floor
+        public float PropFloorClearance = 0.03f;
+
         // ---- Landing
         public float LandDuration = 0.22f;           // knees absorb a landing for this long (when nothing else is playing)
         public float HardLandingSpeed = 9f;          // m/s: landings faster than this sink deeper
@@ -53,7 +80,7 @@ namespace VaatusRevenge.Core
         public float MaxCadence = 3.1f;
 
         public float WalkStance = 0.62f;             // share of the cycle each foot is on the ground at walking pace...
-        public float RunStance = 0.36f;              // ...and when running (both feet leave the ground: a flight phase)
+        public float RunStance = 0.44f;              // ...and when running (a short flight phase between steps)
         public float WalkLift = 0.07f;               // how high the swinging foot rises (metres)
         public float RunLift = 0.3f;
         public float FootWidth = 0.11f;              // feet this far either side of the centre line

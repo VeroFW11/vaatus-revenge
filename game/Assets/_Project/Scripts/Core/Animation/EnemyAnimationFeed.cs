@@ -34,6 +34,7 @@ namespace VaatusRevenge.Core
         string reactionKey = "";
         float reactionTime;
         bool reactionStarted;
+        bool reactionShown;
 
         bool hitThisFrame;
         Vector3 hitDirection;
@@ -74,7 +75,7 @@ namespace VaatusRevenge.Core
                     reactionKey = AnimationKeys.Hurt;
                     reactionTime = 0f;
                     reactionStarted = false;
-                    serial++;
+                    reactionShown = false;
                     break;
                 case EnemyEventType.Staggered:
                     attack = null;
@@ -195,6 +196,7 @@ namespace VaatusRevenge.Core
                     {
                         MoveData move = attack.Move;
                         input.ActionKey = string.IsNullOrEmpty(move.AnimationKey) ? AnimationKeys.SwordSlash : move.AnimationKey;
+                        input.StrikeLimb = move.Limb;
                         input.ActionTime = attackTime;
                         input.HasFrameData = true;
                         input.Timing = new ClipTiming
@@ -215,6 +217,13 @@ namespace VaatusRevenge.Core
                 if (reactionTime >= HurtDuration || !free) reactionKey = "";
                 else
                 {
+                    if (!reactionShown)
+                    {
+                        // Only a flinch that really shows starts a new blend: a hit on a launched or attacking
+                        // enemy must not restart its tumble or swing.
+                        reactionShown = true;
+                        serial++;
+                    }
                     input.ActionKey = reactionKey;
                     input.ActionTime = reactionTime;
                     input.ActionDuration = HurtDuration;
