@@ -31,6 +31,7 @@ namespace VaatusRevenge.CombatSim
 
             Stance(rec);
             Chain(rec);
+            BehindYou(rec);
             Aerial(rec);
             AirDashAndZip(rec);
             Abilities(rec);
@@ -98,6 +99,22 @@ namespace VaatusRevenge.CombatSim
                 }
             }
             foreach (int f in s.Idle(60)) yield return f;
+        }
+
+        // A jab at a foe standing behind you: the combat rules snap the facing round at once (free-flow), so the body
+        // has to whip round on its planted feet into the strike rather than flip in one frame.
+        static void BehindYou(AnimRecorder rec)
+        {
+            var s = new Scene(rec, "Jab at a foe behind you");
+            s.AddDummy(new Vector3(0.3f, 0f, -2f), 0f);
+            s.Run(BehindYouScript(s));
+        }
+
+        static IEnumerable<int> BehindYouScript(Scene s)
+        {
+            foreach (int f in s.Idle(30)) yield return f;
+            foreach (int f in s.Tap(Btn.Light, 3)) yield return f;
+            foreach (int f in s.Idle(50)) yield return f;
         }
 
         static void Aerial(AnimRecorder rec)

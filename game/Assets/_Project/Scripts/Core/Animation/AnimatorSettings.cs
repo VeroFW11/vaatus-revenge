@@ -13,6 +13,10 @@ namespace VaatusRevenge.Core
         public float MaxFade = 0.2f;
         public float StrikeFadeShare = 0.55f;        // a strike's blend-in is at most this share of its startup, so it lands on time
         public float LocomotionFade = 0.15f;         // seconds to blend between actions and walking/running
+        // A facing change faster than this (degrees per second: an attack snapping round to a target behind you) is
+        // shown as a whip-round turn of the body over TurnCatchUpTime seconds instead of a one-frame flip.
+        public float VisualTurnRate = 1200f;
+        public float TurnCatchUpTime = 0.1f;
 
         // ---- Secondary motion (spring-damped: the body lags a little behind sudden changes and settles)
         public float AccelLeanPerMs2 = 0.9f;         // degrees of forward lean per m/s^2 of acceleration (lean into a sprint start)
