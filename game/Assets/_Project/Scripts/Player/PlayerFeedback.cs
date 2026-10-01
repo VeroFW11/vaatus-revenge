@@ -3,35 +3,44 @@ using VaatusRevenge.Core;
 
 namespace VaatusRevenge
 {
-    // Everything the player sees and feels that isn't a rule or a pose: fire effects, flashes, screen shake,
-    // gamepad rumble and the sprint FOV kick. Nothing here changes the fight. (The body's martial-arts motion
-    // comes from the procedural animator: PlayerController feeds it through PlayerAnimationFeed.)
+    // Everything the player sees, hears and feels that isn't a rule or a pose: element effects, flashes, screen shake,
+    // gamepad rumble, the rhythm's sounds and the sprint FOV kick. Nothing here changes the fight. (The body's
+    // martial-arts motion comes from the procedural animator: PlayerController feeds it through PlayerAnimationFeed.)
     //
     // PlayerController owns one. It passes in the combat model's events (moments: a strike goes active, a guard
     // goes up, a hit lands) and calls Tick every frame for looks that simply follow a state (i-frame shimmer,
     // stagger dimming, charge glow, death). Following the state for those means a look can never get stuck on,
     // whatever order things happened in. All the numbers come from PlayerFeedbackSettings, read live.
     //
-    // Fire follows each move's EffectKey (data): a burst from the fist, a cone for Phoenix Palm, a column for
-    // the launcher, a lash for the Fire Whip, a ring for the Flame Wheel, a slam for the tornado and axe kicks,
-    // with flames on the striking limb and a trail through the active frames. Every effect is sized from the
-    // move's Range and ArcDegrees, so what you see is what can hit.
+    // Every move is drawn in its own element (the event's Element: a Fire Blast in flight after a switch is still fire):
+    // ElementMoveEffects picks the shape from the move's EffectKey (data), ElementVfx draws it as fire, water, earth or
+    // air, sized from the move's Range and ArcDegrees, so what you see is what can hit. Fire looks exactly as it did
+    // before Build 05. Build 05 adds the rhythm (a ring and a chime on the beat), the element switch (the new element
+    // washes over the body), the MIX accent, slip-in afterimages and the danger sense's rumble ticks.
     public sealed class PlayerFeedback
     {
         readonly Transform body;
         readonly HumanoidBody rig;
         readonly Combatant fighter;
         readonly PlayerRumble rumble = new PlayerRumble();
+        readonly ElementMoveEffects moveEffects = new ElementMoveEffects();
+        RhythmAudio rhythmAudio;
 
         FireVfxHandle chargeGlow;
         FireVfxHandle strikeTrail;
         FireVfxHandle limbFlame;
-        FireVfxHandle whip;
         FireVfxHandle leftFootTrail;
         FireVfxHandle rightFootTrail;
         FireVfxHandle leftJet;
         FireVfxHandle rightJet;
+        FireVfxHandle afterimage;
+        FireVfxHandle leftAura;
+        FireVfxHandle rightAura;
         Limb strikeLimb = Limb.RightFist;  // the current move's striking limb
+        ElementId attackElement = ElementId.Fire;   // the current move's element
+        int subHitsSeen;                  // active windows opened so far by the current move (multi-hit moves)
+        int mixAccentInstance;            // the switch strike's MoveInstanceId: its first landed hit gets the MIX accent
+        int finisherSoundFrame = -1;      // a perfect string and a MIX finisher in the same frame chime once
         bool charging;
         bool readyCueDone;                // the "get ready" cue has played (or been skipped) for the charge in progress
         bool plungeLandedThisFrame;
@@ -48,6 +57,16 @@ namespace VaatusRevenge
         // Set every frame by PlayerController: false while the player is on keyboard and mouse, dead or paused.
         // Rumble is then skipped, and any buzz already running is stopped.
         public bool RumbleAllowed { get; set; }
+
+        // The rhythm's sounds (created on first use in play mode; null in edit mode). The tutorial chimes with it too.
+        public RhythmAudio Audio
+        {
+            get
+            {
+                if (rhythmAudio == null && Application.isPlaying && body != null) rhythmAudio = new RhythmAudio(body.gameObject);
+                return rhythmAudio;
+            }
+        }
 
         // Just the rumble (the game lost focus): the effects on screen carry on.
         public void StopRumble()
@@ -68,8 +87,10 @@ namespace VaatusRevenge
             {
                 case PlayerEventType.AttackStarted: AttackStarted(in e, model, s); break;
                 case PlayerEventType.AttackActiveStart: ActiveStarted(in e, s); break;
-                case PlayerEventType.AttackActiveEnd: StopStrikeTrail(); break;
-                case PlayerEventType.ProjectileLaunched: FireVfx.Muzzle(e.Origin.ToUnity(), e.Direction.ToUnity()); break;
+                case PlayerEventType.AttackActiveEnd: ActiveEnded(in e); break;
+                case PlayerEventType.ProjectileLaunched:
+                    ElementVfx.Muzzle(ElementOf(in e, model), e.Origin.ToUnity(), e.Direction.ToUnity());
+                    break;
                 case PlayerEventType.PlungeImpact: PlungeImpact(in e, s); break;
                 case PlayerEventType.AttackEnded:
                     StopStrikeTrail();
@@ -81,15 +102,16 @@ namespace VaatusRevenge
                 case PlayerEventType.DodgeEnded:
                     StopDodgeTrails();
                     StopJets();
+                    StopAfterimage();
                     break;
-                case PlayerEventType.PerfectDodge: PerfectDodge(s); break;
-                case PlayerEventType.Jumped: FireVfx.Burst(FootPosition(s), Vector3.down, s.JumpBurstScale); break;
+                case PlayerEventType.PerfectDodge: PerfectDodge(ElementOf(in e, model), s); break;
+                case PlayerEventType.Jumped: ElementVfx.Burst(model.ActiveElement, FootPosition(s), Vector3.down, s.JumpBurstScale); break;
                 case PlayerEventType.Landed:
                     if (!plungeLandedThisFrame && e.Amount >= s.HardLandingSpeed) Pulse(s.HardLanding);
                     break;
                 case PlayerEventType.Blocked: Blocked(in e, s); break;
                 case PlayerEventType.GuardBroken: GuardBroken(in e, s); break;
-                case PlayerEventType.Deflected: Deflected(in e, s); break;
+                case PlayerEventType.Deflected: Deflected(in e, ElementOf(in e, model), s); break;
                 case PlayerEventType.HealApplied: HealApplied(s); break;
                 case PlayerEventType.HealFailed: Flash(s.EmptyFlaskFlashColor, s.EmptyFlaskFlashTime); break;
                 case PlayerEventType.Damaged: Damaged(in e, s); break;
@@ -99,17 +121,34 @@ namespace VaatusRevenge
                     if (model.State == PlayerState.Dead) OnKilled();
                     break;
                 case PlayerEventType.Respawned: ResetAll(); break;
+                // Build 05: rhythm, switching, MIX, danger sense.
+                case PlayerEventType.BeatJudged: BeatJudged(in e, s); break;
+                case PlayerEventType.ComboHit: ComboHit(in e, model, s); break;
+                case PlayerEventType.PerfectString:
+                    Flash(s.PerfectStringFlashColor, s.PerfectStringFlashTime);
+                    PlayFinisherSound(s);
+                    break;
+                case PlayerEventType.MixFinisher: MixFinisher(in e, s); break;
+                case PlayerEventType.ElementSwitched: ElementSwitched(in e, s); break;
+                case PlayerEventType.DangerWarning: Pulse(s.DangerTick); break;
+                case PlayerEventType.DangerNow: Pulse(s.DangerNowTick); break;
                 // Stagger, sprint (FOV), i-frames and charge level are drawn from the model's state in Tick.
             }
         }
 
-        // Our attack touched somebody: a spark where it connected, coloured by what happened.
+        // Our attack touched somebody: a spark where it connected, coloured by what happened (a clean hit in the
+        // element's colour, with a little of the element thrown off).
         public void OnHitReport(in HitReport report, PlayerFeedbackSettings s)
+        {
+            OnHitReport(in report, ElementId.Fire, s);
+        }
+
+        public void OnHitReport(in HitReport report, ElementId element, PlayerFeedbackSettings s)
         {
             switch (report.Result.Outcome)
             {
                 case HitOutcome.Hit:
-                    FireVfx.HitSpark(report.Point, s.HitSparkColor);
+                    ElementVfx.HitSpark(element, report.Point, HitSparkColor(element, s));
                     break;
                 case HitOutcome.Blocked:
                 case HitOutcome.GuardBroken:
@@ -163,6 +202,8 @@ namespace VaatusRevenge
             rumble.Stop();
             StopEffects();
             strikeLimb = Limb.RightFist;
+            attackElement = ElementId.Fire;
+            mixAccentInstance = 0;
             ClearFov();
             if (rig != null) rig.ResetLook();
         }
@@ -174,6 +215,16 @@ namespace VaatusRevenge
             rumble.Stop();
             StopEffects();
             ClearFov();
+            if (rhythmAudio != null) rhythmAudio.Stop();
+        }
+
+        // The player is being destroyed: free the sounds made in code.
+        public void Dispose()
+        {
+            Shutdown();
+            if (rhythmAudio == null) return;
+            rhythmAudio.Dispose();
+            rhythmAudio = null;
         }
 
         // ---------------------------------------------------------------- attacks
@@ -182,86 +233,58 @@ namespace VaatusRevenge
         {
             MoveData move = e.Move;
             if (move == null) return;
+            attackElement = ElementOf(in e, model);
+            subHitsSeen = 0;
+            if (e.IsSwitchStrike) mixAccentInstance = e.MoveInstanceId;
             if (e.IsCounter) Flash(s.CounterFlashColor, s.CounterFlashTime);
             strikeLimb = move.Limb == Limb.Weapon ? Limb.RightFist : move.Limb;
             PlayerStrikePoses p = s.Poses;
             if (e.AttackKind == PlayerAttackKind.ZipStrike) ZipDashStarted(move, s);
             if (rig == null || p == null || !p.LimbFlames || e.AttackKind == PlayerAttackKind.Plunge) return;
-            // The striking fist or foot catches fire as it winds up and burns until the strike is over. Moves with a
-            // big effect of their own keep it shorter.
+            // The striking fist or foot takes on the element as it winds up and keeps it until the strike is over. Moves with
+            // a big effect of their own keep it shorter.
             float duration = move.Startup + move.Active;
-            if (HasBigEffect(move)) duration *= p.BigEffectLimbFlameShare;
+            if (ElementMoveEffects.HasBigEffect(move)) duration *= p.BigEffectLimbFlameShare;
             StopLimbFlame();
-            if (duration > 0f) limbFlame = FireVfx.LimbFlame(rig.GetAnchor(strikeLimb), duration);
+            if (duration > 0f) limbFlame = ElementVfx.LimbAura(attackElement, rig.GetAnchor(strikeLimb), duration);
         }
 
-        // The strike can hit now: fire in the shape of the move's EffectKey, sized by its reach, and a flame trail
-        // on the striking limb through the active frames.
+        // The strike can hit now: the move's effect in its element, and a trail on the striking limb through the active
+        // frames (a flurry's later sub-hits only burst: the trail already runs through all of them).
         void ActiveStarted(in PlayerEvent e, PlayerFeedbackSettings s)
         {
             MoveData move = e.Move;
             if (move == null) return;
-            bool faJin = e.ChargeTier == ChargeTier.FaJin;
-            Vector3 origin = e.Origin.ToUnity();
-            Vector3 direction = e.Direction.ToUnity();
+            bool first = ElementMoveEffects.IsFirstSubHit(in e);
+            subHitsSeen = first ? 1 : subHitsSeen + 1;
+            ElementId element = e.Element != ElementId.None ? e.Element : attackElement;
             Transform limb = rig != null ? rig.GetAnchor(strikeLimb) : body;
-            PlayerStrikePoses p = s.Poses;
-            switch (move.EffectKey)
-            {
-                case EffectKeys.Cone:
-                    // Drawn exactly as long as it hits: a fa jin cone is stronger, not longer.
-                    FireVfx.Cone(origin, direction, move.Range, move.ArcDegrees);
-                    break;
-                case EffectKeys.Pillar:
-                    // The rising kick throws a burst up along the kick; the column of fire itself rises under the
-                    // enemy when it's actually launched (EnemyRigPresenter.OnLaunched), so there's only ever one.
-                    FireVfx.Burst(limb.position, direction, move.Range * s.BurstScalePerMetre * 0.5f);
-                    break;
-                case EffectKeys.Whip:
-                    StopWhip();
-                    if (rig != null)
-                        whip = FireVfx.Whip(rig.GetAnchor(Limb.RightFist), origin, direction, move.Range, move.ArcDegrees,
-                            move.Active + (p != null ? p.WhipLinger : 0.1f));
-                    break;
-                case EffectKeys.Wheel:
-                    FireVfx.Wheel(body.position, move.Range);
-                    break;
-                case EffectKeys.Slam:
-                    // A downward burst from the kicking foot. The ring of fire on the floor appears where and when the
-                    // enemy actually lands (EnemyRigPresenter.OnKnockedDown), not under the player.
-                    FireVfx.Burst(limb.position, Vector3.down, move.Range * s.BurstScalePerMetre * 0.5f);
-                    break;
-                case EffectKeys.Trail:
-                    FireVfx.Burst(limb.position, direction, move.Range * s.BurstScalePerMetre * 0.5f);
-                    // A wide spinning kick also throws a low ring of fire.
-                    if (move.ArcDegrees >= 180f && s.WideArcRingShare > 0f) FireVfx.Ring(body.position, move.Range * s.WideArcRingShare);
-                    break;
-                default:
-                {
-                    float scale = move.Range * s.BurstScalePerMetre * (faJin ? s.FaJinBurstMultiplier : 1f);
-                    FireVfx.Burst(origin, direction, scale);
-                    break;
-                }
-            }
-            StartStrikeTrail(strikeLimb, move.Active, s);
-            if (faJin) Pulse(s.FaJinRelease);
+            float burst = e.AttackKind == PlayerAttackKind.DodgeStrike ? Mathf.Max(0f, s.DodgeStrikeBurstMultiplier) : 1f;
+            if (moveEffects.ActiveStarted(in e, element, body, limb, rig, s, burst)) Pulse(s.StompShake);
+            if (!first) return;
+            StartStrikeTrail(strikeLimb, move.Active, element, s);
+            if (e.ChargeTier == ChargeTier.FaJin) Pulse(s.FaJinRelease);
         }
 
-        static bool HasBigEffect(MoveData move)
+        // A single-hit move's trail stops with its active frames; a flurry's runs until its last sub-hit is over.
+        void ActiveEnded(in PlayerEvent e)
         {
-            string key = move.EffectKey;
-            return key == EffectKeys.Cone || key == EffectKeys.Whip || key == EffectKeys.Wheel;
+            MoveData move = e.Move;
+            if (move != null && move.HitCount > 1 && subHitsSeen < move.HitCount) return;
+            StopStrikeTrail();
         }
 
         void PlungeImpact(in PlayerEvent e, PlayerFeedbackSettings s)
         {
             plungeLandedThisFrame = true;
             StopStrikeTrail();
+            ElementId element = e.Element != ElementId.None ? e.Element : attackElement;
             Vector3 feet = e.Origin.ToUnity();
-            FireVfx.Ring(feet, e.Radius);
-            if (rig != null) FireVfx.Burst(rig.GetAnchor(Limb.RightFoot).position, Vector3.down, Mathf.Max(0.5f, e.Radius * 0.3f));
-            if (s.PlungeExplosionShare > 0f) FireVfx.Explosion(feet + Vector3.up * s.EffectFootHeight, e.Radius * s.PlungeExplosionShare);
+            ElementVfx.Ring(element, feet, e.Radius);
+            if (rig != null) ElementVfx.Burst(element, rig.GetAnchor(Limb.RightFoot).position, Vector3.down, Mathf.Max(0.5f, e.Radius * 0.3f));
+            if (s.PlungeExplosionShare > 0f) ElementVfx.Explosion(element, feet + Vector3.up * s.EffectFootHeight, e.Radius * s.PlungeExplosionShare);
             Pulse(s.PlungeLanding);
+            if (element == ElementId.Earth) Pulse(s.StompShake);   // an earthquake drop shakes the ground
         }
 
         void UpdateCharge(PlayerCombatModel model, PlayerFeedbackSettings s)
@@ -276,7 +299,8 @@ namespace VaatusRevenge
                     if (rig != null)
                     {
                         MoveData heavy = model.CurrentMove;
-                        chargeGlow = FireVfx.ChargeGlow(rig.GetAnchor(ChamberLimb(heavy != null ? heavy.Limb : Limb.RightFist)));
+                        Transform anchor = rig.GetAnchor(ChamberLimb(heavy != null ? heavy.Limb : Limb.RightFist));
+                        chargeGlow = ElementVfx.ChargeGlow(model.ActiveElement, anchor);
                     }
                 }
                 chargeGlow.SetLevel(level);
@@ -314,53 +338,112 @@ namespace VaatusRevenge
             Flash(s.ReadyCueFlashColor, s.ReadyCueFlashTime);
         }
 
+        // ---------------------------------------------------------------- rhythm, switching, MIX
+
+        // An on-beat press: the chime and a tick you can feel (the HUD's beat ring bursts too).
+        void BeatJudged(in PlayerEvent e, PlayerFeedbackSettings s)
+        {
+            if (e.Grade != BeatGrade.OnBeat) return;
+            PlaySound(SoundKind.Chime, s);
+            Pulse(s.OnBeatTick);
+        }
+
+        // Every clean hit of the combo ticks (the metronome); a hit from an on-beat press flashes a white-gold ring; the
+        // first hit of a switch strike bursts bigger in the new element (the MIX accent).
+        void ComboHit(in PlayerEvent e, PlayerCombatModel model, PlayerFeedbackSettings s)
+        {
+            PlaySound(SoundKind.Tick, s);
+            Vector3 at = e.Origin.ToUnity();
+            ElementId element = ElementOf(in e, model);
+            if (e.Grade == BeatGrade.OnBeat || e.Grade == BeatGrade.Auto)
+            {
+                ElementVfx.BeatAccent(at, s.BeatAccentScale, s.BeatAccentColor, s.BeatAccentTime);
+                Flash(s.OnBeatFlashColor, s.OnBeatFlashTime);
+            }
+            if (mixAccentInstance == 0 || e.MoveInstanceId != mixAccentInstance) return;
+            mixAccentInstance = 0;
+            float scale = Mathf.Max(0f, s.MixAccentScale);
+            ElementVfx.Burst(element, at, body.forward, scale * 0.6f);
+            ElementVfx.BeatAccent(at, s.BeatAccentScale * scale, Bright(ElementVfx.HudColor(element)), s.BeatAccentTime * scale);
+        }
+
+        void MixFinisher(in PlayerEvent e, PlayerFeedbackSettings s)
+        {
+            PlayFinisherSound(s);
+            Pulse(s.MixFinisherPulse);
+            ElementVfx.BeatAccent(ChestPosition(), s.BeatAccentScale * (1f + 0.25f * e.Count), Bright(ElementVfx.HudColor(e.Element)),
+                s.BeatAccentTime * 2f);
+        }
+
+        // The new element washes over the body from a ring at the feet and clings to both fists a moment; the body flashes
+        // its colour. (The stance change is the animator's; the HUD wheel flashes on the same frame.)
+        void ElementSwitched(in PlayerEvent e, PlayerFeedbackSettings s)
+        {
+            ElementId element = e.Element;
+            ElementVfx.Switch(e.PreviousElement, element, ChestPosition(), body.position);
+            StopAuras();
+            if (rig != null && s.SwitchAuraTime > 0f)
+            {
+                leftAura = ElementVfx.LimbAura(element, rig.GetAnchor(Limb.LeftFist), s.SwitchAuraTime);
+                rightAura = ElementVfx.LimbAura(element, rig.GetAnchor(Limb.RightFist), s.SwitchAuraTime);
+            }
+            Flash(ElementVfx.HudColor(element), s.SwitchFlashTime);
+            PlaySound(SoundKind.Switch, s);
+            Pulse(s.SwitchPulse);
+        }
+
         // ---------------------------------------------------------------- defence and movement
 
         void DodgeStarted(in PlayerEvent e, PlayerCombatModel model, PlayerFeedbackSettings s)
         {
+            ElementId element = ElementOf(in e, model);
             Vector3 direction = e.Direction.ToUnity();
-            // Flame Step: fire jets from the feet push you the other way.
-            FireVfx.Burst(FootPosition(s), -direction, s.DodgeBurstScale);
+            // A push from the feet the other way (Flame Step's jets of fire; a splash, a scuff of dust, a gust).
+            ElementVfx.Burst(element, FootPosition(s), -direction, s.DodgeBurstScale);
             DodgeProfile dodge = model.MoveSet != null ? model.MoveSet.Dodge : null;
             float duration = dodge != null ? dodge.Duration : 0f;
             StopDodgeTrails();
+            StopAfterimage();
             if (rig == null) return;
             if (e.InAir)
             {
                 AerialSettings aerial = model.MoveSet != null ? model.MoveSet.Aerial : null;
-                StartJets(-direction, aerial != null ? aerial.AirDashDuration : duration, s);
+                StartJets(-direction, aerial != null ? aerial.AirDashDuration : duration, element, s);
                 return;
             }
             if (s.DodgeTrails)
             {
-                leftFootTrail = FireVfx.Trail(rig.GetAnchor(Limb.LeftFoot), duration);
-                rightFootTrail = FireVfx.Trail(rig.GetAnchor(Limb.RightFoot), duration);
+                leftFootTrail = ElementVfx.Trail(element, rig.GetAnchor(Limb.LeftFoot), duration);
+                rightFootTrail = ElementVfx.Trail(element, rig.GetAnchor(Limb.RightFoot), duration);
             }
+            // Slipping in toward the enemy leaves copies of the body behind: you closed the gap faster than the eye.
+            if (e.DodgeKind == DodgeKind.SlipIn && s.SlipInAfterimages && fighter != null && duration > 0f)
+                afterimage = ElementVfx.Afterimage(element, fighter.AimPoint, duration);
         }
 
-        // Flame Step Strike: jets of fire from both feet carry you across the gap for the whole dash.
+        // The zip strike's dash: a push from both feet carries you across the gap for the whole dash.
         void ZipDashStarted(MoveData move, PlayerFeedbackSettings s)
         {
-            FireVfx.Burst(FootPosition(s), -body.forward, s.DodgeBurstScale);
+            ElementVfx.Burst(attackElement, FootPosition(s), -body.forward, s.DodgeBurstScale);
             StopDodgeTrails();
-            StartJets(-body.forward, move.Startup + move.Active, s);
+            StartJets(-body.forward, move.Startup + move.Active, attackElement, s);
         }
 
-        void StartJets(Vector3 direction, float duration, PlayerFeedbackSettings s)
+        void StartJets(Vector3 direction, float duration, ElementId element, PlayerFeedbackSettings s)
         {
             StopJets();
             PlayerStrikePoses p = s.Poses;
             if (rig == null || !(duration > 0f) || (p != null && !p.FootJets)) return;
-            leftJet = FireVfx.FootJet(rig.GetAnchor(Limb.LeftFoot), direction, duration);
-            rightJet = FireVfx.FootJet(rig.GetAnchor(Limb.RightFoot), direction, duration);
+            leftJet = ElementVfx.FootJet(element, rig.GetAnchor(Limb.LeftFoot), direction, duration);
+            rightJet = ElementVfx.FootJet(element, rig.GetAnchor(Limb.RightFoot), direction, duration);
         }
 
-        void PerfectDodge(PlayerFeedbackSettings s)
+        void PerfectDodge(ElementId element, PlayerFeedbackSettings s)
         {
             Flash(s.PerfectDodgeFlashColor, s.PerfectDodgeFlashTime);
             Vector3 chest = ChestPosition();
-            FireVfx.Burst(chest, body.forward, s.PerfectDodgeBurstScale);
-            FireVfx.HitSpark(chest, s.PerfectDodgeFlashColor);
+            ElementVfx.Burst(element, chest, body.forward, s.PerfectDodgeBurstScale);
+            ElementVfx.HitSpark(element, chest, s.PerfectDodgeFlashColor);
             Pulse(s.PerfectDodge);
         }
 
@@ -377,12 +460,12 @@ namespace VaatusRevenge
             Pulse(s.GuardBreak);
         }
 
-        void Deflected(in PlayerEvent e, PlayerFeedbackSettings s)
+        void Deflected(in PlayerEvent e, ElementId element, PlayerFeedbackSettings s)
         {
             Vector3 toAttacker = ToAttacker(e.Direction);
             Vector3 contact = ChestPosition() + toAttacker * BodyRadius;
-            FireVfx.HitSpark(contact, s.DeflectSparkColor);
-            FireVfx.Burst(contact, toAttacker, s.DeflectBurstScale);
+            ElementVfx.HitSpark(element, contact, s.DeflectSparkColor);
+            ElementVfx.Burst(element, contact, toAttacker, s.DeflectBurstScale);
             Flash(s.DeflectFlashColor, s.DeflectFlashTime);
             Pulse(s.Deflect);
         }
@@ -410,6 +493,30 @@ namespace VaatusRevenge
 
         // ---------------------------------------------------------------- helpers
 
+        enum SoundKind { Chime, Tick, Finisher, Switch }
+
+        void PlaySound(SoundKind kind, PlayerFeedbackSettings s)
+        {
+            if (!s.RhythmSounds) return;
+            RhythmAudio audio = Audio;
+            if (audio == null) return;
+            switch (kind)
+            {
+                case SoundKind.Chime: audio.PlayChime(s.ChimeVolume); break;
+                case SoundKind.Tick: audio.PlayTick(s.HitTickVolume); break;
+                case SoundKind.Finisher: audio.PlayFinisher(s.FinisherVolume); break;
+                default: audio.PlaySwitch(s.SwitchVolume); break;
+            }
+        }
+
+        void PlayFinisherSound(PlayerFeedbackSettings s)
+        {
+            int frame = Time.frameCount;
+            if (frame == finisherSoundFrame) return;
+            finisherSoundFrame = frame;
+            PlaySound(SoundKind.Finisher, s);
+        }
+
         void Pulse(FeedbackPulse pulse)
         {
             if (pulse == null) return;
@@ -419,21 +526,39 @@ namespace VaatusRevenge
 
         void Flash(Color color, float duration)
         {
-            if (rig != null) rig.Flash(color, duration);
+            if (rig != null && duration > 0f) rig.Flash(color, duration);
         }
 
-        void StartStrikeTrail(Limb limb, float duration, PlayerFeedbackSettings s)
+        // The move's element from the event, else the element in hand (events from before Build 05 carry none).
+        static ElementId ElementOf(in PlayerEvent e, PlayerCombatModel model)
+        {
+            if (e.Element != ElementId.None) return e.Element;
+            return model != null ? model.ActiveElement : ElementId.Fire;
+        }
+
+        static Color HitSparkColor(ElementId element, PlayerFeedbackSettings s)
+        {
+            return element == ElementId.Fire || element == ElementId.None ? s.HitSparkColor : ElementVfx.StyleOf(element).HitSparkColor;
+        }
+
+        // A HUD colour lifted for bloom (accent rings).
+        static Color Bright(Color color)
+        {
+            return new Color(color.r * 2.2f, color.g * 2.2f, color.b * 2.2f, 1f);
+        }
+
+        void StartStrikeTrail(Limb limb, float duration, ElementId element, PlayerFeedbackSettings s)
         {
             StopStrikeTrail();
             if (!s.StrikeTrails || !(duration > 0f) || rig == null) return;
             if (limb == Limb.BothFists)
             {
                 // Both palms: a trail on each hand.
-                strikeTrail = FireVfx.Trail(rig.GetAnchor(Limb.RightFist), duration);
-                FireVfx.Trail(rig.GetAnchor(Limb.LeftFist), duration);
+                strikeTrail = ElementVfx.Trail(element, rig.GetAnchor(Limb.RightFist), duration);
+                ElementVfx.Trail(element, rig.GetAnchor(Limb.LeftFist), duration);
                 return;
             }
-            strikeTrail = FireVfx.Trail(rig.GetAnchor(limb), duration);
+            strikeTrail = ElementVfx.Trail(element, rig.GetAnchor(limb), duration);
         }
 
         void StopStrikeTrail()
@@ -446,12 +571,6 @@ namespace VaatusRevenge
         {
             limbFlame.Stop();
             limbFlame = FireVfxHandle.None;
-        }
-
-        void StopWhip()
-        {
-            whip.Stop();
-            whip = FireVfxHandle.None;
         }
 
         void StopJets()
@@ -470,6 +589,20 @@ namespace VaatusRevenge
             rightFootTrail = FireVfxHandle.None;
         }
 
+        void StopAfterimage()
+        {
+            afterimage.Stop();
+            afterimage = FireVfxHandle.None;
+        }
+
+        void StopAuras()
+        {
+            leftAura.Stop();
+            rightAura.Stop();
+            leftAura = FireVfxHandle.None;
+            rightAura = FireVfxHandle.None;
+        }
+
         void StopChargeGlow()
         {
             chargeGlow.Stop();
@@ -482,9 +615,11 @@ namespace VaatusRevenge
         {
             StopStrikeTrail();
             StopLimbFlame();
-            StopWhip();
+            moveEffects.Stop();
             StopJets();
             StopDodgeTrails();
+            StopAfterimage();
+            StopAuras();
             StopChargeGlow();
         }
 

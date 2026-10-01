@@ -8,7 +8,8 @@ namespace VaatusRevenge
     // procedural animator does, from EnemyAnimationFeed). Every attack glows in its telegraph colour for its whole
     // wind-up (yellow = normal, red = heavy or delayed, violet = the break-out), building up and flaring just
     // before the strike; the blade leaves a swish trail as it swings; hits flash, staggers flash and dim, deaths
-    // flash; a launcher's victim burns in a column of fire and trails embers while it tumbles.
+    // flash; a launcher's victim rises on a column of the element that launched it (fire, a water spout, a pillar
+    // of rock, an updraft) and trails that element while it tumbles.
     //
     // The glow's build-up is the timing cue: players learn to dodge or deflect on the flare rather than on the
     // pose, which is what makes the delayed thrust (a held pose that baits panic dodges) fair.
@@ -122,23 +123,34 @@ namespace VaatusRevenge
             if (body != null) body.SetStaggered(false);
         }
 
-        // Thrown up by a launcher: a column of fire under it and embers trailing it while it tumbles.
+        // Thrown up by a launcher: a column of the element that launched it under it (fire, a water spout, a pillar of
+        // rock, an updraft) and that element trailing it while it tumbles (embers, droplets, dust, wisps).
         public void OnLaunched(Vector3 feet, float height)
+        {
+            OnLaunched(feet, height, ElementId.Fire);
+        }
+
+        public void OnLaunched(Vector3 feet, float height, ElementId element)
         {
             attackRunning = false;
             StopTelegraph();
             StopSwish(false);
-            FireVfx.Pillar(feet, height);
+            ElementVfx.Pillar(element, feet, height);
             StopEmbers();
-            if (body != null) embers = FireVfx.EmberTrail(body.ChestAnchor, 0f);
+            if (body != null) embers = ElementVfx.LaunchTrail(element, body.ChestAnchor, 0f);
         }
 
-        // Landed from a juggle or a slam: a downward burst and a ring of fire racing out where it hits the floor,
-        // at the moment it hits (the slam kick itself only throws fire down from the foot).
+        // Landed from a juggle or a slam: a downward burst and a ring racing out where it hits the floor, at the moment
+        // it hits (the slam itself only throws the element down from the limb), in the element that put it there.
         public void OnKnockedDown(Vector3 feet, float ringRadius)
         {
+            OnKnockedDown(feet, ringRadius, ElementId.Fire);
+        }
+
+        public void OnKnockedDown(Vector3 feet, float ringRadius, ElementId element)
+        {
             StopEmbers();
-            FireVfx.Slam(feet + Vector3.up * KnockdownBurstHeight, ringRadius);
+            ElementVfx.Slam(element, feet + Vector3.up * KnockdownBurstHeight, ringRadius);
         }
 
         const float KnockdownBurstHeight = 0.3f;   // metres above the feet the burst starts, so it reads as hitting the floor

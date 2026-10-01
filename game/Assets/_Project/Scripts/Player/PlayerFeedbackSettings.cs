@@ -105,6 +105,58 @@ namespace VaatusRevenge
         [Tooltip("Foot effects (dash jets, jump puff, landing burst) start this far above the feet, in metres.")]
         public float EffectFootHeight = 0.2f;
 
+        [Header("Elements (each move's effect is drawn in its element: Water, Earth and Air since Build 05)")]
+        [Tooltip("Each later hit of a flurry (Air's many-hit palms) bursts from the limb at this share of a normal burst; the "
+                 + "first hit draws the move's whole effect.")]
+        [Range(0f, 1f)] public float SubHitBurstShare = 0.45f;
+        [Tooltip("The dodge strike's burst is this many times bigger: the counter out of a dodge should look like one.")]
+        public float DodgeStrikeBurstMultiplier = 1.2f;
+        [Tooltip("Earth's stomps and quakes shake the ground under you.")]
+        public FeedbackPulse StompShake = new FeedbackPulse(0.12f, 0.18f, 0.45f, 0.2f, 0.12f);
+        [Tooltip("A slip-in dodge leaves see-through afterimages of the body behind it.")]
+        public bool SlipInAfterimages = true;
+
+        [Header("Element switch (RB + a face button)")]
+        [Tooltip("Seconds the new element clings to both fists after a switch.")]
+        public float SwitchAuraTime = 0.4f;
+        [Tooltip("The body flashes the new element's HUD colour for this long (0 = no flash).")]
+        public float SwitchFlashTime = 0.12f;
+        [Tooltip("A short buzz on a switch.")]
+        public FeedbackPulse SwitchPulse = new FeedbackPulse(0f, 0f, 0f, 0.25f, 0.05f);
+        [Tooltip("The first hit after a mid-combo switch (a switch strike that lands) bursts this many times bigger, in "
+                 + "the new element's colour: the MIX accent.")]
+        public float MixAccentScale = 1.4f;
+
+        [Header("Rhythm feedback (hits on the beat; sounds are made in code, no audio files)")]
+        [Tooltip("Play the rhythm sounds: a chime for an on-beat press, a tick for every combo hit, a rising three-note "
+                 + "finisher for a perfect string or a MIX finisher, a whoosh for a switch.")]
+        public bool RhythmSounds = true;
+        [Range(0f, 1f)] public float ChimeVolume = 0.45f;
+        [Range(0f, 1f)] public float HitTickVolume = 0.25f;
+        [Range(0f, 1f)] public float FinisherVolume = 0.5f;
+        [Range(0f, 1f)] public float SwitchVolume = 0.35f;
+        [Tooltip("The thin ring that flashes round an on-beat hit (HDR: it blooms).")]
+        public Color BeatAccentColor = new Color(2.4f, 2.1f, 1.3f, 1f);
+        [Tooltip("Seconds the on-beat ring lasts.")]
+        public float BeatAccentTime = 0.12f;
+        public float BeatAccentScale = 1f;
+        [Tooltip("The body flashes on an on-beat hit (0 time = no flash).")]
+        public Color OnBeatFlashColor = new Color(1f, 0.9f, 0.55f);
+        public float OnBeatFlashTime = 0.06f;
+        [Tooltip("A light tick you can feel for an on-beat press.")]
+        public FeedbackPulse OnBeatTick = new FeedbackPulse(0f, 0f, 0f, 0.3f, 0.03f);
+        [Tooltip("Every follow-up of the string was on the beat: the finisher flashes this colour.")]
+        public Color PerfectStringFlashColor = new Color(1f, 0.85f, 0.4f);
+        public float PerfectStringFlashTime = 0.2f;
+        [Tooltip("A finisher with MIX 2 or more (several elements landed in the combo).")]
+        public FeedbackPulse MixFinisherPulse = new FeedbackPulse(0.1f, 0.16f, 0.4f, 0.6f, 0.12f);
+
+        [Header("Danger sense (the mark over your head; drawn by the HUD)")]
+        [Tooltip("A tick when the mark appears.")]
+        public FeedbackPulse DangerTick = new FeedbackPulse(0f, 0f, 0.15f, 0.25f, 0.04f);
+        [Tooltip("A sharper tick when it turns white: press now.")]
+        public FeedbackPulse DangerNowTick = new FeedbackPulse(0f, 0f, 0f, 0.4f, 0.03f);
+
         [Header("Camera")]
         [Tooltip("Widen the view while sprinting to sell speed (by the camera tuning's SprintFovBoost degrees).")]
         public bool SprintFovBoost = true;

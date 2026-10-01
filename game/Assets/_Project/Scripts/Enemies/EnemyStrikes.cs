@@ -16,7 +16,9 @@ namespace VaatusRevenge
     // its weapon, and a stagger for itself when its swing was deflected. A deflected BOLT doesn't stagger the
     // archer: it's standing far away and the deflect only snuffed the bolt.
     // Danger sense: every brain event is passed to DangerSenseRelay (RelayDanger), which tells the player's model
-    // what is coming and when; the model raises the warnings at the player's own lead times.
+    // what is coming and when; the model raises the warnings at the player's own lead times. A bolt in flight re-times
+    // its warning every frame from where it and the player really are (FireProjectile), so dodging sideways or closing
+    // in keeps the white "now" cue honest.
     public sealed class EnemyStrikes
     {
         // More per-attack bolt handlers than this means the attack list was edited a lot while playing: start over.
@@ -104,13 +106,29 @@ namespace VaatusRevenge
             if (model != null) model.CancelIncomingStrikes(relayedAttackerId);
         }
 
+        // The bolt carries what the player's danger sense needs to re-time its warning every frame while it flies (the
+        // relay's estimate at the launch assumes the player stands still).
         public void LaunchBolt(in EnemyEvent e, EnemyBrain brain, EnemyFighter owner)
         {
             MoveData move = e.Move;
             if (brain == null || move == null) return;
             BoltHitHandler handler = HandlerFor(owner, e.Attack);
+            Vector3 feet = owner != null ? owner.transform.position : e.Origin.ToUnity();
+            PlayerController player = PlayerController.Instance;
+            Vector3 toPlayer = player != null ? player.transform.position - feet : e.Direction.ToUnity();
+            toPlayer.y = 0f;
+            EnemyAttackData attack = e.Attack;
+            var danger = new IncomingStrike
+            {
+                AttackerId = brain.OwnerId, AttackKey = e.AttackId, HitIndex = e.HitIndex,
+                AttackerFeet = feet.ToNumerics(),
+                StrikeForward = (toPlayer.sqrMagnitude > 1e-6f ? toPlayer.normalized : Vector3.zero).ToNumerics(),
+                Parryable = move.Parryable, Unblockable = move.Unblockable, Ranged = true,
+                Hidden = attack != null && attack.HideDangerSense,
+                LeadScale = attack != null ? attack.DangerLeadScale : 1f
+            };
             FireProjectile.Launch(e.Origin.ToUnity(), e.Direction.ToUnity(), move.Projectile, brain.BuildDamage(in e),
-                ProjectileVisual.Bolt, handler.Callback);
+                ProjectileVisual.Bolt, handler.Callback, in danger);
         }
 
         // Called by a bolt when it touches the player (FireProjectile's onHit).

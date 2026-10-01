@@ -156,6 +156,11 @@ namespace VaatusRevenge
             return runner != null && runner.IsAlive(handle);
         }
 
+        // The shared pool for ElementVfx (every element draws through it): created on first use, null when it can't
+        // render. ExistingRunner never creates it.
+        internal static FireVfxRunner Runner => GetRunner();
+        internal static FireVfxRunner ExistingRunner => runner;
+
         static FireVfxRunner GetRunner()
         {
             if (runner != null) return runner.CanRender ? runner : null;

@@ -82,8 +82,9 @@ namespace VaatusRevenge
         public float EmberTrailLifetime = 0.55f;
 
         [Header("Pools")]
-        [Tooltip("Most effect primitives alive at once; the oldest is recycled beyond this.")]
-        public int MaxPieces = 160;
+        [Tooltip("Most effect primitives alive at once, for all four elements together (rock and droplets lie on the floor a "
+                 + "moment); the oldest is recycled beyond this.")]
+        public int MaxPieces = 256;
         public int MaxTrails = 24;
         public int MaxEmitters = 16;
         public int MaxWhips = 4;
