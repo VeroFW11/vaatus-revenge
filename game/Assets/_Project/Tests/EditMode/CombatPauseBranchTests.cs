@@ -51,6 +51,40 @@ namespace VaatusRevenge.Tests
             Assert.AreEqual(0, d.LastStarted.ChainIndex);
         }
 
+        // Build 05 verify S-07 and J-02: in every element the presses that take the pause branch form one unbroken band (no
+        // single frame in it that plays main hit 3), and RhythmView.PauseReady (the HUD's "now" cue) lights exactly over it.
+        [Test]
+        public void PauseBandHasNoHolesAndTheCueMatchesIt()
+        {
+            foreach (ElementId element in new[] { ElementId.Fire, ElementId.Water, ElementId.Earth, ElementId.Air })
+            {
+                var pause = new System.Collections.Generic.List<int>();
+                var ready = new System.Collections.Generic.List<int>();
+                for (int wait = 0; wait < 90; wait++)
+                {
+                    PlayerDriver d = PlayerDriver.Elements();
+                    if (element != ElementId.Fire)
+                    {
+                        d.Select = element;
+                        d.Step();
+                    }
+                    d.OnBeatString(1);
+                    d.Run(wait);
+                    if (d.Model.Rhythm.PauseReady) ready.Add(wait);
+                    if (d.Model.State != PlayerState.Locomotion && d.Model.State != PlayerState.Attacking) break;
+                    d.Step(Pad.Light);
+                    d.RunUntil(x => x.Started >= 3 || x.Model.State == PlayerState.Locomotion && x.Frame > 400, 60);
+                    if (d.Started >= 3 && d.LastStarted.Branch == ComboBranch.Pause) pause.Add(wait);
+                }
+                Assert.IsNotEmpty(pause, element + ": a pause band");
+                Assert.AreEqual(pause.Count, pause[pause.Count - 1] - pause[0] + 1, element + ": the band has a hole: " + string.Join(",", pause));
+                Assert.IsNotEmpty(ready, element + ": the cue lights");
+                Assert.LessOrEqual(System.Math.Abs(ready[0] - pause[0]), 1, element + ": the cue lights as the band opens");
+                Assert.LessOrEqual(System.Math.Abs(ready[ready.Count - 1] - pause[pause.Count - 1]), 1, element + ": and goes out as it closes");
+                Assert.AreEqual(ready.Count, ready[ready.Count - 1] - ready[0] + 1, element + ": the cue stays lit through the band");
+            }
+        }
+
         [Test]
         public void PauseWorksAfterTheMoveHasEnded()
         {

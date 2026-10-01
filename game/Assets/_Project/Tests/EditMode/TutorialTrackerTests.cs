@@ -568,6 +568,40 @@ namespace VaatusRevenge.Tests
             AssertStepPassed(r, "3");
         }
 
+        // Build 05 verify J-01: doing exactly what step 3's prompt says passes it in every element: X X on the beat, wait
+        // until the circle glows blue (RhythmView.PauseReady), then X X. The prompt must name every press it needs.
+        [TestCase(ElementId.Fire)]
+        [TestCase(ElementId.Water)]
+        [TestCase(ElementId.Earth)]
+        [TestCase(ElementId.Air)]
+        public void Step3PassesDoingExactlyWhatThePromptSays(ElementId element)
+        {
+            var r = new Rig("3");
+            StringAssert.Contains("{X} {X} … wait … {X} {X}", r.T.Step.Prompt, "the prompt teaches X X (wait) X X");
+            if (element != ElementId.Fire)
+            {
+                r.D.Select = element;
+                r.Frame();
+                r.Run(0.5f);
+            }
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                r.OnBeatString(1);                               // X X
+                r.RunUntil(x => x.D.Model.Rhythm.PauseReady, 120);   // ... wait for the blue circle ...
+                int n = r.D.Started + 1;
+                r.Frame(Pad.Light);                              // X
+                r.RunUntilStarted(n);
+                Assert.AreEqual(ComboBranch.Pause, r.D.LastStarted.Branch, element + ": the pause chain");
+                r.PressOnBeat();                                 // X
+                r.RunUntilStarted(n + 1);
+                Assert.IsTrue(r.D.LastStarted.IsFinisher, element + ": X X (wait) X X ends on the pause finisher");
+                r.SettleToLocomotion();
+                r.Breathe(0.6f);
+                r.Run(0.6f);
+            }
+            AssertStepPassed(r, "3");
+        }
+
         [Test]
         public void Step4DodgeKeepsTheComboCompletes()
         {

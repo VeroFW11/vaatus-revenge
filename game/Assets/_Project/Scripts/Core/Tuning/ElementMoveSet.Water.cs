@@ -156,7 +156,7 @@ namespace VaatusRevenge.Core
                 AnimationKey = AnimationKeys.ReturnTide, EffectKey = EffectKeys.Wave,
                 Startup = 0.10f, Active = 0.12f, Recovery = 0.30f,
                 Damage = 12f, PoiseDamage = 6f, GuardStaminaDamage = 12f, Knockback = 0.6f, Hitstop = 0.05f,
-                Range = 3.2f, ArcDegrees = 120f, LungeDistance = 0.6f,
+                Range = 2.0f, ArcDegrees = 120f, LungeDistance = 0.6f,
                 HealOnHit = 2f,
                 ComboWindowStart = 0.12f, ComboWindowEnd = 0.40f, ChainCancelAt = 0.24f, DodgeCancelAt = 0f,
                 StaminaCost = 0f, MomentumGain = 0f
@@ -343,7 +343,7 @@ namespace VaatusRevenge.Core
             {
                 DisplayName = "Flowing Step",
                 EvadeOutDistance = 4.6f, SideSlipDistance = 3.6f, SlipInMaxDistance = 3.0f, BackstepDistance = 2.4f,
-                Duration = 0.28f, DashEaseOut = 0.30f,
+                Duration = 0.28f, DashEaseOut = 0.65f,   // eases out far enough that the exit flows into a run (verify J-08)
                 IFrameStart = 0f, IFrameEnd = 0.20f,
                 EvadeAttackCancelAt = 0.10f, SlipInAttackCancelAt = 0.06f, NextDodgeAt = 0.22f,
                 ChainMax = 3,

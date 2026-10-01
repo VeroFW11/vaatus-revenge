@@ -34,7 +34,7 @@ namespace VaatusRevenge.Core
             PoseSpec earth = EarthStance();
             AddEarthStates(clips, earth);
 
-            // 1. Stone Fist: the lead fist drives straight out from the chamber, the waist turning behind it, the rear fist
+            // 1. Horse Stance Punch: the lead fist drives straight out from the chamber, the waist turning behind it, the rear fist
             //    staying chambered; the feet never move.
             clips.Add(Strike(AnimationKeys.HorsePunch, earth)
                 .K(KeyPhase.Startup, 0.45f, PoseEase.InOut, s =>

@@ -406,6 +406,80 @@ namespace VaatusRevenge.Tests
             Assert.That(worst, Is.LessThan(0.02f), "a planted foot slid " + worst + " m in one frame");
         }
 
+        // Build 05 verify J-07: a chained dodge (still Dodging) restarts its clip: the feed's ActionTime starts at the new
+        // dodge's own clock and the serial changes, for every element.
+        [Test]
+        public void ChainedDodgeRestartsItsClip()
+        {
+            foreach (ElementId element in new[] { ElementId.Fire, ElementId.Water, ElementId.Earth, ElementId.Air })
+            {
+                PlayerDriver d = PlayerDriver.Elements();
+                if (element != ElementId.Fire)
+                {
+                    d.Select = element;
+                    d.Step();
+                }
+                d.Target(new Vector3(0f, 0f, 3f));
+                var feed = new PlayerAnimationFeed();
+                void Frame(Pad pad)
+                {
+                    int from = d.Log.Count;
+                    d.Step(pad, new Vector2(1f, 0f));
+                    for (int i = from; i < d.Log.Count; i++) feed.OnEvent(d.Log[i]);
+                }
+                Frame(Pad.Dodge);
+                FighterAnimInput first = feed.Build(d.Model, Dt);
+                DodgeProfile dodge = d.Model.MoveSet.Dodge;
+                int guard = 0;
+                while (d.Model.DodgeTime < dodge.NextDodgeAt && guard++ < 60)
+                {
+                    Frame(Pad.None);
+                    feed.Build(d.Model, Dt);
+                }
+                Frame(Pad.Dodge);
+                Assert.AreEqual(2, d.Count(PlayerEventType.DodgeStarted), element + ": chained");
+                Assert.AreEqual(PlayerState.Dodging, d.Model.State);
+                FighterAnimInput second = feed.Build(d.Model, Dt);
+                Assert.AreNotEqual(first.ActionSerial, second.ActionSerial, element + ": a new clip");
+                Assert.LessOrEqual(second.ActionTime, Dt + 1e-4f, element + ": from its start, not " + second.ActionTime + " s in");
+            }
+        }
+
+        // Build 05 verify J-09 and J-08: after a fast dash hands back to standing still, the legs stop within ~0.1 s
+        // (no running in place while a dash's speed decays) and the leap's lift settles over a few frames instead of
+        // dropping the hips to the floor in one.
+        [Test]
+        public void DashHandsBackWithoutRunningInPlaceOrDropping()
+        {
+            HumanoidSkeleton skeleton = HumanoidSkeleton.Create();
+            var animator = new FighterAnimator(PoseLibrary.Default, skeleton);
+            var fk = new ForwardKinematics(skeleton);
+            for (int i = 0; i < 20; i++) animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "" });
+            float hips = 0f;
+            for (int i = 0; i < 16; i++)
+            {
+                animator.Update(new FighterAnimInput
+                {
+                    DeltaTime = Dt, Grounded = true, ActionKey = AnimationKeys.Dodge, ActionTime = i * Dt, ActionDuration = 0.28f,
+                    ActionSerial = 7, LocalVelocity = new Vector3(0f, 0f, -12f)
+                });
+                fk.Compute(animator.Pose, Vector3.Zero, 0f);
+                hips = fk[BodyJoint.Hips].Y;
+            }
+            int idleAfter = -1;
+            float worstDrop = 0f;
+            for (int i = 0; i < 30; i++)
+            {
+                animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "" });
+                fk.Compute(animator.Pose, Vector3.Zero, 0f);
+                worstDrop = Math.Max(worstDrop, hips - fk[BodyJoint.Hips].Y);
+                hips = fk[BodyJoint.Hips].Y;
+                if (idleAfter < 0 && animator.LocomotionCue.Key == AnimationKeys.Idle) idleAfter = i;
+            }
+            Assert.That(idleAfter, Is.InRange(0, 6), "the legs reach idle within 0.1 s of standing still");
+            Assert.That(worstDrop, Is.LessThan(0.05f), "the hips settle, they don't drop " + worstDrop + " m in one frame");
+        }
+
         // W-03: touching down from a jump plants the feet; they don't float back up for a few frames.
         [Test]
         public void LandingKeepsAFootOnTheFloor()

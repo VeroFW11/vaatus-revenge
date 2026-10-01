@@ -174,6 +174,89 @@ namespace VaatusRevenge.Tests
             Assert.AreEqual(0, d.Count(PlayerEventType.ElementSwitched));
         }
 
+        // Build 05 verify J-04: RB still held for the next X mid-string (X is also Water's button, so in Water that's a
+        // same-element pick): the press carries the string on in the current element instead of being swallowed.
+        [Test]
+        public void SameElementMidStringContinuesString()
+        {
+            PlayerDriver d = Driver();
+            d.Target(new Vector3(0f, 0f, 1.5f));
+            d.OnBeatString(1);                                   // X X (Fire)
+            d.SwitchOnBeat(ElementId.Water);                     // RB + X: hit 3 in Water
+            d.RunUntilStarted(3);
+            Assert.AreEqual(ElementId.Water, d.Model.ActiveElement);
+            d.SwitchOnBeat(ElementId.Water);                     // RB still down, X again: same element
+            Assert.AreEqual(SwitchDeniedReason.SameElement, d.LastOf(PlayerEventType.ElementSwitchDenied).DenyReason);
+            Assert.AreEqual(PlayerCommand.Light, d.Model.BufferedCommand, "played as X: the string never drops");
+            d.RunUntilStarted(4);
+            Assert.AreEqual(ElementId.Water, d.LastStarted.Element);
+            Assert.AreEqual(3, d.LastStarted.ChainIndex, "hit 4 of the string");
+            Assert.AreEqual(BeatGrade.OnBeat, d.LastStarted.Grade);
+        }
+
+        [Test]
+        public void SameElementWhenFreeStillDoesNothing()
+        {
+            PlayerDriver d = Driver();
+            d.Select = ElementId.Fire;
+            d.Step();
+            Assert.AreEqual(PlayerCommand.None, d.Model.BufferedCommand);
+            d.Run(10);
+            Assert.AreEqual(0, d.Started);
+        }
+
+        // Build 05 verify J-05: "put one X between two switches" holds in every element order on Fluid, including Air
+        // (its quick hit) in the middle: X, RB+a, X, RB+b, X all on the beat gets both switch strikes.
+        [Test]
+        public void OneXBetweenSwitchesWorksForEveryElementOrder()
+        {
+            Assert.IsEmpty(SwitchOrderFailures(false, 1), "Fluid, one X between: the second switch was denied");
+        }
+
+        // Punishing's longer cooldown asks for two X between switches (How-To-Play says so), in every order.
+        [Test]
+        public void PunishingTwoXBetweenSwitchesWorksForEveryElementOrder()
+        {
+            Assert.IsEmpty(SwitchOrderFailures(true, 2), "Punishing, two X between: the second switch was denied");
+        }
+
+        static System.Collections.Generic.List<string> SwitchOrderFailures(bool punishing, int xBetween)
+        {
+            var failures = new System.Collections.Generic.List<string>();
+            for (ElementId start = ElementId.Fire; start <= ElementId.Air; start++)
+            for (ElementId a = ElementId.Fire; a <= ElementId.Air; a++)
+            for (ElementId b = ElementId.Fire; b <= ElementId.Air; b++)
+            {
+                if (a == start || b == a) continue;
+                PlayerDriver d = punishing ? Driver(ElementLoadout.CreatePunishing(), PlayerTuning.CreatePunishing()) : Driver();
+                d.Target(new Vector3(0f, 0f, 1.5f));
+                if (start != ElementId.Fire)
+                {
+                    d.Select = start;
+                    d.Step();
+                }
+                d.Run(45);                                       // the setup switch's cooldown is over
+                d.ClearLog();
+                int n = d.Started;
+                d.Step(Pad.Light);
+                d.RunUntilStarted(n + 1);
+                d.SwitchOnBeat(a);
+                n += 2;
+                d.RunUntilStarted(n);
+                for (int x = 0; x < xBetween; x++)
+                {
+                    d.PressOnBeat();
+                    d.RunUntilStarted(++n);
+                }
+                d.SwitchOnBeat(b);
+                d.RunUntilStarted(++n);
+                int strikes = 0;
+                foreach (PlayerEvent e in d.All(PlayerEventType.ElementSwitched)) if (e.IsSwitchStrike) strikes++;
+                if (strikes != 2 || d.Model.ActiveElement != b) failures.Add(start + ">" + a + ">" + b);
+            }
+            return failures;
+        }
+
         [Test]
         public void BusyWhileChargingBufferedThenApplied()
         {

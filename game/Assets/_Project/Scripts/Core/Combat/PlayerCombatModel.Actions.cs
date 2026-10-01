@@ -37,9 +37,9 @@ namespace VaatusRevenge.Core
     //   than the move's own LungeDistance, by up to PlayerTuning.GapCloseDistance, stopping short of the target.
     // ZIP STRIKE: needs PlayerWorldState.HasZipTarget; without one the press is dropped and costs nothing. The dash
     //   covers the whole gap to the target during the move's startup and active frames. Not in the air.
-    // LAUNCHER: keep holding the attack press that started a ground string for AerialSettings.LauncherHoldTime and the
-    //   string's move turns into the launcher (Spider-Man's hold-square): the hit throws the target up and SelfLift
-    //   carries you after it when the strike lands.
+    // LAUNCHER: keep holding the attack press that started a ground-string move (any hit of the main chain, Spider-Man's
+    //   hold-square works at any point in a combo) for AerialSettings.LauncherHoldTime and that move turns into the launcher:
+    //   the hit throws the target up and SelfLift carries you after it when the strike lands.
     // AIR STRING: attack while in the air (jumping, launched, after a zip) walks the AirChain, which does not loop and is
     //   capped at AerialSettings.AirAttacksPerJump strikes before touching down. Air strikes lift you (SelfLift) and
     //   gravity is scaled by AirAttackGravityScale while one runs, so you hang as you strike. Heavy in the air = plunge.
@@ -305,14 +305,14 @@ namespace VaatusRevenge.Core
                 switching ? pendingSwitchElement : ElementId.None, world);
         }
 
-        // Holding the press that started a ground string's move turns it into the launcher.
+        // Holding the press that started a ground-string move (any hit of the main chain) turns it into the launcher.
         void TryLauncherHold(in PlayerWorldState world)
         {
             if (state != PlayerState.Attacking || attackKind != PlayerAttackKind.Light || chainBranch != ComboBranch.Main || moveSet.Launcher == null) return;
             if (!lightHeld || !grounded) return;
             if (clock - lightPressClock < Aerial.LauncherHoldTime - Epsilon) return;
             // The held press must be the one that started this move (buffered presses count from a little earlier).
-            if (lightPressClock < attackStartClock - tuning.InputBufferWindow - Epsilon) return;
+            if (lightPressClock < attackBeganClock - tuning.InputBufferWindow - Epsilon) return;
             if (!stamina.CanAct) return;
             if (buffer.Command == PlayerCommand.Light) buffer.Clear();
             StartAttack(moveSet.Launcher, PlayerAttackKind.Launcher, -1, ChargeTier.None, isCounter || ConsumeCounterWindow(), true, world);
@@ -431,6 +431,7 @@ namespace VaatusRevenge.Core
             moveIsSwitchStrike = info.SwitchTo != ElementId.None;
             attackPlaybackRate = stringMove ? PlaybackRateFor(grade, actionSet) : 1f;
             attackStartClock = clock;
+            attackBeganClock = clock;
             if (payStamina)
             {
                 bool mashed = grade == BeatGrade.Early || grade == BeatGrade.Mashed;
@@ -449,6 +450,7 @@ namespace VaatusRevenge.Core
             }
             lungeDistance = PlanLunge(move, kind, world);
             PlanOrbit(move, world);
+            PlanArrival(move, kind, world);
             // Air strikes lift you as they start (you hang while striking); the launcher lifts you when its kick lands.
             // An air strike stalls you: your rise is replaced by its own small lift (or none, over a standing foe), so a
             // jump's speed can't carry you sky-high under the lighter air-strike gravity.
@@ -553,6 +555,47 @@ namespace VaatusRevenge.Core
             return Math.Max(own, Math.Min(own + tuning.GapCloseDistance, gap));
         }
 
+        // ARRIVING LUNGES (Build 05 verify J-06): a lunge stretched to close a gap (free-flow, the dodge strike dashing back
+        // in) and an own lunge longer than ArriveLungeMinDistance (sprint attacks) end as the strike goes active, like the
+        // zip strike, so the hit lands with the limb on the target instead of from metres away followed by a glide in. To
+        // keep the dash believable it never goes faster than ArriveLungeMaxSpeed: the startup is stretched (played slower)
+        // by up to ArriveLungeMaxExtraStartup to make room, and attackStartClock moves by that much so the beat, the combo
+        // window and every later mark keep their place relative to the strike. A circling (orbit) lunge keeps circling through
+        // its active frames, but closes in on the target by the strike.
+        void PlanArrival(MoveData move, PlayerAttackKind kind, in PlayerWorldState world)
+        {
+            lungeArrives = false;
+            approachScale = 1f;
+            if (kind == PlayerAttackKind.ZipStrike || !(lungeDistance > 0f)) return;
+            float minOwn = tuning.ArriveLungeMinDistance;
+            bool longOwn = minOwn > 0f && move.LungeDistance > minOwn;
+            if (!lungeHoming && !longOwn) return;
+            lungeArrives = true;
+            float distance = lungeDistance;
+            if (orbiting) distance = Math.Max(0f, orbitStartRadius - orbitEndRadius);
+            else if (TryGetLungeTarget(world, out Vector3 target, out float targetRadius)) distance = Math.Min(distance, GapTo(target, targetRadius, world));
+            float rate = Math.Max(attackPlaybackRate, Epsilon);
+            float startup = move.ActiveStart / rate;
+            float maxSpeed = tuning.ArriveLungeMaxSpeed;
+            if (!(maxSpeed > 0f) || !(startup > 0f)) return;
+            float extra = Angles.Clamp(distance / maxSpeed - startup, 0f, Math.Max(0f, tuning.ArriveLungeMaxExtraStartup));
+            if (!(extra > 1e-4f)) return;
+            approachScale = startup / (startup + extra);
+            attackStartClock += extra;
+        }
+
+        // How far the running attack's clock moves this frame: dt x its playback rate, slower before the strike while a
+        // stretched startup runs (PlanArrival).
+        float AttackAdvance(float dt)
+        {
+            float rate = attackPlaybackRate;
+            if (!(approachScale < 1f) || currentMove == null || action.Time >= currentMove.ActiveStart) return dt * rate;
+            float slow = rate * approachScale;
+            float left = currentMove.ActiveStart - action.Time;
+            float toStrike = left / Math.Max(slow, Epsilon);
+            return dt <= toStrike ? dt * slow : left + (dt - toStrike) * rate;
+        }
+
         // An air strike only lifts you when there's something up here to hit: against a foe standing on the ground (you
         // jumped at it), rising above its head would be silly (report 03, V-10). No target at all: it lifts (air practice).
         bool AboveGroundedTarget(in PlayerWorldState world)
@@ -606,7 +649,9 @@ namespace VaatusRevenge.Core
             {
                 // The move ran its course. RememberString (in ExitAction) keeps the string for the move's grace; a pause-
                 // eligible move with no press opens the pause band.
-                bool pauseEligible = stringMove && followUpCount == 0 && IsPauseEligible;
+                // A press judged Pause on this very frame counts too (it was made while the move still ran), or it would fall
+                // through to main hit 3 (verify S-07).
+                bool pauseEligible = stringMove && (followUpCount == 0 || followUpGrade == BeatGrade.Pause) && IsPauseEligible;
                 double startClock = attackStartClock;
                 float rate = attackPlaybackRate;
                 FinishAction();
@@ -850,7 +895,7 @@ namespace VaatusRevenge.Core
             actionStep = Vector3.Zero;
             if (!action.IsRunning) return;
             // A string move plays at the speed its press earned (rhythm); every time in its MoveData scales with it.
-            action.Advance(state == PlayerState.Attacking ? dt * attackPlaybackRate : dt);
+            action.Advance(state == PlayerState.Attacking ? AttackAdvance(dt) : dt);
             // Worked out before the action gets a chance to end this frame, so its last slice of movement
             // (the end of a dash or lunge) is never lost, whatever the frame rate.
             actionStep = ActionStep(world);

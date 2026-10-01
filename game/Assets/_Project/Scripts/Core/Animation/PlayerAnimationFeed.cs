@@ -208,7 +208,10 @@ namespace VaatusRevenge.Core
                     ElementMoveSet set = model.Loadout != null ? model.Loadout.Get(dodgeElement) : null;
                     DodgeProfile dodge = set != null ? set.Dodge : model.MoveSet != null ? model.MoveSet.Dodge : null;
                     string key = model.IsAirDashing ? AnimationKeys.AirDash : dodgeKey;
-                    SetState(key, stateTime, dodge != null ? dodge.TotalDuration : 0f);
+                    // Timed by the dodge's own clock: a chained dodge stays Dodging but restarts its clip (DodgeStarted
+                    // bumps the serial and the model's DodgeTime starts over), instead of playing on from the last one.
+                    float duration = model.IsAirDashing ? AirDashDuration(set, model) : dodge != null ? dodge.TotalDuration : 0f;
+                    SetState(key, model.DodgeTime, duration);
                     Vector3 local = ToLocal(dodgeDirection, facing);
                     input.ActionDirectionYaw = local.LengthSquared() > 1e-4f ? MathF.Atan2(local.X, local.Z) * AnimMath.Rad2Deg : 0f;
                     break;
@@ -250,6 +253,12 @@ namespace VaatusRevenge.Core
             }
             input.ActionSerial = serial;
             return input;
+        }
+
+        static float AirDashDuration(ElementMoveSet set, PlayerCombatModel model)
+        {
+            AerialSettings aerial = set != null ? set.Aerial : model.MoveSet != null ? model.MoveSet.Aerial : null;
+            return aerial != null ? aerial.AirDashDuration : 0f;
         }
 
         void SetState(string key, float time, float duration)

@@ -11,5 +11,7 @@ namespace VaatusRevenge.Core
         public int Streak;           // OnBeatStreak: on-beat presses in a row in this string
         public BeatGrade LastGrade;
         public float PlaybackRate;   // of the running move (1 = as authored)
+        public bool PauseReady;      // the pause band is open: an X now starts the pause chain (X X, wait, X X). The HUD lights
+                                     // it so the wait is taught by a cue, not a number of seconds (it differs per element)
     }
 }

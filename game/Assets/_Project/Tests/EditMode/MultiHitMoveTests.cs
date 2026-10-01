@@ -171,6 +171,11 @@ namespace VaatusRevenge.Tests
             d.RunLanding(40);
             Assert.AreEqual(4, d.Model.ComboCount);
             Assert.AreEqual(hurt + 5f, d.Model.Health, 1e-3f, "2 per sub-hit, at most 5 for the move");
+            // Verify S-12: every heal is announced (the HUD and the body show it), with what it really restored.
+            float announced = 0f;
+            foreach (PlayerEvent e in d.All(PlayerEventType.HealedOnHit)) announced += e.Amount;
+            Assert.AreEqual(3, d.Count(PlayerEventType.HealedOnHit), "2 + 2 + 1, then the cap");
+            Assert.AreEqual(5f, announced, 1e-3f);
             d.Step(Pad.Light);
             d.RunLanding(40);
             Assert.AreEqual(hurt + 10f, d.Model.Health, 1e-3f, "the cap is per move");

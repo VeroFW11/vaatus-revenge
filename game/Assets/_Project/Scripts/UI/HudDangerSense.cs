@@ -85,8 +85,10 @@ namespace VaatusRevenge
             p.Diamond(new Rect(mark.x - p.U(3f), mark.y - p.U(3f), mark.width + p.U(6f), mark.height + p.U(6f)), Shadow);
             p.Diamond(mark, markColor);
             float textHeight = p.Body.fontSize * 1.2f;
+            // Dark on a light mark (white "now", parry gold), white on the red dodge mark.
+            float luminance = 0.2126f * markColor.r + 0.7152f * markColor.g + 0.0722f * markColor.b;
             p.Text(new Rect(mark.x, mark.center.y - textHeight * 0.5f, mark.width, textHeight), "!", p.BodyCenter,
-                soonest.NowFired ? new Color(0.1f, 0.1f, 0.1f, 1f) : Color.white);
+                soonest.NowFired || luminance > 0.55f ? new Color(0.1f, 0.1f, 0.1f, 1f) : Color.white);
         }
 
         // The warned, visible strikes that haven't landed yet, soonest first (at most MaxArrows).

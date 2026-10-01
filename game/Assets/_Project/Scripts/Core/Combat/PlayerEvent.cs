@@ -67,7 +67,8 @@ namespace VaatusRevenge.Core
                             // normalised), Duration (seconds to impact), MustDodge, IsRanged
         DangerNow,          // same fields as DangerWarning: press now
         DangerCleared,      // AttackerId, Count (hit index). The strike landed, missed or was called off
-        DodgeChainLimited   // Duration (cooldown left). Too many dodges in a row: no dodge until it runs out
+        DodgeChainLimited,  // Duration (cooldown left). Too many dodges in a row: no dodge until it runs out
+        HealedOnHit         // Amount (health restored), AttackId, Element, Move. A clean hit healed you (Water's HealOnHit)
     }
 
     public struct PlayerEvent

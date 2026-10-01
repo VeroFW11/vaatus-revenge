@@ -43,6 +43,8 @@ namespace VaatusRevenge.Core
         double dodgeChainCooldownUntil = double.NegativeInfinity;
         double lastDodgeEndClock = double.NegativeInfinity;
         bool lastDodgeWasAir;
+        float sideSlipRadius;         // a side-slip circles its focus at this distance (centre to centre)...
+        float sideSlipSign;           // ...this way round (+1 = the offset's yaw grows)
 
         // Whom a dodge faces (see the top of the file). Kept by source, so a dodge keeps tracking the same enemy.
         enum FocusSource { None, Lock, Threat, Soft, Nearest }
@@ -231,11 +233,19 @@ namespace VaatusRevenge.Core
                 }
                 else
                 {
-                    // Round the target: straight sideways (its distance stays), on the side the stick points.
+                    // Round the target: a circle about it at the distance you started (never closer than a slip-in stops),
+                    // on the side the stick points, at most SideSlipMaxDegrees round (see CircleStep).
                     dodgeKind = DodgeKind.SideSlip;
                     Vector3 side = Directions.FromYaw(facingYaw + 90f);
                     dodgeDirection = Vector3.Dot(stickDir, side) >= 0f ? side : -side;
                     dodgeDistance = Math.Max(0f, dodge.SideSlipDistance);
+                    Vector3 offset = Directions.Flatten(world.Position - dodgeFocus.Position);
+                    float closest = Math.Max(0f, world.SelfRadius) + Math.Max(0f, dodgeFocus.Radius) + Math.Max(0f, dodge.SlipInStopGap);
+                    sideSlipRadius = Math.Max(offset.Length(), Math.Max(closest, 0.1f));
+                    Vector3 aroundPlus = Directions.FromYaw(Directions.YawOf(offset, facingYaw + 180f) + 90f);
+                    sideSlipSign = Vector3.Dot(dodgeDirection, aroundPlus) >= 0f ? 1f : -1f;
+                    if (dodge.SideSlipMaxDegrees > 0f)
+                        dodgeDistance = Math.Min(dodgeDistance, sideSlipRadius * dodge.SideSlipMaxDegrees * Directions.Deg2Rad);
                 }
                 return;
             }
@@ -369,15 +379,60 @@ namespace VaatusRevenge.Core
             action.MarkChecked();
             if (action.Time < (dodgeInAir ? Aerial.AirDashDuration : Dodge.TotalDuration)) return;
             float carry = Math.Max(0f, Dodge.ExitSpeedCarry);
-            bool onGround = !dodgeInAir;
+            bool inAir = dodgeInAir;
+            Vector3 tail = DashExitVelocity();
+            // The dash ended part-way through this frame: the carried speed only moves us for the rest of it.
+            float end = dodgeInAir ? Aerial.AirDashDuration : Dodge.TotalDuration;
+            float advanced = action.Time - action.PreviousTime;
+            exitVelocityShare = advanced > 1e-6f ? Angles.Clamp((action.Time - end) / advanced, 0f, 1f) : 1f;
             FinishAction();
-            // Leaving with the stick held: keep running instead of accelerating again from a standstill.
             Vector3 stick = Directions.CameraRelative(moveStick, world.CameraYaw);
             float stickLength = stick.Length();
-            if (onGround && carry > 0f && stickLength > Math.Max(tuning.StickDeadzone, Epsilon) && state == PlayerState.Locomotion)
+            bool hasStick = stickLength > Math.Max(tuning.StickDeadzone, Epsilon);
+            if (inAir)
             {
-                moveVelocity = stick / stickLength * (tuning.RunSpeed * carry);
+                // An air dash flows on into the jump's drift (gravity takes over) instead of stopping dead in mid-air.
+                if (state != PlayerState.Airborne) return;
+                float cap = Math.Max(tuning.RunSpeed, airSpeedCap);
+                float speed = Math.Min(tail.Length(), cap);
+                Vector3 dir = Directions.SafeNormalize(tail, hasStick ? stick / stickLength : Vector3.Zero);
+                moveVelocity = dir * speed;
+                airSpeedCap = Math.Max(airSpeedCap, Math.Max(tuning.RunSpeed, speed));
+                return;
             }
+            if (state != PlayerState.Locomotion) return;
+            // Leaving with the stick held: keep running instead of accelerating again from a standstill. Either way the
+            // dash's own end speed carries on and locomotion brakes it (Deceleration): no dead stop.
+            Vector3 run = hasStick && carry > 0f ? stick / stickLength * (tuning.RunSpeed * carry) : Vector3.Zero;
+            moveVelocity = tail.LengthSquared() > run.LengthSquared() ? tail : run;
+        }
+
+        // The dash's speed as it ends (its eased curve's last slope), capped at SprintSpeed. A slip-in stops at its gap.
+        Vector3 DashExitVelocity()
+        {
+            if (dodgeKind == DodgeKind.SlipIn) return Vector3.Zero;
+            DodgeProfile dodge = Dodge;
+            if (!dodgeInAir && dodge.EndRecovery > 0f) return Vector3.Zero;   // it already stood still for its recovery
+            float duration = dodgeInAir ? Aerial.AirDashDuration : dodge.Duration;
+            if (!(duration > 0f)) return Vector3.Zero;
+            float speed = (1f - Angles.Clamp(dodge.DashEaseOut, 0f, 1f)) * dodgeDistance / duration;
+            speed = Math.Min(speed, Math.Max(tuning.RunSpeed, tuning.SprintSpeed));
+            return Directions.Flatten(dodgeDirection) * speed;
+        }
+
+        // A side-slip's step this frame: the dash's length laid along the circle round the focus (it may have moved),
+        // easing any change of radius back to sideSlipRadius. dodgeDirection follows the circle's tangent.
+        Vector3 CircleStep(Vector3 dash, Vector3 focus, in PlayerWorldState world)
+        {
+            float length = dash.Length();
+            Vector3 offset = Directions.Flatten(world.Position - focus);
+            float radius = offset.Length();
+            if (length < 1e-6f || radius < 1e-3f || !(sideSlipRadius > 0f)) return dash;
+            float yaw = Directions.YawOf(offset, 0f) + sideSlipSign * (length / sideSlipRadius) * Directions.Rad2Deg;
+            float newRadius = radius + Angles.Clamp(sideSlipRadius - radius, -length, length);
+            Vector3 next = Directions.FromYaw(yaw) * newRadius;
+            dodgeDirection = Directions.FromYaw(yaw + sideSlipSign * 90f);
+            return next - offset;
         }
 
         // When a dodge ends (finished or cut short): the chain's breather starts after ChainMax dodges in a row.

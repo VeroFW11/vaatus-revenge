@@ -81,6 +81,10 @@ namespace VaatusRevenge.Core
         public float LungeStopGap = 0.3f;            // lunges stop this far from the target's body so you never run through it
         public float GapCloseDistance = 4.5f;        // free-flow: a light attack at a soft-lock target out of reach lunges up to
                                                      // this much further than its own LungeDistance to close the gap (0 = off)
+        public float ArriveLungeMaxSpeed = 20f;      // a stretched lunge (and an own lunge longer than ArriveLungeMinDistance, e.g. a
+                                                     // sprint attack) arrives as its strike goes active, never faster than this (m/s)...
+        public float ArriveLungeMaxExtraStartup = 0.15f; // ...stretching the startup by up to this many seconds to make room (0 = never)
+        public float ArriveLungeMinDistance = 1.5f;  // own lunges longer than this arrive as they strike (0 = only stretched lunges)
 
         // --- Combos (Build 05) ---
         public RhythmTuning Rhythm = new RhythmTuning();             // the beat: on-beat presses speed the string up
@@ -95,7 +99,7 @@ namespace VaatusRevenge.Core
         // Bumped when the defaults change in a way old assets must not keep (the sandbox builder offers to reset an
         // asset whose DataVersion is behind). New fields read 0 in an asset saved before they existed.
         public int DataVersion = 0;
-        public const int CurrentDataVersion = 5;
+        public const int CurrentDataVersion = 6;   // 6: Build 05 verify (switch cooldown, arriving lunges)
 
         public static PlayerTuning CreateFluid()
         {

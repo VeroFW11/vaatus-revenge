@@ -19,7 +19,7 @@ Spider-Man 2's layout (David, 29 Sep), with the colour-matched elements (Build 0
 | Button | Action | Keyboard + mouse |
 |---|---|---|
 | Left stick / right stick | Move / camera. Flick the right stick to change target while locked on | WASD / mouse; change target: mouse wheel or Z / C |
-| **X** | Attack. Tap in rhythm for the 5-hit string: press as each hit lands for faster, harder hits. **X X (wait) X** = pause finisher. In the air: the air string | Left mouse |
+| **X** | Attack. Tap in rhythm for the 5-hit string: press so X lands with each hit (as the gold ring touches the circle) for faster, harder hits. **X X (wait for the blue circle) X X** = pause finisher. In the air: the air string | Left mouse |
 | Hold **X** | Launcher (throws the enemy up, you follow) | Hold left mouse |
 | **Y** | Zip strike to a far enemy (keeps your combo going) | F |
 | **B** | Tap: dodge (the stick decides: toward the enemy = slip in, away = evade out, sideways = side-step, none = a safe side-step when something is about to hit you). Hold: sprint. In the air: air dash. **X late in a dodge = dodge strike** | Left Shift |

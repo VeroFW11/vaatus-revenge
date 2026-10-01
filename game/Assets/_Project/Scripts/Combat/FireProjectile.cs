@@ -147,6 +147,7 @@ namespace VaatusRevenge
             slot.OnHit = onHit;
             slot.PassedThrough.Clear();
             slot.TracksDanger = tracksDanger;
+            slot.DangerOffPath = false;
             slot.DangerStrike = danger;
 
             if (slot.HasVisuals) ShowVisual(slot, origin, dir);
@@ -457,6 +458,17 @@ namespace VaatusRevenge
                 slot.TracksDanger = false;
                 return;
             }
+            // Sideways out of its path (a side-step): it will miss, so no "now" flash for it.
+            float lateral = (toPlayer - flight / speed * along).magnitude;
+            DangerSenseSettings rules = model.Tuning != null ? model.Tuning.DangerSense : null;
+            float margin = rules != null ? Mathf.Max(0f, rules.BoltMissMargin) : 0.3f;
+            if (lateral > model.BodyRadius + slot.Radius + margin)
+            {
+                if (!slot.DangerOffPath) CallOffDanger(slot);
+                slot.DangerOffPath = true;
+                return;
+            }
+            slot.DangerOffPath = false;
             float gap = Mathf.Max(0f, along - model.BodyRadius - slot.Radius);
             IncomingStrike strike = slot.DangerStrike;
             strike.ImpactClock = model.Clock + gap / speed;

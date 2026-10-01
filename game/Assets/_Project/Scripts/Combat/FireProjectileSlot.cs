@@ -32,6 +32,7 @@ namespace VaatusRevenge
         // An enemy bolt keeps the player's danger sense told when it will land, every frame (the estimate made when it was
         // loosed goes stale as soon as the player moves).
         public bool TracksDanger;
+        public bool DangerOffPath;      // the player is beside its path: its warning is called off for now
         public IncomingStrike DangerStrike;
 
         public GameObject Root;

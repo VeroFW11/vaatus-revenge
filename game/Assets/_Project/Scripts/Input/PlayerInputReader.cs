@@ -21,7 +21,9 @@ namespace VaatusRevenge
     //                                  X Water; 1-4 on the keyboard are Fire, Water, Earth, Air). RB then fires nothing:
     //                                  the Fire Blast comes from a quick RB tap on its own, on release.
     // View (the small left button) and F7 / F8 drive the sandbox's combat tutorial (TutorialButton, TutorialKey,
-    // TutorialSkipKey). They are not gameplay actions, so they live outside the PlayerInputFrame.
+    // TutorialSkipKey). They are not gameplay actions, so they live outside the PlayerInputFrame. Menu (Start) pauses
+    // and resumes like Esc, and while paused Y pages through the F1 overlay (MenuButton, OverlayPageButton): an
+    // Xbox-first player never needs the keyboard.
     // The mouse only counts while the cursor is captured: click the Game view to capture it (that click is not an
     // attack), Esc or switching windows releases it. The gamepad and keyboard work either way.
     //
@@ -36,7 +38,8 @@ namespace VaatusRevenge
         const int AttackSlot = 0, ZipSlot = 1, DodgeSlot = 2, JumpSlot = 3, GuardSlot = 4, SkillPadSlot = 5, HealSlot = 6;
         const int LockOnSlot = 7, SwapShoulderSlot = 8, SkillMouseSlot = 9;
         const int TutorialPadSlot = 10, TutorialKeySlot = 11, TutorialSkipSlot = 12;
-        const int SlotCount = 13;
+        const int MenuPadSlot = 13, OverlayPagePadSlot = 14;
+        const int SlotCount = 15;
         // Face buttons, in element-slot order (Up, Right, Down, Left): Y/Triangle, B/Circle, A/Cross, X/Square.
         const int FaceNorth = 0, FaceEast = 1, FaceSouth = 2, FaceWest = 3;
         // Mouse movement is ignored for this many frames after the cursor is captured: some platforms report the
@@ -64,12 +67,14 @@ namespace VaatusRevenge
         InputAction attack, attackMouse, zip, dodge, jump, guard, skillPad, skillMouse, heal, lockOn, lockOnMouse, swapShoulder;
         InputAction switchLeft, switchRight, switchScroll, releaseCursor;
         InputAction tutorialPad, tutorialKey, tutorialSkip;
+        InputAction menuPad, overlayPagePad;
         readonly InputAction[] elementActions = new InputAction[4];
         InputAction[] sharedActions;
         readonly bool[] heldLastFrame = new bool[SlotCount];
 
         PlayerInputFrame frame;
         ButtonState tutorialButton, tutorialKeyButton, tutorialSkipButton;
+        ButtonState menuButton, overlayPageButton;
         bool heavyChord;                                   // X was pressed while LB was held: X is the Heavy until let go
         bool abilityNorthChord;                            // same for Y (AbilityNorth) ...
         bool abilityEastChord;                             // ... and B (AbilityEast)
@@ -105,6 +110,10 @@ namespace VaatusRevenge
         public ButtonState TutorialButton => tutorialButton;
         public ButtonState TutorialKey => tutorialKeyButton;
         public ButtonState TutorialSkipKey => tutorialSkipButton;
+        // Menu (Start) on the gamepad: pause / resume. Read every frame, gameplay input on or off.
+        public ButtonState MenuButton => menuButton;
+        // Y on the gamepad, as a menu button: pages the F1 overlay while paused (gameplay input is off then).
+        public ButtonState OverlayPageButton => overlayPageButton;
         public bool GameplayEnabled => gameplayEnabled;
         public bool CursorLocked => Cursor.lockState == CursorLockMode.Locked;
 
@@ -169,6 +178,8 @@ namespace VaatusRevenge
             tutorialButton = default(ButtonState);
             tutorialKeyButton = default(ButtonState);
             tutorialSkipButton = default(ButtonState);
+            menuButton = default(ButtonState);
+            overlayPageButton = default(ButtonState);
             System.Array.Clear(heldLastFrame, 0, heldLastFrame.Length);
             ResetChords();
             if (Instance != this) return;
@@ -214,6 +225,8 @@ namespace VaatusRevenge
             tutorialButton = ReadButton(TutorialPadSlot, tutorialPad, null);
             tutorialKeyButton = ReadButton(TutorialKeySlot, tutorialKey, null);
             tutorialSkipButton = ReadButton(TutorialSkipSlot, tutorialSkip, null);
+            menuButton = ReadButton(MenuPadSlot, menuPad, null);
+            overlayPageButton = ReadButton(OverlayPagePadSlot, overlayPagePad, null);
 
             Vector2 moveValue = Vector2.ClampMagnitude(move.ReadValue<Vector2>(), 1f);
             Vector2 stickLook = lookStick.ReadValue<Vector2>();
@@ -489,10 +502,15 @@ namespace VaatusRevenge
             tutorialKey = AddButton("TutorialKey", "<Keyboard>/f7", null);
             tutorialSkip = AddButton("TutorialSkip", "<Keyboard>/f8", null);
 
+            // Menu buttons: Start pauses (like Esc); Y pages the F1 overlay while paused (gameplay input is off then).
+            menuPad = AddButton("Menu", "<Gamepad>/start", null);
+            overlayPagePad = AddButton("OverlayPage", "<Gamepad>/buttonNorth", null);
+
             sharedActions = new[]
             {
                 move, attack, zip, dodge, jump, guard, skillPad, heal, lockOn, swapShoulder, switchLeft, switchRight,
                 elementActions[0], elementActions[1], elementActions[2], elementActions[3], tutorialPad, tutorialKey, tutorialSkip,
+                menuPad, overlayPagePad,
             };
         }
 

@@ -94,10 +94,11 @@ namespace VaatusRevenge.CombatSim
             finally
             {
                 Out.Line();
+                if (Out.Misses > 0) Out.Line("**Targets missed: " + Out.Misses + "** (cells marked MISS).");
                 Out.Line("_Finished in " + sw.Elapsed.TotalSeconds.ToString("0.0") + " s._");
                 Out.Close();
             }
-            return 0;
+            return Out.Misses > 0 ? 1 : 0;
         }
 
         static void RunAll(Options o)

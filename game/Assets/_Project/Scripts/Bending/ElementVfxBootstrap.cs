@@ -36,10 +36,12 @@ namespace VaatusRevenge
             if (ElementVfx.Library == Library) ElementVfx.SetLibrary(null);
         }
 
-        // One line per empty slot, in the folder order of the README (Common last).
+        // One log entry listing every empty slot, in the folder order of the README (Common last), instead of one line each
+        // (dozens of lines on every Play hid real messages).
         void ReportMissing()
         {
-            var line = new StringBuilder(160);
+            var line = new StringBuilder(1024);
+            int missing = 0;
             for (int i = 0; i < 5; i++)
             {
                 ElementId folder = i < 4 ? (ElementId)(i + 1) : ElementId.None;
@@ -48,14 +50,15 @@ namespace VaatusRevenge
                 {
                     VfxSlot slot = ElementVfx.SlotAt(folder, s);
                     if (ElementVfx.TryGetTexture(folder, slot, out _, out _)) continue;
-                    line.Length = 0;
-                    line.Append("VFX: no picture for Art/VFX/").Append(ElementVfx.FolderName(folder)).Append('/')
-                        .Append(ElementVfx.SlotName(slot)).Append(".png");
-                    line.Append(folder == ElementId.Fire ? " (optional: Fire has its own look)" : "; using the primitive stand-in");
-                    if (Library == null) line.Append(" (no Element VFX Library assigned)");
-                    Debug.Log(line.ToString(), this);
+                    missing++;
+                    line.Append("\n  Art/VFX/").Append(ElementVfx.FolderName(folder)).Append('/').Append(ElementVfx.SlotName(slot)).Append(".png");
+                    if (folder == ElementId.Fire) line.Append(" (optional: Fire has its own look)");
                 }
             }
+            if (missing == 0) return;
+            string header = "VFX: " + missing + " effect pictures missing; using the primitive stand-ins"
+                            + (Library == null ? " (no Element VFX Library assigned)" : "") + ":";
+            Debug.Log(header + line, this);
         }
     }
 }

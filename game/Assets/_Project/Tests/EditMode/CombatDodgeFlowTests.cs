@@ -111,6 +111,146 @@ namespace VaatusRevenge.Tests
             Assert.AreEqual(1f, started.LocalDirection.X, 1e-3f, "straight to the right in facing space");
         }
 
+        // Build 05 verify J-10: a side-slip circles the enemy (Spider-Man 2: you side-step round them). From point blank,
+        // two in a row, every element: the distance to it stays put, and you end up round its side, still facing it.
+        [Test]
+        public void SideSlipCirclesTheTargetFromPointBlank()
+        {
+            foreach (ElementId element in new[] { ElementId.Fire, ElementId.Water, ElementId.Earth, ElementId.Air })
+            {
+                PlayerDriver d = PlayerDriver.Elements();
+                if (element != ElementId.Fire)
+                {
+                    d.Select = element;
+                    d.Step();
+                }
+                var target = new Vector3(0f, 0f, 1.1f);
+                d.Target(target);
+                DodgeProfile dodge = d.Model.MoveSet.Dodge;
+                float closest = d.World.SelfRadius + d.World.SoftTargetRadius + dodge.SlipInStopGap;
+                float start = Math.Max(1.1f, closest);
+                float maxError = 0f;
+                for (int n = 0; n < 2; n++)
+                {
+                    // The stick to our right as we face it (the camera would have come round with us).
+                    Vector3 right = Directions.FromYaw(YawTo(d, target) + 90f);
+                    d.Step(Pad.Dodge, new Vector2(right.X, right.Z));
+                    Assert.AreEqual(DodgeKind.SideSlip, d.LastOf(PlayerEventType.DodgeStarted).DodgeKind, element + " side-slip");
+                    while (d.Model.State == PlayerState.Dodging)
+                    {
+                        d.Step(Pad.None, Vector2.Zero);
+                        float gap = Directions.Flatten(target - d.World.Position).Length();
+                        maxError = Math.Max(maxError, Math.Abs(gap - start));
+                    }
+                    d.Run(4);
+                }
+                Assert.Less(maxError, 0.3f, element + ": the distance to the enemy stays (circling, not a tangent)");
+                float round = Math.Abs(Angles.Delta(Directions.YawOf(-target, 0f), Directions.YawOf(Directions.Flatten(d.World.Position - target), 0f)));
+                Assert.Greater(round, 90f, element + ": two side-slips take you well round it");
+                Assert.AreEqual(0f, Angles.Delta(d.Model.FacingYaw, YawTo(d, target)), 15f, element + ": still facing it");
+            }
+        }
+
+        // Build 05 verify J-08: the dodge's end speed flows into a run or brakes; it never stops dead (Water and Air used to
+        // exit at 9-12 m/s and stop in one frame).
+        [Test]
+        public void DodgeExitNeverStopsDead()
+        {
+            foreach (ElementId element in new[] { ElementId.Fire, ElementId.Water, ElementId.Earth, ElementId.Air })
+            foreach (bool stickHeld in new[] { false, true })
+            {
+                PlayerDriver d = PlayerDriver.Elements();
+                if (element != ElementId.Fire)
+                {
+                    d.Select = element;
+                    d.Step();
+                    d.Run(30);
+                }
+                d.Target(Ahead);
+                d.Step(Pad.Dodge, Down);
+                float previous = Directions.Flatten(d.Last.Velocity).Length();
+                float worst = 0f;
+                bool ended = false;
+                for (int i = 0; i < 40; i++)
+                {
+                    d.Step(Pad.None, stickHeld ? Down : Vector2.Zero);
+                    float speed = Directions.Flatten(d.Last.Velocity).Length();
+                    if (d.Model.State != PlayerState.Dodging || ended)
+                    {
+                        worst = Math.Max(worst, previous - speed);
+                        if (ended) break;
+                        ended = true;
+                    }
+                    previous = speed;
+                }
+                Assert.LessOrEqual(worst, d.Model.Tuning.RunSpeed, element + (stickHeld ? " stick held" : " stick neutral") + ": speed drop across the exit");
+            }
+        }
+
+        // Build 05 verify J-11: an air dash flows on into the jump's drift instead of stopping dead in mid-air.
+        [Test]
+        public void AirDashKeepsDrift()
+        {
+            foreach (ElementId element in new[] { ElementId.Fire, ElementId.Water, ElementId.Earth, ElementId.Air })
+            {
+                PlayerDriver d = PlayerDriver.Elements();
+                if (element != ElementId.Fire)
+                {
+                    d.Select = element;
+                    d.Step();
+                }
+                d.Step(Pad.Jump, Right);
+                d.Run(16, Pad.None, Right);
+                d.Step(Pad.Dodge, Right);
+                Assert.IsTrue(d.Model.IsAirDashing, element + " air dash");
+                d.RunUntil(x => !x.Model.IsAirDashing, 60, Pad.None, Right);
+                d.Step(Pad.None, Right);
+                Assert.AreEqual(PlayerState.Airborne, d.Model.State, element.ToString());
+                ElementMoveSet set = d.Model.MoveSet;
+                float endSpeed = (1f - set.Dodge.DashEaseOut) * set.Aerial.AirDashDistance / set.Aerial.AirDashDuration;
+                float expected = Math.Min(endSpeed, d.Model.Tuning.RunSpeed);
+                Assert.GreaterOrEqual(Directions.Flatten(d.Last.Velocity).Length(), expected * 0.9f, element + ": drifts on at the dash's end speed");
+                Assert.Greater(Directions.Flatten(d.Last.Velocity).Length(), 2f, element + ": not a dead stop");
+            }
+        }
+
+        // Build 05 verify J-06: the dodge strike after an evade out dashes back in and arrives as it strikes: at its first
+        // active frame the body is already at the target, and it doesn't glide in afterwards. The dash never goes faster than
+        // ArriveLungeMaxSpeed by more than the startup stretch allows.
+        [Test]
+        public void DodgeStrikeArrivesAsItStrikes()
+        {
+            foreach (ElementId element in new[] { ElementId.Fire, ElementId.Water, ElementId.Earth, ElementId.Air })
+            {
+                PlayerDriver d = PlayerDriver.Elements();
+                if (element != ElementId.Fire)
+                {
+                    d.Select = element;
+                    d.Step();
+                    d.Run(30);
+                }
+                var target = new Vector3(0f, 0f, 1.5f);
+                d.Target(target);
+                d.Step(Pad.Dodge, Down);                         // evade out
+                d.RunUntil(x => x.Model.State != PlayerState.Dodging, 60);
+                d.Step(Pad.Light);
+                Assert.AreEqual(PlayerAttackKind.DodgeStrike, d.LastStarted.AttackKind, element.ToString());
+                float fastest = 0f;
+                d.RunUntil(x =>
+                {
+                    fastest = Math.Max(fastest, Directions.Flatten(x.Last.Velocity).Length());
+                    return x.Model.Phase == AttackPhase.Active;
+                }, 60);
+                float body = d.World.SelfRadius + d.World.SoftTargetRadius;
+                float atStrike = Directions.Flatten(target - d.World.Position).Length() - body;
+                Assert.LessOrEqual(atStrike, 1.0f, element + ": at the target as it strikes");
+                d.RunUntil(x => x.Model.Phase != AttackPhase.Active, 60);
+                float after = Directions.Flatten(target - d.World.Position).Length() - body;
+                Assert.Greater(after, atStrike - 0.25f, element + ": no glide in after the hit");
+                Assert.Less(fastest, 30f, element + ": a dash, not a teleport");
+            }
+        }
+
         static IncomingStrike StrikeFrom(PlayerDriver d, int attacker, Vector3 feet, float inSeconds)
         {
             return new IncomingStrike

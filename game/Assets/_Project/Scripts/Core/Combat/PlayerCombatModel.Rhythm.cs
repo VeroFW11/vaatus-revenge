@@ -247,7 +247,7 @@ namespace VaatusRevenge.Core
             double pressClock = clock + RhythmRules.BeatInputOffset;
             if (IsStringMoveRunning && beatActive)
             {
-                if (pressClock <= attackStartClock) return;   // can't be a follow-up of a move that hadn't started
+                if (pressClock <= attackBeganClock) return;   // can't be a follow-up of a move that hadn't started
                 JudgeFollowUp(pressClock, switchStrike);
                 return;
             }
@@ -372,8 +372,23 @@ namespace VaatusRevenge.Core
                 LateWindow = beatLate + (pendingSwitch ? SwitchRules.SwitchStrikeBeatLateBonus : 0f),
                 Streak = onBeatStreak,
                 LastGrade = lastGrade,
-                PlaybackRate = state == PlayerState.Attacking ? attackPlaybackRate : 1f
+                PlaybackRate = state == PlayerState.Attacking ? attackPlaybackRate : 1f,
+                PauseReady = IsPauseReady
             };
+        }
+
+        // An X pressed now would take the pause branch: the eligible move is past its combo window with no press yet, or it
+        // has ended and its pause band is still open.
+        bool IsPauseReady
+        {
+            get
+            {
+                if (!RhythmOn) return false;
+                if (IsPauseBandLive) return true;
+                if (!IsStringMoveRunning || !beatActive || followUpCount != 0 || !IsPauseEligible) return false;
+                float rate = Math.Max(attackPlaybackRate, Epsilon);
+                return clock + RhythmRules.BeatInputOffset > attackStartClock + currentMove.ComboWindowEnd / rate + 1e-6;
+            }
         }
     }
 }

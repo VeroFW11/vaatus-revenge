@@ -139,7 +139,7 @@ namespace VaatusRevenge
                 CoreColor = new Color(0.78f, 0.68f, 0.52f, 0.7f),
                 MainColor = new Color(0.46f, 0.36f, 0.25f, 1f),
                 FadeColor = new Color(0.5f, 0.42f, 0.32f, 0f),
-                CloudColor = new Color(0.62f, 0.52f, 0.4f, 0.55f),
+                CloudColor = new Color(0.42f, 0.36f, 0.3f, 0.6f),    // darker than the duel-ring floor (0.62, 0.52, 0.38) so dust reads on it
                 AccentColor = new Color(0.1f, 0.08f, 0.06f, 0.85f),
                 HitSparkColor = new Color(0.9f, 0.72f, 0.45f),
                 TrailHeadColor = new Color(0.7f, 0.6f, 0.45f, 0.7f),

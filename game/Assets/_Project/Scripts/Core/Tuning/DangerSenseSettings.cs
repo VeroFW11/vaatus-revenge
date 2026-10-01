@@ -15,6 +15,8 @@ namespace VaatusRevenge.Core
         public float NowLead = 0.30f;                // ...and turns white this long before (0 = no white cue). A person reacting
                                                      // to it after ~0.25 s presses inside the perfect-dodge and deflect windows
         public float ClearAfterImpact = 0.10f;       // a strike is forgotten this long after it should have landed
+        public float BoltMissMargin = 0.3f;          // a bolt passing further than this beside your body (sideways) won't hit you:
+                                                     // its warning is called off until you step back into its path
         public float AutoEvadeLookahead = 0.45f;     // a neutral-stick dodge side-steps a strike landing within this long
         public int MaxTracked = 8;                   // strikes tracked at once (a fixed array: no allocation)
 

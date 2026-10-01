@@ -208,7 +208,7 @@ namespace VaatusRevenge
                 builtFinisherNames[i * 2] = finisher;
                 builtFinisherNames[i * 2 + 1] = pause;
                 elementFinishers[i] = "Finisher: " + (string.IsNullOrEmpty(finisher) ? "the 5th hit" : finisher)
-                                      + "   ·   Pause finisher: " + (string.IsNullOrEmpty(pause) ? "X X (wait) X" : pause);
+                                      + "   ·   Pause finisher: " + (string.IsNullOrEmpty(pause) ? "X X (wait) X X" : pause);
             }
 
             switchPad = layout != null ? padRow.ToString() : "Hold RB + a face button";
@@ -216,14 +216,14 @@ namespace VaatusRevenge
 
             int r = 0;
             Pattern(ref r, "{X} · {X} · {X} · {X} · {X}",
-                "The string: press as each hit lands (flash, chime, gold ring) for faster, harder hits. Mashing is slow");
-            Pattern(ref r, "{X} · {X} · (wait) · {X}", "Pause finisher: two hits, a short breath, one more. A different ending");
+                "The string: press as the gold ring touches the circle, so X lands WITH the hit, for faster, harder hits. Mashing is slow and tiring");
+            Pattern(ref r, "{X} · {X} · (wait) · {X} · {X}", "Pause finisher: two hits, wait for your guard (the circle glows blue), two more. A different ending");
             Pattern(ref r, "hold {X}, then {X} · {X} · {X}", "Launcher throws them up and you follow; then the air string");
             Pattern(ref r, "{B} toward  /  {B} away", "Dodge: slip in close / evade out of reach. Your combo keeps going");
             Pattern(ref r, "{B}, then {X} late", "Dodge strike: a counter that dashes back in and counts as the next hit");
             Pattern(ref r, chords.ToString(), keys.ToString(),
                 "Switch element. Mid-string it's a switch strike: the next hit is in that element, and harder");
-            Pattern(ref r, "MIX", "More elements landing in one combo: 2 hit harder, 3 launch on the finisher, 4 break guard");
+            Pattern(ref r, "MIX", "More elements landing in one combo: 2 hit harder, 3 launch on the finisher, 4 also refills your meters (and breaks a heavy foe's guard)");
             Pattern(ref r, "gold: {LB}   red: {B}", sense + ": the mark above you. Gold = parry, red = dodge. Press when it turns white");
         }
 
@@ -402,8 +402,8 @@ namespace VaatusRevenge
             int r = 0;
             Row(ref r, "Move  /  camera", "Left stick  /  right stick", "W A S D  /  mouse");
             Row(ref r, "Change target while locked on", "Flick the right stick", "Mouse wheel, or Z / C");
-            Row(ref r, "Attack: the 5-hit string, press as each hit lands", "X", "Left mouse");
-            Row(ref r, "Pause finisher", "X  X  (wait)  X", "The same with left mouse");
+            Row(ref r, "Attack: the 5-hit string, press so X lands with each hit", "X", "Left mouse");
+            Row(ref r, "Pause finisher (wait for the blue circle)", "X  X  (wait)  X  X", "The same with left mouse");
             Row(ref r, Named("Launcher, then the air string", launcherName), "Hold X, then X in the air", "Hold left mouse, then left mouse");
             Row(ref r, Named("Zip strike to a far enemy (keeps your combo)", zipName), "Y", "F");
             Row(ref r, "Dodge (stick: toward = slip in, away = evade)  /  sprint", "B  /  hold B", "Left Shift  /  hold Left Shift");

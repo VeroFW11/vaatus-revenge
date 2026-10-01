@@ -17,15 +17,18 @@ something is about to hit you and the game picks a safe sideways dodge for you. 
 three dodges before a short breather. **Dodging does not break your combo.** If you were on hit 3 of your string and you dodge, your next
 X is hit 4. Press X late in a dodge and you get a **dodge strike**: a counter that dashes back in and counts as the next hit.
 
-**Rhythm combos.** Every element has a five-hit string on X. You can mash and it still works, but slowly. Press X **as each hit lands**
-(you see a flash, hear a chime, and a gold ring closes on the beat) and the next hit comes out faster and harder. Keep the beat for the
-whole string and the finisher hits harder still and knocks the enemy up. Want a different ending? Hit **X, X, then wait a moment, then X**:
-that's the **pause finisher**, a different last move per element (Fire's is a sweeping kick into a rising kick that launches).
+**Rhythm combos.** Every element has a five-hit string on X. You can mash and it still works, but slowly and at a stamina cost. Press X
+**so it lands with each hit**: a gold ring closes on a circle and touches it on the beat, so press as it touches (the flash and chime
+confirm a hit on the beat; reacting to them is too late). On the beat the next hit comes out faster and harder. Keep the beat for the
+whole string and the finisher hits harder still and (Fluid) knocks the enemy up. Want a different ending? Hit **X, X, then wait until your
+hands are back in guard and the circle glows blue, then X X**: that's the **pause finisher**, a different two-hit ending per element
+(Fire's is a sweeping kick into a rising kick that launches). *(Build 05 verify: the pause chain is two moves, so it is X X (wait) X X.)*
 
-**Element switching.** Hold RB and press a face button to change element: Y Fire, B Water, A Earth, X Air. Do it **in the middle of a
-string** and the string carries on in the new element from the same hit number: X, X, RB+B, X, X is two Fire hits then three Water
-hits ending on Water's finisher. The switching hit lands a little harder. Use more elements in one combo and every hit gets stronger:
-**two elements hits harder, three knocks them up on the finisher, four breaks their guard.** The HUD calls this **MIX**.
+**Element switching.** Hold RB and press a face button to change element. **The button's colour is the element: B (red) Fire, X (blue)
+Water, A (green) Earth, Y (yellow) Air** (§8.1 item 3). Do it **in the middle of a string** and the string carries on in the new element
+with its next hit: X, X, RB+X, X, X is two Fire hits then three Water hits ending on Water's finisher. The switching hit lands a little
+harder. Use more elements in one combo and every hit gets stronger: **two elements hits harder, three knocks them up on the finisher,
+four also refills your meters (and breaks the guard of a foe too heavy to launch).** The HUD calls this **MIX**.
 
 Each element plays like its martial art:
 - **Fire (Northern Shaolin):** fast, steady, relentless; on-beat hits build Momentum.
@@ -44,15 +47,15 @@ Each step shows the buttons as pictures, counts your progress, and chimes when y
 | Button | Action |
 |---|---|
 | Left stick / Right stick | Move / camera. Flick the right stick to change target while locked on |
-| **X** | Attack. Tap in rhythm for the 5-hit string. **X X (wait) X** = pause finisher (NEW). In the air: air string |
-| Hold **X** | Launcher (throws the enemy up, you follow) |
+| **X** | Attack. Tap in rhythm for the 5-hit string. **X X (wait) X X** = pause finisher (NEW). In the air: air string |
+| Hold **X** | Launcher (throws the enemy up, you follow); holding any string press turns that hit into the launcher |
 | **Y** | Zip strike to a far enemy (keeps your combo going) |
 | **B** | Tap: dodge (stick decides slip-in, evade-out or side-step; NEW). Hold: sprint. **X late in a dodge = dodge strike** (NEW) |
 | **A** | Jump |
 | Tap **LB** | Parry. Earth only: hold LB to block |
 | Tap **RB** | Ranged skill of the current element |
 | Hold **LB** + X / Y / B | Charged fa jin heavy (in the air: plunge) / mid-range ability / close all-round ability |
-| Hold **RB** + Y / B / A / X | Switch to Fire / Water / Earth / Air. Mid-string it is a **switch strike** (NEW) |
+| Hold **RB** + B / X / A / Y | Switch to Fire / Water / Earth / Air (colour-matched). Mid-string it is a **switch strike** (NEW) |
 | D-pad down | Heal |
 | R3 / L3 | Lock-on (optional) / swap camera shoulder |
 | **View** | Sandbox: start / skip (tap) / quit (hold 1 s) the tutorial (NEW) |
@@ -312,7 +315,7 @@ The old `(PlayerTuning, ElementMoveSet)` constructor wraps a one-set loadout.
 
 | `PlayerTuning.ElementSwitch` | Fluid | Punishing |
 |---|---|---|
-| `Cooldown` | 0.30 s | 0.60 s |
+| `Cooldown` | 0.20 s (was 0.30, §8.2) | 0.45 s (was 0.60, §8.2) |
 | `SwitchBufferWindow` | 0.25 s | 0.20 s |
 | `SwitchStrikeBeatLateBonus` | 0.06 | 0.04 |
 | `SwitchStrikeDamageMultiplier` | 1.20 | 1.15 |
@@ -393,7 +396,7 @@ Fire Blast; Flame Step Strike zip; Flying Fire Kick sprint. Fluid changes only: 
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | PauseChain[0] | Sweeping Flame Kick (low spinning sweep) | `sweep_kick` / `trail` | .16/.12/.34 | .20-.48 | .30/0 | 11 | 10 | 3.0/160, OriginFwd 0 | .6 | — | 10 | 8 |
 | PauseChain[1] (finisher) | Rising Phoenix Kick | `rising_phoenix_kick` / `pillar` | .20/.12/.46 | .52-.80 | .50/.30 | 14 | 12 | 2.8/100 | .4 | L 10, SL 0 | 12 | 12 |
-| DodgeStrike | Turning Heel Counter (spinning back kick) | `spin_back_kick` / `burst` | .10/.10/.28 | .12-.38 | .22/0 | 11 | 7 | 2.8/140 | .6 | — | 0 | 8 |
+| DodgeStrike | Turning Heel Counter (spinning back kick) | `spin_back_kick` / `burst` | .10/.10/.28 | .12-.38 | .22/0 | 11 | 7 | 2.0 (was 2.8, §8.2)/140 | .6 | — | 0 | 8 |
 
 Pause path poise 8+9+10+12 = 39. Fire rhythm: on-beat +3 Momentum.
 
@@ -408,7 +411,7 @@ Pause path poise 8+9+10+12 = 39. Fire rhythm: on-beat +3 Momentum.
 | Light 5 | Single Whip | `single_whip` / `whip` | .22/.18/.46 | .50-.84 | .62/.36 | 17 | 10 | 5.5/150, OriginH 1.2, VR 1.4 | .2 | — | 13 | HealOnHit 2, KB 1.2, hitstop .065 |
 | Pause[0] | Cloud Hands | `cloud_hands` / `vortex` | .16/.48/.30 | .56-.90 | .66/.24 | 3 ×4 | 2 ×4 | 3.6/360, OriginFwd 0 | 0 | — | 12 | HitInterval .12, Pull .3 |
 | Pause[1] | Part the Wild Horse's Mane | `split_mane` / `wave` | .20/.14/.44 | .52-.80 | .60/.30 | 15 | 14 | 4.5/180 | .3 | — | 12 | KB 2.0, HealOnHit 2 |
-| DodgeStrike | Return the Tide | `return_tide` / `wave` | .10/.12/.30 | .12-.40 | .24/0 | 12 | 6 | 3.2/120 | .6 | — | 0 | HealOnHit 2 |
+| DodgeStrike | Return the Tide | `return_tide` / `wave` | .10/.12/.30 | .12-.40 | .24/0 | 12 | 6 | 2.0 (was 3.2, §8.2)/120 | .6 | — | 0 | HealOnHit 2 |
 | Launcher | White Crane Spreads Wings | `crane_rise` / `pillar` | .18/.12/.36 | — | .30/.30 | 8 | 12 | 3.2/90, VR 1.6 | .3 | L 11, SL 9.5 | 12 | |
 | Air 1 | Brush Knee Palm | `air_brush_palm` / `trail` | .09/.10/.22 | .12-.38 | .19/.16 | 6 | 5 | 2.8/100, VR 1.8 | .3 | AL 3.2, SL 3.2 | 6 | |
 | Air 2 | Fair Lady Works the Shuttles | `air_shuttle` / `vortex` | .12/.14/.26 | .16-.44 | .26/.20 | 7 | 7 | 3.0/160, VR 1.8 | .3 | AL 3.4, SL 3.4 | 7 | |
@@ -428,14 +431,14 @@ gravity .28 / dash 3.6.
 
 | Slot | Name | AnimationKey / EffectKey | S/A/R | CW | Ch/Dg | Dmg | Po | Rng/Arc | Lng | Air | St | Extra |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Light 1 | Stone Fist | `horse_punch` / `burst` | .18/.10/.36 | .22-.54 | .30/.24 | 11 | 7 | 2.6/70 | .25 | — | 11 | GSD 16, hitstop .05 |
+| Light 1 | Horse Stance Punch (was "Stone Fist": the name implied stone on the fist, §7) | `horse_punch` / `burst` | .18/.10/.36 | .22-.54 | .30/.24 | 11 | 7 | 2.6/70 | .25 | — | 11 | GSD 16, hitstop .05 |
 | Light 2 | Tiger Claw Rake | `tiger_claw` / `line` | .18/.12/.38 | .24-.58 | .32/.26 | 12 | 8 | 2.8/100 | .25 | — | 11 | GSD 18 |
 | Light 3 | Rooted Stomp | `stomp_line` / `line` | .22/.12/.40 | .28-.62 | .36/.28 | 13 | 9 | 4.5/25 | 0 | — | 12 | HyperArmor from .10, GSD 18 |
 | Light 4 | Butterfly Palms | `butterfly_palms` / `burst` | .24/.12/.44 | .36-.72 | .46/.32 | 15 | 9 | 3.4/70 | .3 | — | 13 | HyperArmor from .08, GSD 22, KB 1.0 |
 | Light 5 | Mountain Quake | `quake_slam` / `stomp` | .30/.14/.56 | .58-.94 | .72/.44 | 21 | 11 | 3.6/360, OriginFwd 0, VR 1.2 | 0 | — | 16 | HyperArmor 0, GSD 30, KB 1.6, hitstop .08 |
 | Pause[0] | Raise the Boulder | `boulder_raise` / `pillar` | .24/.12/.30 | .36-.66 | .40/.28 | 10 | 10 | 2.6/120, VR 1.6 | 0 | L 6 | 12 | HyperArmor from .10 |
 | Pause[1] | Boulder Hurl | `boulder_hurl` / `burst` | .26/0/.48 | .52-.80 | .56/.36 | 20 | 14 | projectile speed 24, gravity 6, radius .6, explosion 2.5, range 18 | 0 | — | 14 | HyperArmor 0, GSD 26, KB 1.8 |
-| DodgeStrike | Pivot Elbow | `pivot_elbow` / `burst` | .12/.10/.34 | .14-.44 | .26/0 | 14 | 7 | 2.6/120 | .5 | — | 0 | HyperArmor 0, GSD 18 |
+| DodgeStrike | Pivot Elbow | `pivot_elbow` / `burst` | .12/.10/.34 | .14-.44 | .26/0 | 14 | 7 | 2.0 (was 2.6, §8.2)/120 | .5 | — | 0 | HyperArmor 0, GSD 18 |
 | Launcher | Rising Pillar | `pillar_uppercut` / `pillar` | .20/.12/.40 | — | .32/.32 | 10 | 14 | 2.8/90, VR 1.6 | .2 | L 11, SL 9.5 | 13 | HyperArmor from .08 |
 | Air 1 | Hammer Fist | `air_hammer` / `burst` | .10/.10/.26 | .14-.40 | .20/.18 | 8 | 7 | 2.4/80, VR 1.8 | .3 | AL 3.0, SL 3.0 | 7 | martial strike, dust VFX only (§7) |
 | Air 2 | Tiger Tail Kick | `air_back_kick` / `trail` | .14/.10/.30 | .18-.46 | .26/.22 | 10 | 9 | 2.6/120, VR 1.8 | .3 | AL 3.0, SL 3.0 | 8 | dust only |
@@ -462,7 +465,7 @@ lockout .40. Aerial: 4 attacks / 1 dash / gravity .45 / dash 2.6.
 | Light 5 | Gale Palm | `gale_palm` / `cone` | .16/.12/.40 | .40-.68 | .52/.24 | 14 | 12 | 5.0/70 | .3 | — | 11 | **KB 4.0**, hitstop .07 |
 | Pause[0] | Circle Walk Flurry | `circle_walk` / `trail` | .09/.40/.24 | .44-.72 | .49/.14 | 3 ×4 | 2 ×4 | 3.0/120 | .4 | — | 10 | HitInterval .10, Orbit 180 |
 | Pause[1] | Whirlwind | `whirlwind` / `vortex` | .18/.30/.40 | .52-.80 | .70/.30 | 3 ×3 | 3 ×3 | 3.8/360, VR 1.6 | 0 | L 9, AL 4 | 14 | HitInterval .10 |
-| DodgeStrike | Circle Step Palm | `circle_step_palm` / `trail` | .09/.14/.24 | .12-.38 | .24/0 | 3 ×3 | 2 ×3 | 3.0/140 | .7 | — | 0 | HitInterval .05, Orbit 90 |
+| DodgeStrike | Circle Step Palm | `circle_step_palm` / `trail` | .09/.14/.24 | .12-.38 | .24/0 | 3 ×3 | 2 ×3 | 2.0 (was 3.0, §8.2)/140 | .7 | — | 0 | HitInterval .05, Orbit 90 |
 | Launcher | Updraft Palm | `updraft_palm` / `pillar` | .12/.10/.32 | — | .24/.24 | 6 | 8 | 3.0/100, VR 1.8 | .3 | L 12, SL 10.5 | 10 | |
 | Air 1 | Air Swipe | `air_swipe` / `trail` | .09/.10/.20 | .10-.34 | .19/.12 | 3 ×2 | 2 ×2 | 3.0/110, VR 1.8 | .3 | AL 3.2, SL 3.2 | 5 | HitInterval .05 |
 | Air 2 | Spiral Kick | `air_spiral_kick` / `vortex` | .10/.14/.22 | .14-.40 | .24/.14 | 3 ×3 | 2 ×3 | 3.0/200, VR 1.8 | .3 | AL 3.4, SL 3.4 | 6 | HitInterval .05 |
@@ -484,7 +487,7 @@ Aerial: 9 attacks / 2 dashes / gravity .18 / dash 4.2.
 | Field | Fire: Flame Step | Water: Flowing Step | Earth: Stone Slide | Air: Circle Step |
 |---|---|---|---|---|
 | `EvadeOutDistance` / `SideSlipDistance` / `SlipInMaxDistance` / `BackstepDistance` | 4.0 / 3.0 / 3.4 / 2.2 | 4.6 / 3.6 / 3.0 / 2.4 | 3.0 / 2.2 / 2.4 / 1.8 | 4.8 / 3.6 / 3.4 / 2.6 |
-| `Duration` / `DashEaseOut` | .24 / .70 | .28 / .30 | .22 / .80 | .28 / .40 |
+| `Duration` / `DashEaseOut` | .24 / .70 | .28 / .65 (was .30, §8.2) | .22 / .80 | .28 / .65 (was .40, §8.2) |
 | `IFrameStart`-`IFrameEnd` | 0-.18 | 0-.20 | 0-.14 | 0-.20 |
 | `EvadeAttackCancelAt` / `SlipInAttackCancelAt` / `NextDodgeAt` | .08 / .05 / .18 | .10 / .06 / .22 | .06 / .05 / .20 | .08 / .05 / .16 |
 | `ChainMax` | 3 | 3 | 2 | 4 |
@@ -858,20 +861,20 @@ Active 0 with `PoseEase.Snap`; dodge clips facing the fight; the multi-hit moves
   | # | Title: prompt | Success (from `GameplayEvent` + model snapshot) | Count |
   |---|---|---|---|
   | 1 | Move & look: "{LS} move, {RS} camera" | Timed 4 s | — |
-  | 2 | On the beat: "{X} ×5, press as each hit lands" | `ComboHit` with `IsFinisher`, Branch Main, in a string with ≥ 3 `BeatJudged` OnBeat | 1 |
-  | 3 | Pause finisher: "{X} {X} … wait … {X}" | `ComboHit` Branch Pause, IsFinisher | 2 |
+  | 2 | On the beat: "{X} ×5, press as the ring touches the circle" | `ComboHit` with `IsFinisher`, Branch Main, in a string with ≥ 3 `BeatJudged` OnBeat | 1 |
+  | 3 | Pause finisher: "{X} {X} … wait … {X} {X}" (the circle glows blue while the pause band is open) | `ComboHit` Branch Pause, IsFinisher | 2 |
   | 4 | Dodge keeps the combo: "mid-combo, {B} when the mark flashes, keep pressing {X}" (dummy swings) | `DodgeStarted` while ComboCount ≥ 2, then `ComboHit` with higher Count, same combo | 2 |
   | 5 | Slip in: "from range, stick toward the target + {B}, then {X}" | `DodgeStarted` SlipIn starting ≥ 4 m away, `ComboHit` within 0.6 s | 2 |
   | 6 | Dodge strike: "{X} late in a dodge" | `ComboHit` Branch DodgeStrike | 2 |
   | 7 | Launch & juggle: "hold {X}, then {X}{X}{X} in the air" (partner) | Launcher `ComboHit`, then air-chain last index `ComboHit` with InAir | 1 |
-  | 8 / 8b / 8c | Switch mid-combo: "{X}{X}, {RB}+{B} (Water), keep going"; then {RB}+{A} Earth; {RB}+{X} Air | `ElementSwitched` IsSwitchStrike to that element, then a `ComboHit` in it, same combo | 1 each |
+  | 8 / 8b / 8c | Switch mid-combo: "{X}{X}, {RB}+{X} (Water), keep going"; then {RB}+{A} Earth; {RB}+{Y} Air | `ElementSwitched` IsSwitchStrike to that element, then a `ComboHit` in it, same combo | 1 each |
   | 9 | MIX finisher: "finish a string after mixing two elements" | `MixFinisher` with Count ≥ 2 | 1 |
   | 10 | Danger sense: "gold = {LB} parry, red = {B} dodge, press when it turns white" (partner attacks) | `Deflected` or `PerfectDodge` within 0.35 s after a `DangerNow` | 2 |
   | 11 | Graduation: "20-hit combo using 3 elements" | ComboCount ≥ 20 with MixLevel ≥ 3 | 1 |
 
-- **F1 overlay**: F1 cycles closed → page 1 "Rhythm & Mixing" (glyph strings: `X·X·X·X·X` press as each hit lands; `X·X·(pause)·X`;
+- **F1 overlay**: F1 cycles closed → page 1 "Rhythm & Mixing" (glyph strings: `X·X·X·X·X` press as the ring touches; `X·X·(wait)·X·X`;
   hold X → launcher → `X·X·X` in the air; B toward = slip in, B away = evade, combo keeps going; X late in a dodge = dodge strike;
-  RB + Y/B/A/X mid-combo = switch strike, MIX bonus; one line per element: finisher name from data + martial-art hint; danger mark gold =
+  RB + B/X/A/Y mid-combo = switch strike, MIX bonus; one line per element: finisher name from data + martial-art hint; danger mark gold =
   parry, red = dodge) → page 2 (controls table, gameplay rows from `PlayerInputReader` incl. switch strike and tutorial; sandbox rows +
   F7/View tutorial, F8 skip) → closed. Rows built once.
 - **Docs**: README "Play it" uses the new menu names and the Update flow; controls table matches §1; decision log entry for Build 05.
@@ -999,13 +1002,14 @@ playback rate in `[Min, Max]`; every `DangerWarning` followed by impact or `Dang
 ### 6.5 Feel checklist for David and Jeremy (Fluid, gamepad)
 1. X X, B away, X: the next hit is hit 3 (HUD string pips show 3), and the dodge strike dashes back in.
 2. Dodge in the middle of a hit's wind-up, then X: the same hit comes out again (not skipped).
-3. X X RB+B X X: two Fire hits, three Water hits ending on Water's finisher; the combo count never resets.
-4. Pressing X on each flash makes the string visibly faster than mashing; mashing still finishes the string.
-5. X X (wait about half a second) X gives the pause finisher every time, and never by accident while mashing.
+3. X X RB+X X X: two Fire hits, three Water hits ending on Water's finisher; the combo count never resets.
+4. Pressing X as the gold ring touches the circle makes the string visibly faster than mashing; mashing still finishes the string.
+5. X X (wait for the blue circle) X X gives the pause finisher every time, in every element, and never by accident while mashing.
 6. Dodging next to an enemy never turns your back to it; with no enemy nearby the dodge goes where you push.
 7. Three quick dodges then a short lockout; you never feel stuck after a dodge (run speed carries on).
 8. The danger mark's white flash is the right moment: dodging on it gives a perfect dodge most of the time.
-9. A three-element combo finisher launches the enemy; a four-element one staggers it.
+9. A three-element combo finisher launches the enemy; a four-element one launches it and refills the meters (a foe too heavy to launch
+   staggers instead).
 10. A first-time player finishes the tutorial in under 15 minutes without reading anything outside the game.
 
 ---
@@ -1069,3 +1073,34 @@ These override anything above that conflicts.
    playtest report.
 6. **Art**: the effect images are delivered to David as one download to unzip into the project; the code must work with or without
    them (procedural stand-ins), exactly as §5 C says.
+
+### 8.2 Build 05 verify round 1 (1 Oct): fixes to the feel and the teaching
+The judge played the build headless against David's brief and found the Spider-Man 2 feel breaking in exactly the moments the
+brief is about. These calls were made to fix it (Jeremy and David: please try them and say if any should go back):
+1. **Pause finisher is X X (wait) X X.** Every pause chain has two moves, so the old "X X (wait) X" could never finish it. Taught
+   with a cue instead of a time: the HUD's beat circle **glows blue while the pause band is open** (`RhythmView.PauseReady`), since
+   the band opens 0.47-0.72 s after the 2nd press depending on the element. The tutorial, F1, How-To-Play and §1 say so.
+2. **The beat is taught as anticipation.** "Press as the gold ring touches the circle, so X lands *with* the hit"; the flash and
+   chime only confirm it (a press made in reaction to them grades Late 93 % of the time). The closing ring is now gold, and the
+   ring at the player's feet is on by default (CombatHud). **Open for Jeremy:** Fluid `BeatLate` 0.10 → 0.15 would forgive
+   reaction presses; not changed.
+3. **Element switch cooldown 0.30 → 0.20 s (Fluid), 0.60 → 0.45 s (Punishing).** "One X between two switches" now holds in every
+   element order on Fluid (Air's quick hit in the middle used to be refused); Punishing needs two X. A refused switch, and an RB pick
+   of the element already in hand, **shake the element wheel** (cooldown: its dots flash amber); a same-element pick mid-string now
+   carries the string on (it used to be swallowed).
+4. **Arriving lunges.** A stretched (gap-closing) lunge, including the dodge strike dashing back in after an evade-out, and any own
+   lunge longer than 1.5 m (sprint attacks) now **arrive as the strike goes active**, like the zip strike, so the hit lands with the
+   limb on the target instead of from 2-2.7 m away followed by a glide in. The dash is capped at 20 m/s by stretching the startup
+   (up to +0.15 s; `PlayerTuning.ArriveLungeMaxSpeed`, `ArriveLungeMaxExtraStartup`, `ArriveLungeMinDistance`); the beat and every
+   later mark move with it. Dodge strikes' Range trimmed to 2.0 m (string reach).
+5. **Dodges never stop dead.** A dodge's end speed carries on and locomotion brakes it (or it flows into the run with the stick
+   held); an air dash flows into the jump's drift. Water and Air `DashEaseOut` 0.30/0.40 → 0.65 so their exits are ~6 m/s
+   instead of 11-12 m/s. The animator's leap lift eases out over the hand-back, chained dodges restart their clip, and the legs
+   stop within 0.1 s when the body does.
+6. **Side-slip circles the enemy** at the distance you started (never closer than a slip-in stops), at most
+   `DodgeProfile.SideSlipMaxDegrees` (100°) round per slip, instead of a straight tangent that left you 3-4 m away.
+7. **Earth in the air throws no rock** (§8.1 item 2 enforced in the VFX): air strikes draw dust only, the limb sheds dust, not
+   gravel. "Stone Fist" renamed **Horse Stance Punch** (§7).
+8. **MIX 4** wording matches the rules: the finisher launches and refills the meters; the guard break shows on a foe too heavy to
+   launch (Jeremy's call whether MIX 4 should break guard instead of launching, open question 2).
+

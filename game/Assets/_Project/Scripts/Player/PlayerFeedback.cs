@@ -129,6 +129,11 @@ namespace VaatusRevenge
                     PlayFinisherSound(s);
                     break;
                 case PlayerEventType.MixFinisher: MixFinisher(in e, s); break;
+                case PlayerEventType.HealedOnHit:
+                    // Water's healing: a small blue-white mote at the chest and a soft flash.
+                    ElementVfx.BeatAccent(ChestPosition(), s.BeatAccentScale * 0.6f, HealMoteColor, s.BeatAccentTime);
+                    Flash(HealMoteColor, s.SwitchFlashTime * 0.6f);
+                    break;
                 case PlayerEventType.ElementSwitched: ElementSwitched(in e, s); break;
                 case PlayerEventType.DangerWarning: Pulse(s.DangerTick); break;
                 case PlayerEventType.DangerNow: Pulse(s.DangerNowTick); break;
@@ -246,7 +251,11 @@ namespace VaatusRevenge
             float duration = move.Startup + move.Active;
             if (ElementMoveEffects.HasBigEffect(move)) duration *= p.BigEffectLimbFlameShare;
             StopLimbFlame();
-            if (duration > 0f) limbFlame = ElementVfx.LimbAura(attackElement, rig.GetAnchor(strikeLimb), duration);
+            if (!(duration > 0f)) return;
+            // Earth in the air draws dust off the limb, never gravel (canon: no stone without ground).
+            limbFlame = ElementMoveEffects.IsAirborneEarth(in e, attackElement)
+                ? ElementVfx.LimbDust(attackElement, rig.GetAnchor(strikeLimb), duration)
+                : ElementVfx.LimbAura(attackElement, rig.GetAnchor(strikeLimb), duration);
         }
 
         // The strike can hit now: the move's effect in its element, and a trail on the striking limb through the active
@@ -364,14 +373,16 @@ namespace VaatusRevenge
             mixAccentInstance = 0;
             float scale = Mathf.Max(0f, s.MixAccentScale);
             ElementVfx.Burst(element, at, body.forward, scale * 0.6f);
-            ElementVfx.BeatAccent(at, s.BeatAccentScale * scale, Bright(ElementVfx.HudColor(element)), s.BeatAccentTime * scale);
+            ElementVfx.BeatAccent(at, s.BeatAccentScale * scale, Bright(ElementVfx.WorldColor(element)), s.BeatAccentTime * scale);
         }
+
+        static readonly Color HealMoteColor = new Color(0.75f, 0.92f, 1f, 1f);
 
         void MixFinisher(in PlayerEvent e, PlayerFeedbackSettings s)
         {
             PlayFinisherSound(s);
             Pulse(s.MixFinisherPulse);
-            ElementVfx.BeatAccent(ChestPosition(), s.BeatAccentScale * (1f + 0.25f * e.Count), Bright(ElementVfx.HudColor(e.Element)),
+            ElementVfx.BeatAccent(ChestPosition(), s.BeatAccentScale * (1f + 0.25f * e.Count), Bright(ElementVfx.WorldColor(e.Element)),
                 s.BeatAccentTime * 2f);
         }
 
@@ -387,7 +398,7 @@ namespace VaatusRevenge
                 leftAura = ElementVfx.LimbAura(element, rig.GetAnchor(Limb.LeftFist), s.SwitchAuraTime);
                 rightAura = ElementVfx.LimbAura(element, rig.GetAnchor(Limb.RightFist), s.SwitchAuraTime);
             }
-            Flash(ElementVfx.HudColor(element), s.SwitchFlashTime);
+            Flash(ElementVfx.WorldColor(element), s.SwitchFlashTime);   // the colour its effects have in the world
             PlaySound(SoundKind.Switch, s);
             Pulse(s.SwitchPulse);
         }

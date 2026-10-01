@@ -26,6 +26,16 @@ namespace VaatusRevenge.CombatSim
             extra = null;
         }
 
+        // Targets a scenario checks (Target): any miss makes the program exit with code 1, so a script notices.
+        public static int Misses { get; private set; }
+
+        // "OK" or "MISS" for a table cell, counting misses.
+        public static string Target(bool ok)
+        {
+            if (!ok) Misses++;
+            return ok ? "OK" : "MISS";
+        }
+
         public static void Line(string s = "")
         {
             Console.WriteLine(s);

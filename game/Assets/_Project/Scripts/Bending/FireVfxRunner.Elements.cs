@@ -39,6 +39,20 @@ namespace VaatusRevenge
             }
         }
 
+        // Earth's strikes in the air: a cloud of dust and a puff of pressure, no rock pieces (an earthbender in the air has
+        // no ground to draw stone from: canon, spec 8.1).
+        internal void ElementDust(ElementId element, Vector3 position, Vector3 direction, float scale)
+        {
+            if (!(scale > 0f)) return;
+            ElementVfxStyle s = ElementVfx.StyleOf(element);
+            Vector3 dir = SafeDirection(direction, Vector3.up);
+            float size = s.BurstSize * scale;
+            float life = s.BurstLifetime;
+            Cloud(s, position, dir * (s.BurstSpeed * scale * 0.3f), 8f, size, life * 0.8f);
+            Cloud(s, position + dir * (size * 0.3f), dir * (s.BurstSpeed * scale * 0.15f), 6f, size * 0.7f, life * 0.6f);
+            Shockwave(s, position + dir * (size * 0.4f), dir, size * 0.3f, size * 1.4f, life * 0.5f);
+        }
+
         internal void ElementExplosion(ElementId element, Vector3 position, float radius)
         {
             ElementVfxStyle s = ElementVfx.StyleOf(element);
@@ -644,6 +658,10 @@ namespace VaatusRevenge
                     }
                     case FireVfxEmitterKind.Afterimage:
                         Afterimage(s, at);
+                        break;
+                    case FireVfxEmitterKind.LimbDust:
+                        // Earth's limb in the air: dust only.
+                        Cloud(s, at, Vector3.up * 0.4f + Random.insideUnitSphere * 0.4f, 3f, s.LimbSize, s.LimbLifetime);
                         break;
                     default:
                     {

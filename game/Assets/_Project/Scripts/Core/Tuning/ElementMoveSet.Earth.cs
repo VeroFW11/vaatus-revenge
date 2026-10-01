@@ -71,7 +71,7 @@ namespace VaatusRevenge.Core
         {
             var stoneFist = new MoveData
             {
-                DisplayName = "Stone Fist", Kind = HitKind.Light, Limb = Limb.LeftFist,
+                DisplayName = "Horse Stance Punch", Kind = HitKind.Light, Limb = Limb.LeftFist,
                 AnimationKey = AnimationKeys.HorsePunch, EffectKey = EffectKeys.Burst,
                 Startup = 0.18f, Active = 0.10f, Recovery = 0.36f,
                 Damage = 11f, PoiseDamage = 7f, GuardStaminaDamage = 16f, Knockback = 0.3f, Hitstop = 0.05f,
@@ -166,7 +166,7 @@ namespace VaatusRevenge.Core
                 AnimationKey = AnimationKeys.PivotElbow, EffectKey = EffectKeys.Burst,
                 Startup = 0.12f, Active = 0.10f, Recovery = 0.34f,
                 Damage = 14f, PoiseDamage = 7f, GuardStaminaDamage = 18f, Knockback = 0.6f, Hitstop = 0.055f,
-                Range = 2.6f, ArcDegrees = 120f, LungeDistance = 0.5f,
+                Range = 2.0f, ArcDegrees = 120f, LungeDistance = 0.5f,
                 HyperArmor = true, HyperArmorFrom = 0f,
                 ComboWindowStart = 0.14f, ComboWindowEnd = 0.44f, ChainCancelAt = 0.26f, DodgeCancelAt = 0f,
                 StaminaCost = 0f, MomentumGain = 0f
@@ -199,7 +199,8 @@ namespace VaatusRevenge.Core
         }
 
         // The air string, pure Hung Gar with dust only: a hammer fist, a tiger-tail back kick, then Meteor Drop, both fists
-        // driving the foe into the floor (its spikes rise only when it lands).
+        // driving the foe into the floor (its spikes rise only when it lands). Canon (spec 8.1): no rock in the air. The
+        // EffectKeys below pick the shape; ElementMoveEffects draws any Earth strike made in the air as dust only.
         static MoveData[] CreateEarthAirChain()
         {
             var hammer = new MoveData

@@ -50,7 +50,7 @@ namespace VaatusRevenge.Core
         // Bumped when the defaults change in a way old assets must not keep (the sandbox builder offers to reset an
         // asset whose DataVersion is behind). A field missing from an old asset keeps its initialiser, so it reads 0.
         public int DataVersion = 0;
-        public const int CurrentDataVersion = 5;
+        public const int CurrentDataVersion = 6;   // 6: Build 05 verify (dodge strike reach, Water/Air dash ease, side-slip circle)
 
         public static ElementMoveSet CreateFireFluid()
         {
@@ -217,7 +217,7 @@ namespace VaatusRevenge.Core
                 AnimationKey = AnimationKeys.SpinBackKick, EffectKey = EffectKeys.Burst,
                 Startup = 0.10f, Active = 0.10f, Recovery = 0.28f,
                 Damage = 11f, PoiseDamage = 7f, GuardStaminaDamage = 11f, Knockback = 0.5f, Hitstop = 0.05f,
-                Range = 2.8f, ArcDegrees = 140f, LungeDistance = 0.6f,
+                Range = 2.0f, ArcDegrees = 140f, LungeDistance = 0.6f,
                 ComboWindowStart = 0.12f, ComboWindowEnd = 0.38f, ChainCancelAt = 0.22f, DodgeCancelAt = 0f,
                 StaminaCost = 0f, MomentumGain = 8f
             };

@@ -49,8 +49,8 @@ namespace VaatusRevenge
         [SerializeField] private bool showControlsAtStart = false;
         [Tooltip("Open the debug panel (F3) when Play starts.")]
         [SerializeField] private bool showDebugAtStart = false;
-        [Tooltip("Also draw the beat ring on the floor at the player's feet (the tutorial turns it on while it runs).")]
-        [SerializeField] private bool feetBeatRing = false;
+        [Tooltip("Also draw the beat ring on the floor at the player's feet, where your eyes are in a fight (the tutorial always turns it on while it runs).")]
+        [SerializeField] private bool feetBeatRing = true;
 
         [Header("Colours")]
         [SerializeField] private Color healthColor = new Color(0.8f, 0.12f, 0.1f, 1f);
@@ -168,7 +168,11 @@ namespace VaatusRevenge
             beatPulse.OnEvent(in e, now);
             feetBeatPulse.OnEvent(in e, now);
             elementWheel.OnEvent(in e, now);
+            if (e.Type == PlayerEventType.HealedOnHit) healTickStart = now;
         }
+
+        float healTickStart = -10f;
+        const float HealTickTime = 0.35f;
 
         void Update()
         {
@@ -185,6 +189,12 @@ namespace VaatusRevenge
                     slowTextTimer = 0f; // fill the panel's header straight away
                 }
             }
+
+            // On the gamepad: while paused (Menu), Y pages the same overlay.
+            PlayerInputReader reader = PlayerInputReader.Instance;
+            SandboxDirector pauseOwner = SandboxDirector.Instance;
+            bool pausedNow = pauseOwner != null ? pauseOwner.IsPaused : TimeScaleController.IsPaused;
+            if (pausedNow && reader != null && reader.OverlayPageButton.Pressed) showControls = controlsOverlay.NextPage();
 
             // Real time throughout: the HUD must keep animating during hitstop, slow motion and pause.
             float realDt = Time.unscaledDeltaTime;
@@ -245,6 +255,14 @@ namespace VaatusRevenge
             painter.Fill(health, BarBackground);
             painter.Fill(new Rect(health.x, health.y, health.width * Mathf.Max(health01, healthTrail01), health.height), damageTrailColor);
             painter.Fill(new Rect(health.x, health.y, health.width * health01, health.height), healthColor);
+            // A hit that healed you (Water): the bar's end glows blue-white for a moment.
+            float sinceHeal = Time.unscaledTime - healTickStart;
+            if (sinceHeal >= 0f && sinceHeal < HealTickTime)
+            {
+                float tick = painter.U(26f);
+                painter.Fill(new Rect(health.x + health.width * health01 - tick, health.y, tick, health.height),
+                    new Color(0.75f, 0.92f, 1f, 0.85f * (1f - sinceHeal / HealTickTime)));
+            }
             painter.Outline(health, 1f, BarOutline);
             PlayerCombatModel model = player.Model;
             if (model != null)
@@ -483,6 +501,9 @@ namespace VaatusRevenge
             float width = painter.U(460f);
             float x = (Screen.width - width) * 0.5f;
             float y = Margin;
+            // The tutorial panel sits top-centre too: go below it while it shows.
+            TutorialDirector tutorial = TutorialDirector.Instance;
+            if (tutorial != null && tutorial.PanelBottom > 0f) y = Mathf.Max(y, tutorial.PanelBottom + painter.U(10f));
             painter.Text(new Rect(x - width, y, width * 3f, painter.U(26f)), targetName, painter.BodyCenter, Color.white);
             y += painter.U(30f);
 
@@ -555,7 +576,10 @@ namespace VaatusRevenge
             painter.Fill(new Rect(0f, 0f, Screen.width, Screen.height), new Color(0f, 0f, 0f, 0.45f));
             float middle = Screen.height * 0.5f;
             painter.Text(new Rect(0f, middle - painter.U(70f), Screen.width, painter.U(80f)), "Paused", painter.Huge, Color.white);
-            painter.Text(new Rect(0f, middle + painter.U(18f), Screen.width, painter.U(26f)), "Esc to resume  ·  F1 controls", painter.BodyCenter, DimText);
+            PlayerInputReader reader = PlayerInputReader.Instance;
+            bool gamepad = reader != null && reader.UsingGamepad;
+            painter.Text(new Rect(0f, middle + painter.U(18f), Screen.width, painter.U(26f)),
+                gamepad ? "Menu to resume  ·  Y combos & controls" : "Esc to resume  ·  F1 controls", painter.BodyCenter, DimText);
         }
 
         // ---- F3 debug panel ----

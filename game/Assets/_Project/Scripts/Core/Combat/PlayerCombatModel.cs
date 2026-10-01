@@ -103,6 +103,8 @@ namespace VaatusRevenge.Core
         int chainIndex = -1;          // light chain move running now (-1 = none)
         float lungeDistance;          // this attack's forward travel: the move's own, stretched to close a gap, or a zip dash
         bool lungeHoming;             // a stretched lunge or zip dash travels straight at its target, not along the facing
+        bool lungeArrives;            // the lunge ends as the strike goes active (see PlanArrival), not when it ends
+        float approachScale = 1f;     // < 1: the startup runs this much slower so a long lunge arrives at ArriveLungeMaxSpeed
         Vector3 lungeTargetFeet;      // where that target was when last seen: kept if the soft lock drops it mid-lunge
         float lungeTargetRadius;
         ComboBranch chainBranch;      // the chain chainIndex counts in (Main, Pause, Air; Other for non-string moves)
@@ -117,7 +119,9 @@ namespace VaatusRevenge.Core
         bool moveOnBeatArmor;         // Earth's on-beat perk: armoured until the active frames end
         int moveInstanceId;           // the running move's first sub-hit AttackId
         int subHitIndex;              // the next sub-hit to open
-        double attackStartClock;      // when the running attack started (the launcher checks the press that started it is still held)
+        double attackStartClock;      // the running attack's time 0 on the clock, so move time t (from its strike on) passes at
+                                      // attackStartClock + t / rate; later than attackBeganClock by a stretched startup
+        double attackBeganClock;      // when the running attack really started (the launcher checks the press that started it is still held)
         int airAttacksUsed;           // air strikes since we last touched the ground (AerialSettings.AirAttacksPerJump)
         int airDashesUsed;            // air dashes since we last touched the ground
         bool dodgeInAir;              // the running dodge is an air dash
@@ -626,6 +630,8 @@ namespace VaatusRevenge.Core
             subHitIndex = 0;
             lungeDistance = 0f;
             lungeHoming = false;
+            lungeArrives = false;
+            approachScale = 1f;
             lightPressClock = double.NegativeInfinity;
             airAttacksUsed = 0;
             airDashesUsed = 0;

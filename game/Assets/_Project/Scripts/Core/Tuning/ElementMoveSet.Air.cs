@@ -160,7 +160,7 @@ namespace VaatusRevenge.Core
                 AnimationKey = AnimationKeys.CircleStepPalm, EffectKey = EffectKeys.Trail,
                 Startup = 0.09f, Active = 0.14f, Recovery = 0.24f,
                 Damage = 3f, PoiseDamage = 2f, GuardStaminaDamage = 3f, Knockback = 0.2f, Hitstop = 0.025f,
-                Range = 3.0f, ArcDegrees = 140f, LungeDistance = 0.7f,
+                Range = 2.0f, ArcDegrees = 140f, LungeDistance = 0.7f,
                 HitCount = 3, HitInterval = 0.05f, OrbitDegrees = 90f,
                 ComboWindowStart = 0.12f, ComboWindowEnd = 0.38f, ChainCancelAt = 0.24f, DodgeCancelAt = 0f,
                 StaminaCost = 0f, MomentumGain = 0f
@@ -346,7 +346,7 @@ namespace VaatusRevenge.Core
             {
                 DisplayName = "Circle Step",
                 EvadeOutDistance = 4.8f, SideSlipDistance = 3.6f, SlipInMaxDistance = 3.4f, BackstepDistance = 2.6f,
-                Duration = 0.28f, DashEaseOut = 0.40f,
+                Duration = 0.28f, DashEaseOut = 0.65f,   // eases out far enough that the exit flows into a run (verify J-08)
                 IFrameStart = 0f, IFrameEnd = 0.20f,
                 EvadeAttackCancelAt = 0.08f, SlipInAttackCancelAt = 0.05f, NextDodgeAt = 0.16f,
                 ChainMax = 4,

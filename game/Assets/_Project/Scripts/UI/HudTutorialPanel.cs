@@ -85,6 +85,9 @@ namespace VaatusRevenge
         }
 
         // quitHold01: how far View has been held toward quitting (0 = not held).
+        // Where the panel ended on screen last time it was drawn (pixels from the top): the HUD's target panel goes below it.
+        public float Bottom { get; private set; }
+
         public void Draw(HudPainter p, TutorialTracker tracker, bool gamepad, float quitHold01, Color accent)
         {
             if (p == null || tracker == null || !tracker.IsRunning) return;
@@ -103,6 +106,7 @@ namespace VaatusRevenge
             float height = p.U(Pad * 2f + HeaderHeight + PromptHeight + RowGap + PipSize + RowGap + FooterHeight)
                            + (hasHint ? p.U(HintHeight + RowGap) : 0f);
             var panel = new Rect((Screen.width - width) * 0.5f, p.U(TopMargin), width, height);
+            Bottom = panel.yMax;
             p.Fill(panel, PanelColor);
             p.Outline(panel, Mathf.Max(1f, p.U(1.5f)), OutlineColor);
 

@@ -28,6 +28,13 @@ namespace VaatusRevenge
             Vector3 origin = e.Origin.ToUnity();
             Vector3 direction = e.Direction.ToUnity();
             float half = move.Range * s.BurstScalePerMetre * 0.5f * burstMultiplier;
+            if (IsAirborneEarth(in e, element))
+            {
+                // Earth in the air throws no rock (canon, spec 8.1): every air strike is a push of dust from the limb. Meteor
+                // Drop's spikes rise only where the foe lands (EnemyRigPresenter.OnKnockedDown).
+                ElementVfx.Dust(element, limb.position, direction, IsFirstSubHit(in e) ? half : half * s.SubHitBurstShare * 2f);
+                return false;
+            }
             if (!IsFirstSubHit(in e))
             {
                 // A later sub-hit of a flurry: a small burst from the limb, one per hit.
@@ -92,6 +99,12 @@ namespace VaatusRevenge
                     ElementVfx.Burst(element, origin, direction, scale);
                     return false;
             }
+        }
+
+        // An Earth strike made in the air (the air string, or any strike while off the ground): dust only, no rock.
+        public static bool IsAirborneEarth(in PlayerEvent e, ElementId element)
+        {
+            return element == ElementId.Earth && (e.InAir || e.Branch == ComboBranch.Air || e.AttackKind == PlayerAttackKind.Air);
         }
 
         // The shapes Build 05 added for Water, Earth and Air; Fire has none of its own.

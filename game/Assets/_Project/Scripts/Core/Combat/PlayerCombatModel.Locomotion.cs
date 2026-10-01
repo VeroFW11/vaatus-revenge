@@ -29,6 +29,7 @@ namespace VaatusRevenge.Core
         bool sprintExhausted;         // ran dry while sprinting: sprint returns at SprintResumeStamina
         PushMotion knockback;
         Vector3 actionStep;           // this frame's dash or lunge movement, in metres (see AdvanceAction)
+        float exitVelocityShare = 1f; // share of this frame the locomotion velocity moves us (a dash that ended mid-frame)
         bool orbiting;                // the running attack's lunge curves round its target (MoveData.OrbitDegrees)
         Vector3 orbitStartDirection;  // flat, target -> us, when the attack started
         float orbitStartRadius;
@@ -266,7 +267,8 @@ namespace VaatusRevenge.Core
                 verticalVelocity = LocomotionRules.ApplyGravity(verticalVelocity, tuning.Gravity * gravityScale, tuning.MaxFallSpeed, dt);
             }
 
-            lastVelocity = Directions.Flatten(moveVelocity) + displacement / dt + new Vector3(0f, verticalVelocity, 0f);
+            lastVelocity = Directions.Flatten(moveVelocity) * exitVelocityShare + displacement / dt + new Vector3(0f, verticalVelocity, 0f);
+            exitVelocityShare = 1f;
         }
 
         float GroundSpeed(float stickLength, bool locked)
@@ -308,6 +310,11 @@ namespace VaatusRevenge.Core
                 {
                     dash = LimitApproachTo(dash, TrackFocus(world), dodgeFocus.Radius, dodge.SlipInStopGap, world);
                 }
+                // A side-slip circles the focus (Spider-Man 2: you side-step round them, keeping your distance).
+                else if (dodgeKind == DodgeKind.SideSlip && dodgeHasFocus && !dodgeInAir)
+                {
+                    dash = CircleStep(dash, TrackFocus(world), world);
+                }
                 return dash;
             }
             return state == PlayerState.Attacking ? LungeStep(world) : Vector3.Zero;
@@ -318,13 +325,22 @@ namespace VaatusRevenge.Core
         {
             MoveData move = currentMove;
             if (!(lungeDistance > 0f)) return Vector3.Zero;
-            // A zip strike's dash arrives as its kick goes active (so it never connects from metres away); every
-            // other lunge carries on through the active frames.
-            float end = attackKind == PlayerAttackKind.ZipStrike ? move.ActiveStart : move.ActiveEnd;
-            float start = move.LungeTime > 0f ? Math.Max(0f, end - move.LungeTime) : 0f;
+            // A zip strike's dash and an arriving lunge (PlanArrival) arrive as the strike goes active (so they never
+            // connect from metres away); every other lunge carries on through the active frames.
+            bool arrives = attackKind == PlayerAttackKind.ZipStrike || lungeArrives;
+            if (orbiting)
+            {
+                // Circling goes on through the active frames; an arriving one has closed in by the strike.
+                float turnBefore = MotionCurves.WindowProgress(action.PreviousTime, 0f, move.ActiveEnd, 0f);
+                float turnAfter = MotionCurves.WindowProgress(action.Time, 0f, move.ActiveEnd, 0f);
+                float closeEnd = arrives ? move.ActiveStart : move.ActiveEnd;
+                return OrbitStep(world, turnBefore, turnAfter,
+                    MotionCurves.WindowProgress(action.PreviousTime, 0f, closeEnd, 0f), MotionCurves.WindowProgress(action.Time, 0f, closeEnd, 0f));
+            }
+            float end = arrives ? move.ActiveStart : move.ActiveEnd;
+            float start = !lungeArrives && move.LungeTime > 0f ? Math.Max(0f, end - move.LungeTime) : 0f;
             float before = MotionCurves.WindowProgress(action.PreviousTime, start, end, 0f);
             float after = MotionCurves.WindowProgress(action.Time, start, end, 0f);
-            if (orbiting) return OrbitStep(world, before, after);
             return LimitApproach(LungeDirection(world) * (lungeDistance * (after - before)), world);
         }
 
@@ -352,11 +368,12 @@ namespace VaatusRevenge.Core
             orbitSign = -goRight;
         }
 
-        Vector3 OrbitStep(in PlayerWorldState world, float before, float after)
+        // before/after: how far round; closeBefore/closeAfter: how far in (the radius), each 0..1.
+        Vector3 OrbitStep(in PlayerWorldState world, float before, float after, float closeBefore, float closeAfter)
         {
             float degrees = currentMove.OrbitDegrees * orbitSign;
-            Vector3 from = OrbitOffset(degrees * before, before);
-            Vector3 to = OrbitOffset(degrees * after, after);
+            Vector3 from = OrbitOffset(degrees * before, closeBefore);
+            Vector3 to = OrbitOffset(degrees * after, closeAfter);
             return to - from;
         }
 

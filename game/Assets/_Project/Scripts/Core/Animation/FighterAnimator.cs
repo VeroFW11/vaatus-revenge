@@ -189,6 +189,8 @@ namespace VaatusRevenge.Core
             locoKey = AnimationKeys.Idle;
             locoKeyTime = 0f;
             leanPitch = leanRoll = headLag = flinchPitch = flinchRoll = flinchYaw = default;
+            leapLift = 0f;
+            handBackToLocomotion = false;
             lastVelocity = Vector3.Zero;
             footLocks[0] = footLocks[1] = default;
             lastRootYaw = 0f;
@@ -216,12 +218,16 @@ namespace VaatusRevenge.Core
             Vector3 velocity = AnimMath.IsFinite(input.LocalVelocity) ? input.LocalVelocity : Vector3.Zero;
             if (input.Style != null && input.Style != Style) SetStyle(input.Style);
 
-            // ---- 1. locomotion layer (always evaluated, so it's ready the moment an action ends)
+            string key = input.ActionKey ?? "";
+            bool action = key.Length > 0 && CanPlay(key);
+
+            // ---- 1. locomotion layer (always evaluated, so it's ready the moment an action ends). While an action drives
+            // the root (a dash, a lunge) its speed isn't the legs' gait: when it hands back, the gait starts from the speed
+            // the body really has now, instead of running in place while a dash's speed decays (Build 05 verify J-09).
+            if (showingAction && !action) handBackToLocomotion = true;
             UpdateLocomotion(in input, velocity, dt, settings);
 
             // ---- 2. action layer
-            string key = input.ActionKey ?? "";
-            bool action = key.Length > 0 && CanPlay(key);
             if (action != showingAction || (action && (key != showingKey || input.ActionSerial != showingSerial)))
             {
                 BeginFade(key, action, in input, settings);
@@ -262,7 +268,7 @@ namespace VaatusRevenge.Core
             output.CopyFrom(blended);
             ApplyTurnCarry(in input, dt, settings);
             ApplySecondary(in input, velocity, dt, settings);
-            ApplyLeap(in input, velocity, action, settings);
+            ApplyLeap(in input, velocity, action, dt, settings);
             UpdateFootLocks(in input, velocity, dt, settings);
 
             // ---- 5. solve
@@ -299,8 +305,14 @@ namespace VaatusRevenge.Core
                 hasHistory = true;
                 wasGrounded = input.Grounded;
             }
+            if (handBackToLocomotion)
+            {
+                handBackToLocomotion = false;
+                smoothSpeed = groundSpeed = speed;
+            }
             float k = AnimMath.ExpBlend(gait.SpeedSmoothing, dt);
-            smoothSpeed += (speed - smoothSpeed) * k;
+            float kSpeed = speed < smoothSpeed && gait.StopSmoothing > 0f ? AnimMath.ExpBlend(gait.StopSmoothing, dt) : k;
+            smoothSpeed += (speed - smoothSpeed) * kSpeed;
             groundSpeed += (speed - groundSpeed) * AnimMath.ExpBlend(gait.GroundSpeedSmoothing, dt);
             if (speed > 0.05f)
             {
@@ -339,7 +351,8 @@ namespace VaatusRevenge.Core
                 EvaluateClip(AnimationKeys.Fall, airTime, default, false, 0f, fallSpec);
                 float falling = AnimMath.SmoothStep((2f - velocity.Y) / 6f);
                 PoseSpec.Lerp(airSpec, fallSpec, falling, locoSpec);
-                key = falling > 0.5f ? AnimationKeys.Fall : AnimationKeys.Jump;
+                // The key says "jump" only while really rising (an air dash ends level: that's the fall, not a jump).
+                key = velocity.Y > Math.Max(0f, settings.JumpKeyMinRise) ? AnimationKeys.Jump : AnimationKeys.Fall;
             }
             else
             {
@@ -420,6 +433,8 @@ namespace VaatusRevenge.Core
         }
 
         float groundSpeed;      // the body's speed over the ground, barely smoothed (sizes the stride: see GaitGenerator)
+        bool handBackToLocomotion;   // an action just ended: the gait takes the body's real speed (see Update)
+        float leapLift;              // the leap's height now, eased in and out (see ApplyLeap)
         bool fadeFromAir;
         readonly float[] savedLegs = new float[2 * PoseSpec.LegChannels + 1];
 
@@ -646,11 +661,18 @@ namespace VaatusRevenge.Core
 
         // A grounded action covering ground faster than a person can step (a stretched lunge, a flying kick) becomes
         // a leap: both feet leave the floor for the rush and land as it slows (a dodge or backstep hops the same way).
-        void ApplyLeap(in FighterAnimInput input, Vector3 velocity, bool action, AnimatorSettings s)
+        // The lift eases in and out (LeapLiftRiseRate / LeapLiftFallRate), so it settles over the hand-back to locomotion
+        // instead of dropping the body to the floor in one frame when a dash ends.
+        void ApplyLeap(in FighterAnimInput input, Vector3 velocity, bool action, float dt, AnimatorSettings s)
         {
-            if (!action || !input.Grounded || input.Dead) return;
             float speed = new Vector2(velocity.X, velocity.Z).Length();
-            float lift = AnimMath.Clamp((speed - s.LeapSpeed) * s.LeapLiftPerSpeed, 0f, s.MaxLeapLift);
+            float wanted = action && input.Grounded && !input.Dead
+                ? AnimMath.Clamp((speed - s.LeapSpeed) * s.LeapLiftPerSpeed, 0f, s.MaxLeapLift) : 0f;
+            float rate = wanted > leapLift ? s.LeapLiftRiseRate : s.LeapLiftFallRate;
+            leapLift = rate > 0f ? leapLift + (wanted - leapLift) * AnimMath.ExpBlend(rate, dt) : wanted;
+            if (wanted <= 0f && leapLift < 1e-3f) leapLift = 0f;
+            if (!input.Grounded || input.Dead) return;
+            float lift = leapLift;
             if (!(lift > 0f)) return;
             float k = 1f / Math.Max(0.1f, solver.Skeleton.Scale);
             output[PoseChannel.HipsY] += lift * 0.6f * k;

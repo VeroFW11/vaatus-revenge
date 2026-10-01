@@ -258,9 +258,9 @@ namespace VaatusRevenge.Tests
             AssertAerial(earth.Aerial, 4, 1, 0.45f, 2.6f);
             AssertAerial(air.Aerial, 9, 2, 0.18f, 4.2f);
 
-            AssertDodge(water.Dodge, 4.6f, 3.6f, 3.0f, 2.4f, 0.28f, 0.30f, 0.20f, 0.10f, 0.06f, 0.22f, 3, 0.16f, 1.0f, 1.4f);
+            AssertDodge(water.Dodge, 4.6f, 3.6f, 3.0f, 2.4f, 0.28f, 0.65f, 0.20f, 0.10f, 0.06f, 0.22f, 3, 0.16f, 1.0f, 1.4f);
             AssertDodge(earth.Dodge, 3.0f, 2.2f, 2.4f, 1.8f, 0.22f, 0.80f, 0.14f, 0.06f, 0.05f, 0.20f, 2, 0.10f, 0.8f, 1.8f);
-            AssertDodge(air.Dodge, 4.8f, 3.6f, 3.4f, 2.6f, 0.28f, 0.40f, 0.20f, 0.08f, 0.05f, 0.16f, 4, 0.12f, 0.8f, 1.3f);
+            AssertDodge(air.Dodge, 4.8f, 3.6f, 3.4f, 2.6f, 0.28f, 0.65f, 0.20f, 0.08f, 0.05f, 0.16f, 4, 0.12f, 0.8f, 1.3f);
             foreach (ElementMoveSet set in new[] { water, earth, air })
             {
                 Assert.AreEqual(0f, set.Dodge.StaminaCost, set.DisplayName + ": Fluid dodges are free");
@@ -315,7 +315,7 @@ namespace VaatusRevenge.Tests
                 (ElementId.Water, "P1", "Cloud Hands", .16f, .48f, .30f, .56f, .90f, .66f, 3, 2, 4, .12f, 12),
                 (ElementId.Water, "P2", "Part the Wild Horse's Mane", .20f, .14f, .44f, .52f, .80f, .60f, 15, 14, 1, 0, 12),
                 (ElementId.Water, "DS", "Return the Tide", .10f, .12f, .30f, .12f, .40f, .24f, 12, 6, 1, 0, 0),
-                (ElementId.Earth, "L1", "Stone Fist", .18f, .10f, .36f, .22f, .54f, .30f, 11, 7, 1, 0, 11),
+                (ElementId.Earth, "L1", "Horse Stance Punch", .18f, .10f, .36f, .22f, .54f, .30f, 11, 7, 1, 0, 11),
                 (ElementId.Earth, "L2", "Tiger Claw Rake", .18f, .12f, .38f, .24f, .58f, .32f, 12, 8, 1, 0, 11),
                 (ElementId.Earth, "L3", "Rooted Stomp", .22f, .12f, .40f, .28f, .62f, .36f, 13, 9, 1, 0, 12),
                 (ElementId.Earth, "L4", "Butterfly Palms", .24f, .12f, .44f, .36f, .72f, .46f, 15, 9, 1, 0, 13),

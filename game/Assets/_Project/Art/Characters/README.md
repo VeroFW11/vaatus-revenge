@@ -5,6 +5,17 @@ Imported, rigged character models. Today there is one: the player Avatar David p
 
 **The game works without it.** Without the file the player is the grey-box body, exactly as before.
 
+## Where the model comes from
+
+The model is **not in Git yet**: it arrives in the **art bundle**, the one zip download Claude hands over at the end of
+a build session (Build 05 spec §8.1 item 6). The bundle holds this model (`Art/Characters/Player/player_avatar.glb`)
+and the effect pictures (`Art/VFX/...`), already in their project folders. Lost it? Ask Claude in the session to send
+the art bundle again.
+
+When it is committed, it goes through Git LFS like every binary (`*.glb` is LFS and lockable in `.gitattributes`).
+**Before replacing or editing the model, lock it** so the other person doesn't change it at the same time:
+`git lfs lock game/Assets/_Project/Art/Characters/Player/player_avatar.glb` (and `git lfs unlock ...` when done).
+
 ## Putting the painted Avatar in the game
 
 1. **Unzip the art bundle into the repository folder** (the folder that has `game`, `docs` and `tools` in it). Say yes

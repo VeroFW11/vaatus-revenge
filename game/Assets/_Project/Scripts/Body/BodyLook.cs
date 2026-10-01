@@ -88,9 +88,11 @@ namespace VaatusRevenge
         {
             return new BodyLook
             {
-                Name = "Dao Soldier", Cloth = new Color(0.36f, 0.08f, 0.07f), Pants = new Color(0.16f, 0.1f, 0.09f),
-                Trim = new Color(0.22f, 0.2f, 0.2f), Skin = new Color(0.78f, 0.58f, 0.44f), Dark = new Color(0.08f, 0.06f, 0.06f),
-                Armour = true, ArmourColor = new Color(0.26f, 0.05f, 0.05f), Headgear = BodyHeadgear.Helmet,
+                // Dark iron and slate lacquer with bronze trim: far from the player's crimson in hue, so friend and foe read
+                // apart at a glance (verify S-04).
+                Name = "Dao Soldier", Cloth = new Color(0.2f, 0.23f, 0.27f), Pants = new Color(0.12f, 0.13f, 0.15f),
+                Trim = new Color(0.58f, 0.42f, 0.2f), Skin = new Color(0.78f, 0.58f, 0.44f), Dark = new Color(0.06f, 0.06f, 0.07f),
+                Armour = true, ArmourColor = new Color(0.15f, 0.16f, 0.18f), Headgear = BodyHeadgear.Helmet,
                 Weapon = BodyWeapon.Dao, WeaponLength = 1.3f, Scale = 1.04f, Build = 1.12f, AnimationStyle = "sword"
             };
         }

@@ -5,7 +5,9 @@ namespace VaatusRevenge
 {
     // The beat ring: when to press X for the next hit of the string. A ring closes from 2.2x onto a fixed circle and
     // touches it exactly on the beat (the moment the running hit lands); a gold disc fills the circle while a press would
-    // count as on the beat. An on-beat press bursts the ring gold; an early or mashed press flashes a grey tick.
+    // count as on the beat. An on-beat press bursts the ring gold; an early or mashed press flashes a grey tick. After X X
+    // with no press, the circle glows blue while the pause band is open (RhythmView.PauseReady): X now starts the pause
+    // finisher. The wait is taught by that cue, not by seconds (the band opens at a different time in each element).
     //
     // The ring is driven only by the model's RhythmView.TimeToBeat (game time), so it lands on the beat's frame, slows in
     // slow motion and freezes in hitstop, exactly like the rule it shows. The burst and the tick are feedback on a press
@@ -19,10 +21,11 @@ namespace VaatusRevenge
         const float TickTime = 0.3f;
 
         static readonly Color CircleColor = new Color(1f, 1f, 1f, 0.35f);
-        static readonly Color RingColor = new Color(1f, 1f, 1f, 0.9f);
+        static readonly Color RingColor = new Color(1f, 0.86f, 0.45f, 0.95f);   // gold, as the tutorial and How-To-Play call it
         static readonly Color WindowGold = new Color(1f, 0.82f, 0.3f, 0.55f);
         static readonly Color BurstGold = new Color(1f, 0.86f, 0.4f, 1f);
         static readonly Color TickGrey = new Color(0.62f, 0.62f, 0.66f, 1f);
+        static readonly Color PauseBlue = new Color(0.45f, 0.78f, 1f, 1f);
 
         float burstStart = -10f;
         float tickStart = -10f;
@@ -70,6 +73,19 @@ namespace VaatusRevenge
                     p.Picture(new Rect(center.x - approach, center.y - approach * squash, approach * 2f, approach * 2f * squash), picture, ring);
                 else
                     p.Ring(center, approach, line, ring, squash);
+            }
+
+            if (rhythm.PauseReady)
+            {
+                // The pause band is open: a steady blue circle, breathing a little.
+                float breathe = 0.85f + 0.15f * Mathf.Sin(now * 9f);
+                p.Disc(center, radius * 0.9f, WithAlpha(PauseBlue, 0.45f * breathe), squash);
+                p.Ring(center, radius * 1.15f, line * 1.4f, WithAlpha(PauseBlue, breathe), squash);
+                if (label)
+                {
+                    p.Text(new Rect(center.x - radius * 4f, center.y + radius * squash + p.U(4f), radius * 8f, p.U(22f)), "PAUSE", p.SmallCenter,
+                        PauseBlue);
+                }
             }
 
             float sinceBurst = now - burstStart;

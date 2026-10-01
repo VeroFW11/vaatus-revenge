@@ -88,6 +88,15 @@ namespace VaatusRevenge
             return ElementVfxLibraryAsset.DefaultHudColor(element);
         }
 
+        // The element's colour in the world (its effects' main colour), for things drawn on or round the body: the switch
+        // flash, the MIX accents. The HUD keeps HudColor (matched to the pad's buttons). Opaque.
+        public static Color WorldColor(ElementId element)
+        {
+            Color color = StyleOf(element).MainColor;
+            color.a = 1f;
+            return color;
+        }
+
         // The look of an element's effects. Replace or edit it to restyle; never null. (Fire's moves use FireVfx.Style;
         // Fire's entry here only colours the Build 05 extras: switch ring, afterimages, accents.)
         public static ElementVfxStyle StyleOf(ElementId element)
@@ -111,6 +120,18 @@ namespace VaatusRevenge
             if (IsFire(element)) { FireVfx.Burst(position, direction, scale); return; }
             FireVfxRunner r = FireVfx.Runner;
             if (r != null) r.ElementBurst(element, position, direction, scale);
+        }
+
+        // Earth in the air (canon, spec 8.1): a strike's push of dust only, no rock. Other elements burst as usual.
+        public static void Dust(ElementId element, Vector3 position, Vector3 direction, float scale)
+        {
+            if (element != ElementId.Earth)
+            {
+                Burst(element, position, direction, scale);
+                return;
+            }
+            FireVfxRunner r = FireVfx.Runner;
+            if (r != null) r.ElementDust(element, position, direction, scale);
         }
 
         // A projectile's impact: bursting out to radius.
@@ -259,6 +280,14 @@ namespace VaatusRevenge
             if (IsFire(element)) return FireVfx.LimbFlame(limb, duration);
             FireVfxRunner r = FireVfx.Runner;
             return r != null ? r.Emit(limb, FireVfxEmitterKind.LimbFlame, Vector3.up, duration, element) : FireVfxHandle.None;
+        }
+
+        // Earth's limb in the air: dust coming off it, never grit (see Dust). Other elements: their usual aura.
+        public static FireVfxHandle LimbDust(ElementId element, Transform limb, float duration)
+        {
+            if (element != ElementId.Earth) return LimbAura(element, limb, duration);
+            FireVfxRunner r = FireVfx.Runner;
+            return r != null ? r.Emit(limb, FireVfxEmitterKind.LimbDust, Vector3.up, duration, element) : FireVfxHandle.None;
         }
 
         // A dash's push from a foot along direction (world) for duration seconds: air dashes and zip strikes.

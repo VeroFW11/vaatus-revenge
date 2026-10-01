@@ -310,6 +310,9 @@ namespace VaatusRevenge
         {
             // Keyboard.current is null when no keyboard is connected (e.g. gamepad-only). The Input System only
             // passes keys to the game while the Game view has focus, so typing in the Inspector never triggers these.
+            // Menu (Start) on the gamepad pauses and resumes too.
+            PlayerInputReader reader = PlayerInputReader.Instance;
+            if (reader != null && reader.MenuButton.Pressed) SetPaused(!paused);
             Keyboard keyboard = Keyboard.current;
             if (keyboard == null) return;
             if (keyboard.escapeKey.wasPressedThisFrame) SetPaused(!paused);

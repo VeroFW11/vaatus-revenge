@@ -109,11 +109,16 @@ namespace VaatusRevenge.EditorTools
         // numbers back (they're never overwritten by a build), so the builder offers to reset exactly these. Fills names
         // (asset names) and reasons (one plain line each); returns true when there are any. Missing assets aren't stale:
         // they're created fresh. An asset tuned by hand but saved by this version is never listed.
-        //   * a player or move set asset saved before Build 05 (DataVersion behind, or no DataVersion line in the file);
+        //   * a player or move set asset saved before Build 05 or before its verify fixes (DataVersion behind, or no
+        //     DataVersion line in the file);
         //   * a move set whose element doesn't match its file name (WaterMoves_* holding Fire moves, say);
         //   * the Fire move sets from before the 5-hit string and the animated fighters;
         //   * the player with the old 4 m auto-aim, the Dao Soldier with the old 3-hit-chain break-out (reports 03 / 04);
         //   * a tutorial saved by an older version of its steps.
+        // The DataVersion Build 05 first shipped with: older is "before Build 05", newer but behind current is "before the fixes".
+        const int Build05PlayerVersion = 5;
+        const int Build05MoveSetVersion = 5;
+
         public static bool FindStaleAssets(List<string> names, List<string> reasons)
         {
             names.Clear();
@@ -124,8 +129,10 @@ namespace VaatusRevenge.EditorTools
             {
                 PlayerTuningAsset player = AssetDatabase.LoadAssetAtPath<PlayerTuningAsset>(PathFor(name));
                 if (player == null) continue;
-                if (player.Tuning == null || player.Tuning.DataVersion < PlayerTuning.CurrentDataVersion || SavedBefore(name))
+                if (player.Tuning == null || player.Tuning.DataVersion < Build05PlayerVersion || SavedBefore(name))
                     Add(names, reasons, name, "saved before Build 05 (rhythm, combo, MIX, element switching, danger sense)");
+                else if (player.Tuning.DataVersion < PlayerTuning.CurrentDataVersion)
+                    Add(names, reasons, name, "saved before the Build 05 fixes (shorter element switch cooldown, dashes that arrive as they strike)");
                 else if (name == PlayerFluidName && player.Tuning.SoftLockRange == 4f)
                     Add(names, reasons, name, "still has the old 4 m auto-aim range");
             }
@@ -136,9 +143,13 @@ namespace VaatusRevenge.EditorTools
                 if (moves == null) continue;
                 ElementMoveSet set = moves.MoveSet;
                 ElementId expected = ElementOfName(name);
-                if (set == null || set.DataVersion < ElementMoveSet.CurrentDataVersion || SavedBefore(name))
+                if (set == null || set.DataVersion < Build05MoveSetVersion || SavedBefore(name))
                 {
                     Add(names, reasons, name, "saved before Build 05 (pause finisher, dodge strike, the element's own moves)");
+                }
+                else if (set.DataVersion < ElementMoveSet.CurrentDataVersion)
+                {
+                    Add(names, reasons, name, "saved before the Build 05 fixes (dodge strike reach, Water/Air dodge exits, side-slip circle)");
                 }
                 else if (set.Element != expected)
                 {

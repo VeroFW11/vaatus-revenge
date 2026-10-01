@@ -15,7 +15,8 @@ namespace VaatusRevenge.Core
     //      SwitchBufferWindow (a stagger drops it).
     //   C. On cooldown: a switch strike is played as a normal Light press in the current element (the string never drops)
     //      and ElementSwitchDenied{Cooldown} is raised; a plain switch is just denied.
-    //   D. NotLearned (the HUD shows a message) and SameElement (no message) are denied.
+    //   D. NotLearned and SameElement are denied (the HUD wheel shakes). A SameElement press while the string is live
+    //      is played as a normal Light press, like C, so keeping RB down for the next X never drops a hit.
     // A running action always finishes with the element it started with (actionSet). Switching from a held block into a
     // parry-only element drops the guard; into a blocking element with the guard button held, it rises when free.
     // Switching costs no stamina: the cooldown is the limiter.
@@ -71,8 +72,10 @@ namespace VaatusRevenge.Core
             }
             if (requested == activeElement)
             {
+                // Mid-string, RB still held for the next X (X is also Water's button): the press carries the string on in
+                // the current element, like a cooldown denial (C), instead of being swallowed.
                 EmitSwitchDenied(requested, SwitchDeniedReason.SameElement);
-                return PlayerCommand.None;
+                return IsStringLive ? PlayerCommand.Light : PlayerCommand.None;
             }
             bool coolingDown = clock < switchCooldownUntil;
             if (IsStringLive)

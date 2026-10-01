@@ -12,7 +12,10 @@ namespace VaatusRevenge
     //   holding RB grows the wheel (x1.25) and shows "RB +": a face button now switches
     //   a switch flashes the new diamond white, and a ring of dots round it runs down the switch cooldown
     //   picking an element you haven't learned flashes its diamond red
-    // Real time throughout; allocation-free.
+    //   a pick that didn't switch (still cooling down, or the element already in hand) shakes the wheel; a cooldown
+    //   denial also lights the cooldown dots amber, so a switch that "didn't happen" always says why (verify J-04/J-05)
+    // The button is a small badge on each diamond's outer corner, so the diamond's own state (dim, grey, flashes) stays
+    // visible under it. Real time throughout; allocation-free.
     public sealed class HudElementWheel
     {
         const float HeldScale = 1.25f;
@@ -20,16 +23,26 @@ namespace VaatusRevenge
         const float DeniedTime = 0.35f;
         const int CooldownDots = 16;
         const float DimShare = 0.55f;
+        const float ShakeTime = 0.3f;
+        const float ShakePixels = 6f;
+        const float ShakeCycles = 4f;
+        const float GrowAfterHold = 0.1f;   // RB grows the wheel once held this long (a quick tap doesn't pulse it)
 
         static readonly Color NotLearnedColor = new Color(0.4f, 0.4f, 0.42f, 0.45f);
         static readonly Color OutlineColor = new Color(1f, 1f, 1f, 0.95f);
         static readonly Color DeniedColor = new Color(0.95f, 0.15f, 0.1f, 1f);
         static readonly Color ShadowColor = new Color(0f, 0f, 0f, 0.45f);
+        static readonly Color CooldownColor = new Color(1f, 1f, 1f, 0.85f);
+        static readonly Color CooldownDeniedColor = new Color(1f, 0.7f, 0.15f, 1f);
 
         readonly string[] keyLabels = { "1", "2", "3", "4" };
         float flashStart = -10f;
         float deniedStart = -10f;
         ElementId deniedElement = ElementId.None;
+        float shakeStart = -10f;
+        bool shakeForCooldown;
+        float heldSince = -10f;
+        bool wasHeld;
 
         public void OnEvent(in PlayerEvent e, float now)
         {
@@ -39,9 +52,16 @@ namespace VaatusRevenge
                     flashStart = now;
                     break;
                 case PlayerEventType.ElementSwitchDenied:
-                    if (e.DenyReason != SwitchDeniedReason.NotLearned) break;
+                    if (e.DenyReason != SwitchDeniedReason.NotLearned)
+                    {
+                        shakeStart = now;
+                        shakeForCooldown = e.DenyReason == SwitchDeniedReason.Cooldown;
+                        heldSince = Mathf.Min(heldSince, now - GrowAfterHold);   // a face button was pressed: show the wheel
+                        break;
+                    }
                     deniedStart = now;
                     deniedElement = e.Element;
+                    heldSince = Mathf.Min(heldSince, now - GrowAfterHold);
                     break;
             }
         }
@@ -51,7 +71,16 @@ namespace VaatusRevenge
         {
             bool gamepad = reader == null || reader.UsingGamepad;
             bool held = reader != null && reader.ElementModifierHeld;
-            float scale = held ? HeldScale : 1f;
+            if (held && !wasHeld) heldSince = now;
+            wasHeld = held;
+            float scale = held && now - heldSince >= GrowAfterHold ? HeldScale : 1f;
+            float sinceShake = now - shakeStart;
+            bool shaking = sinceShake >= 0f && sinceShake < ShakeTime;
+            if (shaking)
+            {
+                float fade = 1f - sinceShake / ShakeTime;
+                center.x += Mathf.Sin(sinceShake / ShakeTime * ShakeCycles * Mathf.PI * 2f) * p.U(ShakePixels) * fade;
+            }
             float spacing = p.U(46f) * scale;
             float size = p.U(50f) * scale;
             ElementId active = model.ActiveElement;
@@ -74,6 +103,10 @@ namespace VaatusRevenge
                 if (learned && !isActive) fill.a *= DimShare;
                 p.Diamond(rect, fill);
 
+                // The button: a badge on the diamond's outer corner (dim when not learned).
+                Vector2 badge = at + SlotOffset(slot) * (diamondSize * 0.42f);
+                DrawButton(p, badge, size * 0.24f, slot, element, gamepad, layout, isActive ? 1f : learned ? 0.8f : 0.45f);
+
                 float sinceFlash = now - flashStart;
                 if (isActive && sinceFlash >= 0f && sinceFlash < FlashTime)
                     p.Diamond(rect, new Color(1f, 1f, 1f, 1f - sinceFlash / FlashTime));
@@ -81,8 +114,12 @@ namespace VaatusRevenge
                 if (element == deniedElement && sinceDenied >= 0f && sinceDenied < DeniedTime)
                     p.Diamond(rect, WithAlpha(DeniedColor, 0.8f * (1f - sinceDenied / DeniedTime)));
 
-                DrawButton(p, at, size * 0.42f, slot, element, gamepad, layout, isActive || !learned ? 1f : 0.8f);
-                if (isActive) DrawCooldown(p, at, diamondSize * 0.72f, model.SwitchCooldown01);
+                if (isActive)
+                {
+                    bool cooldownDenied = shaking && shakeForCooldown;
+                    DrawCooldown(p, at, diamondSize * 0.72f, model.SwitchCooldown01, cooldownDenied ? CooldownDeniedColor : CooldownColor,
+                        cooldownDenied ? 1.6f : 1f);
+                }
             }
 
             // "RB +": a face button picks an element now.
@@ -126,20 +163,23 @@ namespace VaatusRevenge
             p.Disc(at, radius, new Color(0f, 0f, 0f, 0.5f * alpha));
             p.Disc(at, radius * 0.86f, color);
             float textHeight = p.Small.fontSize * 1.2f;
-            p.Text(new Rect(at.x - radius, at.y - textHeight * 0.5f, radius * 2f, textHeight), label, p.SmallCenter, new Color(1f, 1f, 1f, alpha));
+            // Dark text on a light button (Y's yellow): white on yellow is barely readable.
+            float luminance = 0.2126f * color.r + 0.7152f * color.g + 0.0722f * color.b;
+            Color text = luminance > 0.6f ? new Color(0.08f, 0.08f, 0.1f, alpha) : new Color(1f, 1f, 1f, alpha);
+            p.Text(new Rect(at.x - radius, at.y - textHeight * 0.5f, radius * 2f, textHeight), label, p.SmallCenter, text);
         }
 
         // Dots round the diamond, clockwise from the top, for the share of the switch cooldown still to run.
-        static void DrawCooldown(HudPainter p, Vector2 at, float radius, float remaining01)
+        static void DrawCooldown(HudPainter p, Vector2 at, float radius, float remaining01, Color color, float dotScale)
         {
             if (!(remaining01 > 0f)) return;
             int lit = Mathf.CeilToInt(remaining01 * CooldownDots);
-            float dot = Mathf.Max(2f, radius * 0.12f);
+            float dot = Mathf.Max(2f, radius * 0.12f) * dotScale;
             for (int i = 0; i < lit; i++)
             {
                 float angle = i * Mathf.PI * 2f / CooldownDots;
                 var position = new Vector2(at.x + Mathf.Sin(angle) * radius, at.y - Mathf.Cos(angle) * radius);
-                p.Disc(position, dot, new Color(1f, 1f, 1f, 0.85f));
+                p.Disc(position, dot, color);
             }
         }
 

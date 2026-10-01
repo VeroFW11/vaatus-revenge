@@ -16,7 +16,7 @@ namespace VaatusRevenge.Core
         // Bumped when the default steps change, so the sandbox builder can offer to update an old saved tutorial.
         // A field missing from an old asset keeps its initialiser, so it reads 0.
         public int DataVersion = 0;
-        public const int CurrentDataVersion = 1;
+        public const int CurrentDataVersion = 2;   // 2: Build 05 verify (pause finisher X X wait X X, beat taught as anticipation)
 
         public int StepCount => Steps != null ? Steps.Length : 0;
 
@@ -42,14 +42,14 @@ namespace VaatusRevenge.Core
                     new TutorialStepData
                     {
                         Id = "2", Title = "On the beat", Goal = TutorialGoal.OnBeatFinisher, MinOnBeat = 3,
-                        Prompt = "{X} ×5, press as each hit lands",
-                        Hint = "Each hit flashes and a gold ring closes on it. Press then: the next hit comes faster and harder."
+                        Prompt = "{X} ×5, press as the ring touches the circle",
+                        Hint = "Press so your X lands WITH the hit: follow the gold ring closing on the circle and press as it touches, not after the flash (the flash and chime only confirm it). The next hit comes faster and harder."
                     },
                     new TutorialStepData
                     {
                         Id = "3", Title = "Pause finisher", Goal = TutorialGoal.PauseFinisher, Count = 2,
-                        Prompt = "{X} {X} … wait … {X}",
-                        Hint = "Two hits, a short breath (about half a second), then one more: a different finisher."
+                        Prompt = "{X} {X} … wait … {X} {X}",
+                        Hint = "Two hits, then wait until your hands are back in guard and the circle glows blue, then two more: a different finisher."
                     },
                     new TutorialStepData
                     {
@@ -83,8 +83,8 @@ namespace VaatusRevenge.Core
                         Id = "8", Title = "Switch mid-combo: Water", Goal = TutorialGoal.SwitchStrikeTo, Element = ElementId.Water,
                         Prompt = "{X}{X}, {RB}+{X} (Water), keep going",
                         KeyboardPrompt = "{X}{X}, then 2 (Water), keep going",
-                        Hint = "The button's colour is the element: blue X is Water. The string carries on in Water from the same hit.",
-                        KeyboardHint = "The string carries on in Water from the same hit.",
+                        Hint = "The button's colour is the element: blue X is Water. The string carries on in Water with its next hit.",
+                        KeyboardHint = "The string carries on in Water with its next hit.",
                         AlreadyInElementHint = "You're already in Water: {RB}+{B} back to Fire first.",
                         KeyboardAlreadyInElementHint = "You're already in Water: press 1 to go back to Fire first."
                     },
@@ -112,8 +112,8 @@ namespace VaatusRevenge.Core
                     {
                         Id = "9", Title = "MIX finisher", Goal = TutorialGoal.MixFinisher, MinMixLevel = 2,
                         Prompt = "Finish a string after mixing two elements",
-                        Hint = "Try {X}{X}, {RB}+{B}, {X}{X}{X}. Every element you land adds to MIX: two hit harder, three launch.",
-                        KeyboardHint = "Try {X}{X}, 1, {X}{X}{X}. Every element you land adds to MIX: two hit harder, three launch."
+                        Hint = "Try {X}{X}, {RB} + a different colour, {X}{X}. Every element you land adds to MIX: two hit harder, three launch.",
+                        KeyboardHint = "Try {X}{X}, a different element's number key (1-4), {X}{X}. Every element you land adds to MIX: two hit harder, three launch."
                     },
                     new TutorialStepData
                     {

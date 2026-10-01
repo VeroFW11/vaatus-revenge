@@ -74,6 +74,10 @@ namespace VaatusRevenge
         AudioClip tickClip;
 
         public bool IsRunning => tracker != null && tracker.IsRunning;
+
+        // The bottom of the tutorial panel on screen (pixels from the top) while it shows, else 0: the HUD's lock-on target
+        // panel moves below it so the two never overlap.
+        public float PanelBottom => IsRunning ? panel.Bottom : 0f;
         public TutorialTracker Tracker => tracker;
         public EnemyController Partner => partner;
 
@@ -203,6 +207,7 @@ namespace VaatusRevenge
             {
                 player.Respawn(tutorialStart.position, tutorialStart.eulerAngles.y);
             }
+            feetRingBefore = FeetBeatRing;
             SetFeetBeatRing(true);
 
             tracker.Start();
@@ -231,7 +236,7 @@ namespace VaatusRevenge
         void EndTutorial(bool completed)
         {
             viewCounting = false;
-            SetFeetBeatRing(false);
+            SetFeetBeatRing(feetRingBefore);        // back to the HUD's own setting
             if (partner != null) partner.gameObject.SetActive(false);
             SandboxDirector director = SandboxDirector.Instance;
             if (director != null)
@@ -383,6 +388,17 @@ namespace VaatusRevenge
         }
 
         // The beat ring drawn on the floor round the player's feet is the HUD's.
+        bool feetRingBefore;
+
+        bool FeetBeatRing
+        {
+            get
+            {
+                CombatHud hud = GetComponent<CombatHud>();
+                return hud != null && hud.ShowFeetBeatRing;
+            }
+        }
+
         void SetFeetBeatRing(bool on)
         {
             CombatHud hud = GetComponent<CombatHud>();

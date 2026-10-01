@@ -27,7 +27,8 @@ namespace VaatusRevenge.Core
 
         // --- Distances per kind ---
         public float EvadeOutDistance = 4.0f;        // stick away from the target (and a Traverse along the stick)
-        public float SideSlipDistance = 3.0f;        // stick sideways, and the automatic side-step
+        public float SideSlipDistance = 3.0f;        // stick sideways (a circle round the target), and the automatic side-step
+        public float SideSlipMaxDegrees = 100f;      // a side-slip goes at most this far round the target (0 = no limit)
         public float SlipInMaxDistance = 3.4f;       // stick toward the target: at most this far...
         public float SlipInStopGap = 0.6f;           // ...stopping this far from its body
         public float BackstepDistance = 2.2f;        // neutral stick, nothing incoming: a short hop backwards

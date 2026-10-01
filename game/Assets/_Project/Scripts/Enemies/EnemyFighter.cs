@@ -209,6 +209,7 @@ namespace VaatusRevenge
             CacheComponents();
             EnsureSpawnPoint();
             strikes.EndAll();
+            lastHitElement = ElementId.None;     // a fresh fight: the last life's element doesn't colour this one's launch
             Teleport(spawnPosition, spawnYaw);
             EnemyBrain b = EnsureBrain();
             if (b != null) b.Reset(spawnYaw);   // hands back its attack token and closes any open strike

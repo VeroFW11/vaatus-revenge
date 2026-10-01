@@ -67,6 +67,9 @@ namespace VaatusRevenge.Core
         public float LeapSpeed = 6f;                 // a grounded action moving faster than this (m/s) leaps: both feet leave the floor
         public float LeapLiftPerSpeed = 0.03f;       // metres of leap per m/s above LeapSpeed
         public float MaxLeapLift = 0.16f;
+        public float JumpKeyMinRise = 0.5f;          // airborne: the "jump" key while rising faster than this (m/s), else "fall"
+        public float LeapLiftRiseRate = 25f;         // the leap eases in this fast (1/s)...
+        public float LeapLiftFallRate = 15f;         // ...and back down this fast, across the hand-back to locomotion (0 = instant)
 
         // ---- Props: a weapon never goes through the floor
         public float PropFloorClearance = 0.03f;
@@ -122,6 +125,7 @@ namespace VaatusRevenge.Core
         public float RunArmReach = 0.55f;            // ...and bend to 90 degrees running
         public float StrafeWidth = 0.06f;            // extra stance width when moving sideways
         public float SpeedSmoothing = 10f;           // how quickly the gait follows speed changes (1/s)
+        public float StopSmoothing = 30f;            // ...and how quickly when slowing down, so a stop reaches idle at once (0 = SpeedSmoothing)
         public float GroundSpeedSmoothing = 40f;     // ...and how quickly the stride follows the body's true speed (1/s)
 
         public float Cadence(float speed)

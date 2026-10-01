@@ -143,7 +143,7 @@ namespace VaatusRevenge
 
     // LimbFlame: the element on a striking fist or foot. FootJet: a dash's push from the feet. Embers: what trails a
     // launched enemy. Afterimage (Build 05): fading copies of the body left behind along a slip-in dodge.
-    public enum FireVfxEmitterKind { LimbFlame, FootJet, Embers, Afterimage }
+    public enum FireVfxEmitterKind { LimbFlame, FootJet, Embers, Afterimage, LimbDust }   // LimbDust: Earth in the air, dust only
 
     // Spawns small flames at a moving point for a while (fire on a fist, jets from the feet, embers). Since Build 05 it
     // spawns the element's own look instead (droplets, dust and gravel, wisps of air) when Element isn't Fire.

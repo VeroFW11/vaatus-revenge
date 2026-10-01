@@ -671,7 +671,8 @@ namespace VaatusRevenge
                     if (model.IsAlive && settings.DeflectHitstop > 0f) TimeScaleController.Hitstop(settings.DeflectHitstop);
                     break;
                 case PlayerEventType.ElementSwitchDenied:
-                    // Only an element you haven't learned gets a message (cooldown and same element are silent).
+                    // Only an element you haven't learned gets a message; a cooldown or same-element pick shakes the HUD's
+                    // element wheel instead (HudElementWheel).
                     if (e.DenyReason == SwitchDeniedReason.NotLearned) ShowElementMessage(e.Element, settings);
                     break;
             }

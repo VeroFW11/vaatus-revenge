@@ -10,8 +10,12 @@ namespace VaatusRevenge.CombatSim
     //   facing      - how far the player's facing strays from the enemy during a dodge (a live Dao Soldier, random dodges)
     //   slip-in     - where a dodge toward the enemy stops (radii + SlipInStopGap, never through it)
     //   spam        - the share of time a dodge masher is invulnerable (the chain limit and i-frame gap keep it under 60 %)
-    //   exit speed  - how long after a dodge ends, stick held, until you're back at run speed
-    //   string      - X X, then a dodge / zip strike / ability, then X: the string's third hit comes out (the dodge strike lands)
+    //   exit speed  - how long after a dodge ends, stick held, until you're back at run speed; and the biggest one-frame
+    //                 speed drop across the exit, stick held and let go (no dead stop: at most RunSpeed, verify J-08)
+    //   side-slip   - a side-slip circles the enemy: the distance to it stays within 0.3 m, two in a row (verify J-10)
+    //   string      - X X, then a dodge / zip strike / ability, then X: the string's third hit comes out (the dodge strike lands,
+    //                 and its body is within 0.8 m of the enemy's as it strikes: no hit from metres away, verify J-06)
+    // Cells marked OK / MISS are checked targets: a miss makes CombatSim exit with code 1.
     public static class DodgeFlowScenario
     {
         static readonly ElementId[] Elements = { ElementId.Fire, ElementId.Water, ElementId.Earth, ElementId.Air };
@@ -23,6 +27,8 @@ namespace VaatusRevenge.CombatSim
             SlipIn(o);
             Spam(o);
             ExitSpeed(o);
+            ExitDrop(o);
+            SideSlipCircle(o);
             StringAcross(o);
         }
 
@@ -79,7 +85,10 @@ namespace VaatusRevenge.CombatSim
                             if (e.Type == PlayerEventType.DodgeStarted)
                             {
                                 dodges++;
-                                sampling = e.DodgeKind != DodgeKind.Traverse && e.DodgeKind != DodgeKind.AirDash;
+                                // A backstep with the soldier beyond FocusRadius has no focus either (it keeps your facing).
+                                bool unfocusedBackstep = e.DodgeKind == DodgeKind.Backstep && !s.World.LockOn.IsLocked
+                                    && Directions.Flatten(soldier.Feet - s.Player.Feet).Length() > s.Model.MoveSet.Dodge.FocusRadius;
+                                sampling = e.DodgeKind != DodgeKind.Traverse && e.DodgeKind != DodgeKind.AirDash && !unfocusedBackstep;
                                 if (sampling) focused++;
                             }
                         };
@@ -303,6 +312,97 @@ namespace VaatusRevenge.CombatSim
             return (-1, firstSpeed);
         }
 
+        // ---------------------------------------------------------------- the exit: no dead stop
+
+        // Evade-out from the partner 3 m ahead with the stick held back the whole way, and with it let go after the press;
+        // and a side-slip with the stick let go. The biggest drop in horizontal speed between two frames from the dodge's
+        // last frames to 10 frames after it.
+        static void ExitDrop(Options o)
+        {
+            Out.Sub("Exit: biggest one-frame speed drop across a dodge's end (target: <= run speed, no dead stop)");
+            var t = new Table("Preset", "Element", "Evade-out, stick held", "Evade-out, stick let go", "Side-slip, stick let go", "Target");
+            foreach (Preset p in o.Presets)
+            {
+                foreach (ElementId el in Elements)
+                {
+                    float run = PlayerTuning.CreateFluid().RunSpeed;
+                    double a = DropTrial(p, el, o.Fps, -Vector3.UnitZ, true);
+                    double b = DropTrial(p, el, o.Fps, -Vector3.UnitZ, false);
+                    double c = DropTrial(p, el, o.Fps, Vector3.UnitX, false);
+                    double worst = Math.Max(a, Math.Max(b, c));
+                    t.Row(p, el, Out.N(a, 2) + " m/s", Out.N(b, 2) + " m/s", Out.N(c, 2) + " m/s", Out.Target(worst <= run + 1e-3));
+                }
+            }
+            t.Print();
+        }
+
+        static double DropTrial(Preset p, ElementId el, float fps, Vector3 dir, bool hold)
+        {
+            Session s = Start(p, el, fps, Vector3.Zero);
+            Partner(s, new Vector3(0f, 0f, 3f), 1);
+            double previous = 0, worst = 0;
+            int after = -1;
+            for (int f = 0; f < (int)(2f * fps) && after < 10; f++)
+            {
+                s.Step(new Pad { Dodge = f < 2, Move = hold || f < 2 ? s.StickToward(dir) : Vector2.Zero });
+                double speed = Directions.Flatten(s.Model.Velocity).Length();
+                if (f >= 2 && s.Model.State != PlayerState.Dodging) after++;
+                if (after >= 0) worst = Math.Max(worst, previous - speed);
+                previous = speed;
+            }
+            return worst;
+        }
+
+        // ---------------------------------------------------------------- side-slip: a circle round the enemy
+
+        // From 1.1 m (point blank) and 2.5 m (centre to centre), two side-slips in a row to the right as you face the rooted
+        // partner. Every dodging frame: |distance to it - the circle's radius| (the start distance, or the closest a
+        // slip-in stops if that is further).
+        static void SideSlipCircle(Options o)
+        {
+            Out.Sub("Side-slip: the distance to the enemy while circling it, two in a row (target: within 0.3 m)");
+            var t = new Table("Preset", "Element", "From 1.1 m", "From 2.5 m", "Degrees round (1.1 m, two slips)", "Target");
+            foreach (Preset p in o.Presets)
+            {
+                foreach (ElementId el in Elements)
+                {
+                    (double near, double round) = SlipTrial(p, el, o.Fps, 1.1f);
+                    (double far, _) = SlipTrial(p, el, o.Fps, 2.5f);
+                    t.Row(p, el, Out.N(near, 2) + " m", Out.N(far, 2) + " m", Out.N(round, 0) + "°", Out.Target(Math.Max(near, far) <= 0.3));
+                }
+            }
+            t.Print();
+        }
+
+        static (double error, double degrees) SlipTrial(Preset p, ElementId el, float fps, float distance)
+        {
+            Session s = Start(p, el, fps, Vector3.Zero);
+            SimEnemy partner = Partner(s, new Vector3(0f, 0f, distance), 1);
+            DodgeProfile dodge = s.Model.MoveSet.Dodge;
+            float radius = Math.Max(distance, s.Player.Radius + partner.Radius + dodge.SlipInStopGap);
+            double worst = 0;
+            Vector3 startOffset = s.Player.Feet - partner.Feet;
+            for (int n = 0; n < 2; n++)
+            {
+                Vector3 to = Directions.Flatten(partner.Feet - s.Player.Feet);
+                Vector3 right = Directions.RightFromYaw(Directions.YawOf(to));
+                int guard = 0;
+                // Punishing dodges on release: hold the button two frames with the stick to the side, then let go.
+                s.Step(new Pad { Dodge = true, Move = s.StickToward(right) });
+                s.Step(new Pad { Dodge = true, Move = s.StickToward(right) });
+                s.Step(new Pad { Move = s.StickToward(right) });
+                while (s.Model.State == PlayerState.Dodging && guard++ < 120)
+                {
+                    s.Step(new Pad());
+                    worst = Math.Max(worst, Math.Abs(Directions.Flatten(partner.Feet - s.Player.Feet).Length() - radius));
+                }
+                for (int i = 0; i < (int)(0.15f * fps); i++) s.Step(new Pad());
+            }
+            Vector3 endOffset = s.Player.Feet - partner.Feet;
+            double degrees = Math.Abs(Angles.Delta(Directions.YawOf(Directions.Flatten(startOffset)), Directions.YawOf(Directions.Flatten(endOffset))));
+            return (worst, degrees);
+        }
+
         // ---------------------------------------------------------------- the string across a dodge, zip strike or ability
 
         // X, X on the beat, then (at a random moment from hit 2's strike until the string would lapse) a dodge away from the
@@ -313,29 +413,38 @@ namespace VaatusRevenge.CombatSim
         static void StringAcross(Options o)
         {
             Out.Sub("The string across a dodge, zip strike or ability (target: 100 %; the dodge strike lands after the evade-out)");
-            var t = new Table("Preset", "Element", "Dodge (evade-out) then X", "Evade-out distance", "Zip strike then X", "Ability then X");
+            var t = new Table("Preset", "Element", "Dodge (evade-out) then X", "Evade-out distance", "Dodge strike: body gap as it strikes",
+                "Zip strike then X", "Ability then X");
             foreach (Preset p in o.Presets)
             {
                 foreach (ElementId el in Elements)
                 {
                     var cells = new List<object> { p, el };
                     var evades = new List<double>();
+                    var gaps = new List<double>();
                     foreach (string via in new[] { "dodge", "zip", "ability" })
                     {
                         int ok = 0, n = 0;
                         var failures = new Dictionary<string, int>();
                         for (int seed = o.Seed; seed < o.Seed + o.Seeds; seed++)
                         {
-                            string why = StringTrial(p, el, via, seed, o.Fps, out double evade);
+                            string why = StringTrial(p, el, via, seed, o.Fps, out double evade, out double strikeGap);
                             n++;
                             if (via == "dodge" && evade > 0) evades.Add(evade);
+                            if (via == "dodge" && strikeGap >= 0) gaps.Add(strikeGap);
                             if (why == null) ok++;
                             else failures[why] = failures.TryGetValue(why, out int c) ? c + 1 : 1;
                         }
                         string cell = Out.Pct(ok / (double)n);
                         if (failures.Count > 0) cell += " (" + string.Join(", ", failures.Select(kv => kv.Key + " x" + kv.Value)) + ")";
                         cells.Add(cell);
-                        if (via == "dodge") cells.Add(evades.Count > 0 ? Out.N(evades.Min(), 2) + "-" + Out.N(evades.Max(), 2) + " m" : "-");
+                        if (via == "dodge")
+                        {
+                            cells.Add(evades.Count > 0 ? Out.N(evades.Min(), 2) + "-" + Out.N(evades.Max(), 2) + " m" : "-");
+                            cells.Add(gaps.Count > 0
+                                ? Out.N(gaps.Min(), 2) + "-" + Out.N(gaps.Max(), 2) + " m " + Out.Target(gaps.Max() <= 0.8)
+                                : "-");
+                        }
                     }
                     t.Row(cells.ToArray());
                 }
@@ -344,9 +453,10 @@ namespace VaatusRevenge.CombatSim
         }
 
         // Null = the string went on as it should; otherwise what went wrong.
-        static string StringTrial(Preset p, ElementId el, string via, int seed, float fps, out double evade)
+        static string StringTrial(Preset p, ElementId el, string via, int seed, float fps, out double evade, out double strikeGap)
         {
             double evaded = 0;
+            double gapAtStrike = -1;
             var rng = new DeterministicRandom(seed * 7907 + (int)el * 53 + via.Length * 11 + (p == Preset.Punishing ? 5 : 0));
             Session s = Start(p, el, fps, Vector3.Zero);
             SimEnemy partner = Partner(s, new Vector3(0f, 0f, 2f), seed);
@@ -407,6 +517,10 @@ namespace VaatusRevenge.CombatSim
                     else result = null;
                     stage = 4;
                 }
+                else if (stage == 3 && e.Type == PlayerEventType.AttackActiveStart && e.AttackId == dodgeStrikeId && gapAtStrike < 0)
+                {
+                    gapAtStrike = Directions.Flatten(partner.Feet - s.Player.Feet).Length() - s.Player.Radius - partner.Radius;
+                }
                 else if (stage == 3 && e.Type == PlayerEventType.ComboHit && e.AttackKind == PlayerAttackKind.DodgeStrike)
                 {
                     result = null;
@@ -448,6 +562,7 @@ namespace VaatusRevenge.CombatSim
                 if (stage == 3 && now() > dodgeHitBy) break;
             }
             evade = evaded;
+            strikeGap = gapAtStrike;
             return fault ?? (stage == 4 ? result : result ?? "never got there");
         }
     }

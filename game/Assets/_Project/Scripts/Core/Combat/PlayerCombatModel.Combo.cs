@@ -86,8 +86,18 @@ namespace VaatusRevenge.Core
             float healedSoFar = owner >= 0 ? recentAttacks[owner].Healed : 0f;
             float amount = Math.Min(move.HealOnHit, Math.Max(0f, cap - healedSoFar));
             if (!(amount > 0f)) return;
+            float before = health;
             health = Math.Min(MaxHealth, health + amount);
             if (owner >= 0) recentAttacks[owner].Healed = healedSoFar + amount;
+            // Seen and heard (verify S-12): the HUD ticks the health bar, the body draws a mote in.
+            if (health > before)
+            {
+                Emit(new PlayerEvent
+                {
+                    Type = PlayerEventType.HealedOnHit, Amount = health - before, AttackId = attack.AttackId, Element = attack.Element,
+                    Move = move
+                });
+            }
         }
 
         // No other sub-hit of this move has landed yet.
