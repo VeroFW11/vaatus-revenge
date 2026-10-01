@@ -178,7 +178,7 @@ namespace VaatusRevenge
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null)
             {
-                if (keyboard.f1Key.wasPressedThisFrame) showControls = !showControls;
+                if (keyboard.f1Key.wasPressedThisFrame) showControls = controlsOverlay.NextPage(); // closed, combos, controls, closed
                 if (keyboard.f3Key.wasPressedThisFrame)
                 {
                     showDebug = !showDebug;

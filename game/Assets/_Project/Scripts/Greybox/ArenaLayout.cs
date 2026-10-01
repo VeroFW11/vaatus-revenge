@@ -17,6 +17,9 @@ namespace VaatusRevenge
         public const string Soldier2 = "Soldier_2";
         public const string CrossbowGround = "Crossbow_Ground";
         public const string CrossbowPlatform = "Crossbow_Platform";
+        // The combat tutorial: where the sparring partner stands and where the player starts each lesson.
+        public const string TutorialPartner = "Tutorial_Partner";
+        public const string TutorialStart = "Tutorial_Start";
 
         [Tooltip("Named spawn points. Each point's position is where a fighter's feet go; its forward is the facing.")]
         [SerializeField] private List<Transform> spawnPoints = new List<Transform>();
@@ -34,6 +37,8 @@ namespace VaatusRevenge
         public Transform SoldierSpawn2 => GetSpawnPoint(Soldier2);
         public Transform CrossbowGroundSpawn => GetSpawnPoint(CrossbowGround);
         public Transform CrossbowPlatformSpawn => GetSpawnPoint(CrossbowPlatform);
+        public Transform TutorialPartnerSpawn => GetSpawnPoint(TutorialPartner);
+        public Transform TutorialStartSpawn => GetSpawnPoint(TutorialStart);
 
         // Null when there is no point with that name.
         public Transform GetSpawnPoint(string pointName)

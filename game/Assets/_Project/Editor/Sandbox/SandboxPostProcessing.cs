@@ -42,7 +42,7 @@ namespace VaatusRevenge.EditorTools
             }
             if (problems.Count == 0) return true;
 
-            Debug.LogWarning("Fire Combat Sandbox: bloom isn't fully set up (" + string.Join("; ", problems) + "). Everything else "
+            Debug.LogWarning("Combat Sandbox: bloom isn't fully set up (" + string.Join("; ", problems) + "). Everything else "
                              + "works; the fire and wind-up glows just won't have a halo. To add it by hand: GameObject > Volume > "
                              + "Global Volume with the profile " + ProfilePath + ", then tick Rendering > Post Processing on the Main Camera.");
             return false;
