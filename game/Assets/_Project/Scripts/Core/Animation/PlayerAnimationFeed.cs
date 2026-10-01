@@ -8,12 +8,18 @@ namespace VaatusRevenge.Core
     // renders animate exactly the same way.
     //
     // Per frame: call OnEvent for each of the model's events, then Build. Attacks are timed straight from the
-    // model's own action clock, so the animation can never drift from the frame data.
+    // model's own action clock (which runs at the move's rhythm playback rate), so the animation can never drift from the
+    // frame data, sped up or not.
+    //
+    // Elements: the body takes the active element's style (ElementMoveSet.AnimationStyle: Water's upright Tai Chi stance,
+    // Earth's horse stance, Air's turned-in Bagua stance), a dodge shows its kind (slip in, side-step left or right, evade
+    // out), and a plain element switch made while standing free gets a short flourish (never mid-combo).
     public sealed class PlayerAnimationFeed
     {
         // Short reactions that the model has no state for: how long they show.
         public float HurtDuration = 0.4f;
         public float ParrySuccessDuration = 0.42f;
+        public float ElementSwitchDuration = 0.4f;
         public float HitStrengthPerDamage = 1f / 20f;     // a 20-damage hit is a full-strength flinch
 
         FighterAnimInput input;
@@ -25,9 +31,12 @@ namespace VaatusRevenge.Core
         float stateTime;
 
         // the running dodge
-        bool dodgeInAir;
-        bool dodgeBackstep;
         Vector3 dodgeDirection;
+        string dodgeKey = AnimationKeys.Dodge;
+        ElementId dodgeElement;
+
+        // a plain element switch waiting to show its flourish (decided in Build, where the model's state is known)
+        bool switchFlourishPending;
 
         // a transient reaction (hurt, parry success)
         string reactionKey = "";
@@ -57,6 +66,8 @@ namespace VaatusRevenge.Core
             reactionStarted = false;
             plungeLanded = false;
             hitThisFrame = false;
+            switchFlourishPending = false;
+            dodgeKey = AnimationKeys.Dodge;
         }
 
         public void OnEvent(in PlayerEvent e)
@@ -64,11 +75,16 @@ namespace VaatusRevenge.Core
             switch (e.Type)
             {
                 case PlayerEventType.DodgeStarted:
-                    dodgeInAir = e.InAir;
-                    dodgeBackstep = e.IsBackstep;
                     dodgeDirection = e.Direction;
+                    dodgeKey = DodgeKeyFor(e.DodgeKind, e.LocalDirection, e.InAir, e.IsBackstep);
+                    dodgeElement = e.Element;
                     serial++;
                     ClearReaction();
+                    switchFlourishPending = false;
+                    break;
+                case PlayerEventType.ElementSwitched:
+                    // A switch strike is its own attack; only a plain switch can flourish.
+                    switchFlourishPending = !e.IsSwitchStrike;
                     break;
                 case PlayerEventType.AttackStarted:
                 case PlayerEventType.ChargeStarted:
@@ -76,6 +92,7 @@ namespace VaatusRevenge.Core
                     plungeLanded = false;
                     serial++;
                     ClearReaction();
+                    switchFlourishPending = false;
                     break;
                 case PlayerEventType.PlungeImpact:
                     plungeLanded = true;
@@ -142,7 +159,17 @@ namespace VaatusRevenge.Core
                 Dead = state == PlayerState.Dead,
                 ActionKey = "",
                 ActionSerial = serial,
+                Style = StyleOf(model),
             };
+
+            // A plain switch while standing free, with no string to carry on: a short flourish of the new element (the legs
+            // keep doing what locomotion wants). Mid-combo, airborne or busy: no flourish, the stance just blends over.
+            if (switchFlourishPending)
+            {
+                switchFlourishPending = false;
+                if (state == PlayerState.Locomotion && model.IsGrounded && model.StringNextIndex < 0 && model.ComboCount == 0)
+                    StartReaction(AnimationKeys.ElementSwitch, ElementSwitchDuration);
+            }
 
             if (hitThisFrame)
             {
@@ -177,9 +204,10 @@ namespace VaatusRevenge.Core
                     break;
                 case PlayerState.Dodging:
                 {
-                    DodgeProfile dodge = model.MoveSet != null ? model.MoveSet.Dodge : null;
-                    string key = dodgeInAir || model.IsAirDashing ? AnimationKeys.AirDash
-                        : dodgeBackstep ? AnimationKeys.Backstep : AnimationKeys.Dodge;
+                    // The dodge keeps the profile it started with (a switch mid-dodge doesn't change a running action).
+                    ElementMoveSet set = model.Loadout != null ? model.Loadout.Get(dodgeElement) : null;
+                    DodgeProfile dodge = set != null ? set.Dodge : model.MoveSet != null ? model.MoveSet.Dodge : null;
+                    string key = model.IsAirDashing ? AnimationKeys.AirDash : dodgeKey;
                     SetState(key, stateTime, dodge != null ? dodge.TotalDuration : 0f);
                     Vector3 local = ToLocal(dodgeDirection, facing);
                     input.ActionDirectionYaw = local.LengthSquared() > 1e-4f ? MathF.Atan2(local.X, local.Z) * AnimMath.Rad2Deg : 0f;
@@ -266,6 +294,30 @@ namespace VaatusRevenge.Core
             input.ActionTime = time;
             input.HasFrameData = true;
             input.Timing = new ClipTiming { Startup = hang, Active = fallHold, Recovery = move.Recovery, HitCount = 1 };
+        }
+
+        // The clip for a dodge (Build 05 spec 4.5): slip in, side-step left or right (also the automatic side-step, by
+        // which way it went), evade out still facing the foe, backstep, a plain dash with nobody near, or an air dash.
+        public static string DodgeKeyFor(DodgeKind kind, Vector3 localDirection, bool inAir, bool backstep)
+        {
+            if (inAir || kind == DodgeKind.AirDash) return AnimationKeys.AirDash;
+            switch (kind)
+            {
+                case DodgeKind.SlipIn: return AnimationKeys.DodgeSlip;
+                case DodgeKind.SideSlip:
+                case DodgeKind.AutoEvade: return localDirection.X < 0f ? AnimationKeys.DodgeSideLeft : AnimationKeys.DodgeSideRight;
+                case DodgeKind.EvadeOut: return AnimationKeys.DodgeEvade;
+                case DodgeKind.Backstep: return AnimationKeys.Backstep;
+            }
+            return backstep ? AnimationKeys.Backstep : AnimationKeys.Dodge;
+        }
+
+        // The body's style: the active element's (Fire = "", the base clips).
+        static string StyleOf(PlayerCombatModel model)
+        {
+            ElementMoveSet set = model.Loadout != null ? model.Loadout.Get(model.ActiveElement) : null;
+            if (set == null) set = model.MoveSet;
+            return set != null && set.AnimationStyle != null ? set.AnimationStyle : "";
         }
 
         // The move's own key; a move with none gets a sensible default from what it is.

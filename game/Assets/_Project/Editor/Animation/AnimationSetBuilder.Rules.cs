@@ -76,6 +76,16 @@ namespace VaatusRevenge.EditorTools
             new KeyRule(AnimationKeys.Shove,        false, new[] { ("shove", Strong), ("push", Strong), ("two hand", Medium) },
                                                            Concat(NotAStrike, "kick", "push up", "pushup")),
 
+            // ---- Build 05: the other elements' signature strikes (a pack clip only replaces the procedural one if the
+            // name says so clearly: a stomp, a ground slam, a two-palm push). Everything else in Water, Earth and Air stays
+            // procedural, and so do Air's flurries (one pack strike can't show several sub-hits).
+            new KeyRule(AnimationKeys.StompLine,    false, new[] { ("stomp", Strong), ("stamp", Strong), ("foot stomp", 12) },
+                                                           Concat(NotAStrike, "punch", "ground pound", "slam")),
+            new KeyRule(AnimationKeys.QuakeSlam,    false, new[] { ("ground pound", Strong), ("ground slam", Strong), ("ground punch", Strong), ("earthquake", Strong), ("slam", Medium) },
+                                                           Concat(NotAStrike, "kick", "body slam", "stomp")),
+            new KeyRule(AnimationKeys.TwoPalmPush,  false, new[] { ("palm push", Strong), ("push palm", Strong), ("twin palm", Strong), ("palms", Medium) },
+                                                           Concat(NotAStrike, "kick", "push up", "pushup")),
+
             // ---- States and reactions ----
             new KeyRule(AnimationKeys.Hurt,         false, new[] { ("hit", Strong), ("damage", Strong), ("hurt", Strong), ("react", Strong), ("flinch", Strong), ("pain", Medium) },
                                                            new[] { "knock", "down", "fall", "death", "die", "dead", "ko", "heavy", "big", "block", "guard" }),
@@ -95,8 +105,18 @@ namespace VaatusRevenge.EditorTools
                                                            new[] { "hit", "damage" }),
             new KeyRule(AnimationKeys.Block,        true,  new[] { ("block", Strong), ("guard", Strong) },
                                                            new[] { "walk", "run" }),
-            new KeyRule(AnimationKeys.Dodge,        false, new[] { ("dodge", Strong), ("evade", Strong), ("sidestep", Strong), ("side step", Strong), ("duck", Strong), ("weave", Strong), ("slip", Strong), ("roll", Strong), ("dash", Medium), ("step", Weak) },
-                                                           new[] { "hit", "damage", "kick", "punch", "back step", "backstep", "step back" }),
+            new KeyRule(AnimationKeys.Dodge,        false, new[] { ("dodge", Strong), ("evade", Strong), ("roll", Strong), ("dash", Medium), ("step", Weak) },
+                                                           new[] { "hit", "damage", "kick", "punch", "back step", "backstep", "step back", "left", "right", "back", "duck", "weave", "slip" }),
+            // The Build 05 dodge kinds (Spider-Man 2 style: the body keeps facing the foe). Slip in = ducking or weaving
+            // under a strike; side-slips by side; evade out = a hop or dodge backwards that stays squared up.
+            new KeyRule(AnimationKeys.DodgeSlip,    false, new[] { ("slip", Strong), ("weave", Strong), ("duck", Strong), ("bob", Medium), ("dodge forward", Strong) },
+                                                           new[] { "hit", "damage", "kick", "punch", "back", "left", "right" }),
+            new KeyRule(AnimationKeys.DodgeSideLeft, false, new[] { ("dodge left", Strong), ("sidestep left", Strong), ("side step left", Strong), ("step left", Strong), ("evade left", Strong) },
+                                                           new[] { "hit", "damage", "kick", "punch", "right" }),
+            new KeyRule(AnimationKeys.DodgeSideRight, false, new[] { ("dodge right", Strong), ("sidestep right", Strong), ("side step right", Strong), ("step right", Strong), ("evade right", Strong) },
+                                                           new[] { "hit", "damage", "kick", "punch", "left" }),
+            new KeyRule(AnimationKeys.DodgeEvade,   false, new[] { ("dodge back", Strong), ("evade back", Strong), ("jump back", Strong), ("hop back", Medium), ("back dodge", Strong) },
+                                                           new[] { "hit", "damage", "kick", "punch", "left", "right" }),
             new KeyRule(AnimationKeys.Backstep,     false, new[] { ("backstep", Strong), ("back step", Strong), ("step back", Strong), ("hop back", Strong), ("retreat", Strong) },
                                                            new[] { "hit", "damage" }),
             new KeyRule(AnimationKeys.Charge,       false, new[] { ("charge", Strong), ("power up", Strong), ("focus", Strong), ("chamber", Strong) },
@@ -152,6 +172,9 @@ namespace VaatusRevenge.EditorTools
             AnimationKeys.Launcher, AnimationKeys.AirJab, AnimationKeys.AirCrescent, AnimationKeys.AirTornado,
             AnimationKeys.AxeKick, AnimationKeys.FaJinPalm, AnimationKeys.FireBlast, AnimationKeys.FireWhip,
             AnimationKeys.FlameWheel, AnimationKeys.ZipKick, AnimationKeys.SprintKick,
+            // Build 05: the dodge kinds, and the few element strikes a pack clip can stand in for by name
+            AnimationKeys.DodgeSlip, AnimationKeys.DodgeSideLeft, AnimationKeys.DodgeSideRight, AnimationKeys.DodgeEvade,
+            AnimationKeys.StompLine, AnimationKeys.QuakeSlam, AnimationKeys.TwoPalmPush,
         };
 
         static readonly string[] EnemyKeys =

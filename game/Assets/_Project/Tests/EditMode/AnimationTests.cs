@@ -9,10 +9,19 @@ namespace VaatusRevenge.Tests
 {
     // The procedural martial-arts animator: every animation key has a real pose, strikes reach full extension on
     // the move's first active frame (so what you see lines up with when the hit can land), limbs never stretch,
-    // blends never pop, and bad frame times never produce a broken pose.
+    // blends never pop, and bad frame times never produce a broken pose. Since Build 05 these run over all four
+    // elements' move sets (Fire, Water, Earth, Air), including the pause chains and dodge strikes.
     public class AnimationTests
     {
         const float Dt = 1f / 60f;
+
+        static IEnumerable<ElementMoveSet> AllSets()
+        {
+            yield return ElementMoveSet.CreateFireFluid();
+            yield return ElementMoveSet.CreateWaterFluid();
+            yield return ElementMoveSet.CreateEarthFluid();
+            yield return ElementMoveSet.CreateAirFluid();
+        }
 
         static List<string> AllKeys()
         {
@@ -22,6 +31,8 @@ namespace VaatusRevenge.Tests
         static IEnumerable<MoveData> PlayerMoves(ElementMoveSet m)
         {
             foreach (MoveData x in m.LightChain) yield return x;
+            foreach (MoveData x in m.PauseChain) yield return x;
+            yield return m.DodgeStrike;
             foreach (MoveData x in m.AirChain) yield return x;
             yield return m.Launcher;
             yield return m.AbilityNorth;
@@ -35,7 +46,10 @@ namespace VaatusRevenge.Tests
         static Dictionary<string, MoveData> MovesByKey()
         {
             var moves = new Dictionary<string, MoveData>();
-            foreach (MoveData m in PlayerMoves(ElementMoveSet.CreateFireFluid())) moves[m.AnimationKey] = m;
+            foreach (ElementMoveSet set in AllSets())
+            {
+                foreach (MoveData m in PlayerMoves(set)) moves[m.AnimationKey] = m;
+            }
             foreach (EnemyTuning t in new[] { EnemyTuning.CreateDaoSoldier(), EnemyTuning.CreateCrossbowman(), EnemyTuning.CreateSparringDummy() })
             {
                 foreach (EnemyAttackData a in t.Attacks) if (a.Move != null && !string.IsNullOrEmpty(a.Move.AnimationKey)) moves[a.Move.AnimationKey] = a.Move;
@@ -99,11 +113,11 @@ namespace VaatusRevenge.Tests
         [Test]
         public void StrikesReachFullExtensionOnTheirFirstActiveFrame()
         {
-            ElementMoveSet set = ElementMoveSet.CreateFireFluid();
+            foreach (ElementMoveSet set in AllSets())
             foreach (MoveData move in PlayerMoves(set))
             {
                 HumanoidSkeleton skeleton = HumanoidSkeleton.Create();
-                var animator = new FighterAnimator(PoseLibrary.Default, skeleton);
+                var animator = new FighterAnimator(PoseLibrary.Default, skeleton, set.AnimationStyle);
                 var fk = new ForwardKinematics(skeleton);
                 var samples = new List<(float t, float ext)>();
                 for (int frame = 0; frame * Dt <= move.ActiveEnd + 2 * Dt; frame++)
@@ -191,12 +205,15 @@ namespace VaatusRevenge.Tests
             }
         }
 
-        [Test]
-        public void ChainBlendsNeverPop()
+        [TestCase(ElementId.Fire)]
+        [TestCase(ElementId.Water)]
+        [TestCase(ElementId.Earth)]
+        [TestCase(ElementId.Air)]
+        public void ChainBlendsNeverPop(ElementId element)
         {
-            ElementMoveSet set = ElementMoveSet.CreateFireFluid();
+            ElementMoveSet set = ElementLoadout.CreateFluid().Get(element);
             HumanoidSkeleton skeleton = HumanoidSkeleton.Create();
-            var animator = new FighterAnimator(PoseLibrary.Default, skeleton);
+            var animator = new FighterAnimator(PoseLibrary.Default, skeleton, set.AnimationStyle);
             var fk = new ForwardKinematics(skeleton);
             var frames = new List<Vector3[]>();
             var labels = new List<string>();
@@ -218,8 +235,19 @@ namespace VaatusRevenge.Tests
                 for (float t = 0f; t < move.ChainCancelAt; t += Dt) Step(ActionInput(move.AnimationKey, t, move, serial), move.DisplayName);
             }
             for (int i = 0; i < 30; i++) Step(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "" }, "back to idle");
+            // The pause branch (two hits, the pause, the pause chain played out) and a dodge strike out of a slip-in.
+            foreach (MoveData move in new[] { set.LightChain[0], set.LightChain[1], set.PauseChain[0], set.PauseChain[1] })
+            {
+                serial++;
+                float end = move == set.LightChain[1] ? move.TotalDuration : move.ChainCancelAt;
+                for (float t = 0f; t < end; t += Dt) Step(ActionInput(move.AnimationKey, t, move, serial), move.DisplayName);
+            }
+            int slip = ++serial;
+            for (int i = 0; i < 10; i++) Step(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = AnimationKeys.DodgeSlip, ActionTime = i * Dt, ActionSerial = slip }, "slip");
+            for (float t = 0f; t < set.DodgeStrike.TotalDuration; t += Dt) Step(ActionInput(set.DodgeStrike.AnimationKey, t, set.DodgeStrike, ++serial), "dodge strike");
+            for (int i = 0; i < 30; i++) Step(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "" }, "back to idle");
             // Hurt interrupting a strike, then a dodge, then a run.
-            Step(ActionInput(AnimationKeys.Cross, 0.1f, set.LightChain[1], ++serial), "cross");
+            Step(ActionInput(set.LightChain[1].AnimationKey, 0.1f, set.LightChain[1], ++serial), "second hit");
             for (int i = 0; i < 12; i++) Step(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = AnimationKeys.Hurt, ActionTime = i * Dt, ActionSerial = serial + 1 }, "hurt");
             for (int i = 0; i < 12; i++) Step(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = AnimationKeys.Dodge, ActionTime = i * Dt, ActionSerial = serial + 2 }, "dodge");
             for (int i = 0; i < 40; i++) Step(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "", LocalVelocity = new Vector3(0f, 0f, 4.8f) }, "run");

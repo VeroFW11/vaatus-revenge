@@ -17,8 +17,13 @@ namespace VaatusRevenge.CombatSim
     // The script covers stance and footwork, the 5-hit chain, launcher -> air string -> slam and axe kick, air
     // dash, zip strike, fire whip, flame wheel, fire blast, fa jin, parry, dodge, getting hit, the soldier's sword
     // attacks, an enemy launched / knocked down / getting up, deaths, and finally a gallery of any animation key
-    // the fight didn't reach. The console gets a short report: coverage, strike extension at the first active
-    // frame, and whether each sword strike's blade tip lands on the edge of its reach.
+    // the fight didn't reach. Since Build 05 it plays all four elements: each element's stance and the switch
+    // flourish, then per element its string, pause branch, the dodge kinds and the dodge strike ("<Element> chain"
+    // scenes, so render_fight.py --scene "water chain" picks one), its launcher, air string and plunge, and its
+    // abilities. Every player frame records the element, the string branch, the beat grade and the dodge kind, and
+    // every effect its element, so the renderer colours them by element. The console gets a short report: coverage,
+    // strike extension at the first active frame, and whether each sword strike's blade tip lands on the edge of
+    // its reach.
     public static class AnimationScenario
     {
         const float Dt = 1f / 60f;
@@ -31,6 +36,13 @@ namespace VaatusRevenge.CombatSim
 
             Stance(rec);
             Chain(rec);
+            ElementStances(rec);
+            foreach (ElementId element in new[] { ElementId.Water, ElementId.Earth, ElementId.Air })
+            {
+                ElementChain(rec, element);
+                ElementAerial(rec, element);
+                ElementAbilities(rec, element);
+            }
             BehindYou(rec);
             Aerial(rec);
             AirDashAndZip(rec);
@@ -77,9 +89,151 @@ namespace VaatusRevenge.CombatSim
 
         static void Chain(AnimRecorder rec)
         {
-            var s = new Scene(rec, "Five-strike chain (Northern Shaolin)");
+            var s = new Scene(rec, "Fire chain: string, pause branch, dodges, dodge strike (Northern Shaolin)");
             s.AddDummy(new Vector3(0f, 0f, 2.3f), 180f);
-            s.Run(ChainScript(s, 5));
+            s.Run(ElementChainScript(s, ElementId.Fire));
+        }
+
+        // ------------------------------------------------------------------ Build 05: the four elements
+
+        static readonly Dictionary<ElementId, string> Arts = new Dictionary<ElementId, string>
+        {
+            { ElementId.Fire, "Northern Shaolin" }, { ElementId.Water, "Tai Chi" }, { ElementId.Earth, "Hung Gar" }, { ElementId.Air, "Baguazhang" },
+        };
+
+        // Each element's stance in turn, switched to from standing (the switch flourish, then the stance breathing), and a
+        // few steps in it.
+        static void ElementStances(AnimRecorder rec)
+        {
+            var s = new Scene(rec, "Element stances and the switch flourish");
+            s.AddDummy(new Vector3(0f, 0f, 3.5f), 180f);
+            s.Run(ElementStancesScript(s));
+        }
+
+        static IEnumerable<int> ElementStancesScript(Scene s)
+        {
+            foreach (int f in s.Idle(40)) yield return f;
+            foreach (ElementId element in new[] { ElementId.Water, ElementId.Earth, ElementId.Air, ElementId.Fire })
+            {
+                foreach (int f in s.Switch(element)) yield return f;
+                foreach (int f in s.Idle(70)) yield return f;
+                foreach (int f in s.Move(new Vector2(0.5f, 0f), 30)) yield return f;
+                foreach (int f in s.Idle(20)) yield return f;
+            }
+        }
+
+        static void ElementChain(AnimRecorder rec, ElementId element)
+        {
+            var s = new Scene(rec, element + " chain: string, pause branch, dodges, dodge strike (" + Arts[element] + ")");
+            s.AddDummy(new Vector3(0f, 0f, 2.3f), 180f);
+            s.Run(ElementChainScript(s, element));
+        }
+
+        // The element's five-hit string, then X X (pause) X X for the pause branch, then the dodge kinds (slip in, side-slip,
+        // evade out) and an evade out with X late in it: the dodge strike dashing back in.
+        static IEnumerable<int> ElementChainScript(Scene s, ElementId element)
+        {
+            foreach (int f in s.Idle(10)) yield return f;
+            if (element != ElementId.Fire)
+            {
+                foreach (int f in s.Switch(element)) yield return f;
+                foreach (int f in s.Idle(30)) yield return f;
+            }
+            foreach (int f in ChainScript(s, 5)) yield return f;
+
+            // The pause branch: two hits, let the second one's combo window close, then press again (twice). The press goes
+            // in just after the window: for Water and Air only a frame or two of the band falls inside the move.
+            MoveData[] chain = s.Model.MoveSet.LightChain;
+            int after = Math.Min(s.Model.MoveSet.Rhythm.PauseAfterIndex, chain.Length - 1);
+            for (int i = 0; i <= after; i++)
+            {
+                foreach (int f in s.Tap(Btn.Light, 3)) yield return f;
+                MoveData move = chain[i];
+                foreach (int f in s.WaitUntil(() => s.Model.CurrentMove == move, 90)) yield return f;
+                if (i < after)
+                    foreach (int f in s.WaitUntil(() => s.Model.CurrentMove == move && s.Model.ActionTime >= move.ComboWindowStart + 0.02f, 90)) yield return f;
+                else
+                    foreach (int f in s.WaitUntil(() => s.Model.CurrentMove != move || s.Model.ActionTime > move.ComboWindowEnd + 0.005f, 90)) yield return f;
+            }
+            MoveData[] pause = s.Model.MoveSet.PauseChain;
+            for (int i = 0; i < pause.Length; i++)
+            {
+                foreach (int f in s.Tap(Btn.Light, 3)) yield return f;
+                MoveData move = pause[i];
+                foreach (int f in s.WaitUntil(() => s.Model.CurrentMove == move && s.Model.ActionTime >= move.ComboWindowStart + 0.02f, 90)) yield return f;
+            }
+            foreach (int f in s.WaitUntil(() => s.Model.CurrentMove == null, 90)) yield return f;
+            foreach (int f in s.Idle(40)) yield return f;
+
+            // The dodge kinds, facing the dummy throughout: slip in, side-slip right and left, evade out (the stick is
+            // pushed relative to where the dummy is, as a player would).
+            foreach (float angle in new[] { 0f, 90f, -90f, 180f })
+            {
+                s.Pad.Move = s.StickTowardFoe(angle);
+                foreach (int f in s.Tap(Btn.Dodge, 3)) yield return f;
+                s.Pad.Move = Vector2.Zero;
+                foreach (int f in s.Idle(35)) yield return f;
+            }
+            // Back in close, then evade out and X late in the dodge: the dodge strike dashes back in.
+            foreach (int f in s.WalkToFoe(2.4f)) yield return f;
+            foreach (int f in s.Idle(10)) yield return f;
+            s.Pad.Move = s.StickTowardFoe(180f);
+            foreach (int f in s.Tap(Btn.Dodge, 3)) yield return f;
+            s.Pad.Move = Vector2.Zero;
+            foreach (int f in s.Idle(5)) yield return f;
+            foreach (int f in s.Tap(Btn.Light, 3)) yield return f;
+            foreach (int f in s.WaitUntil(() => s.Model.CurrentMove == null, 90)) yield return f;
+            foreach (int f in s.Idle(50)) yield return f;
+        }
+
+        static void ElementAerial(AnimRecorder rec, ElementId element)
+        {
+            var s = new Scene(rec, element + " launcher, air string, plunge (" + Arts[element] + ")");
+            s.AddSoldier(new Vector3(0f, 0f, 2.1f), 180f, passive: true);
+            s.Run(ElementAerialScript(s, element));
+        }
+
+        static IEnumerable<int> ElementAerialScript(Scene s, ElementId element)
+        {
+            foreach (int f in s.Idle(5)) yield return f;
+            foreach (int f in s.Switch(element)) yield return f;
+            foreach (int f in s.Idle(25)) yield return f;
+            foreach (int f in AerialScript(s)) yield return f;
+        }
+
+        static void ElementAbilities(AnimRecorder rec, ElementId element)
+        {
+            var s = new Scene(rec, element + " abilities, ranged skill, heavy, zip and sprint (" + Arts[element] + ")");
+            s.AddDummy(new Vector3(-1.2f, 0f, 3.2f), 180f);
+            s.AddDummy(new Vector3(1.8f, 0f, 2.6f), 200f);
+            s.AddDummy(new Vector3(0.5f, 0f, 10f), 180f);
+            s.Run(ElementAbilitiesScript(s, element));
+        }
+
+        static IEnumerable<int> ElementAbilitiesScript(Scene s, ElementId element)
+        {
+            foreach (int f in s.Idle(5)) yield return f;
+            foreach (int f in s.Switch(element)) yield return f;
+            foreach (int f in s.Idle(20)) yield return f;
+            foreach (int f in AbilitiesScript(s)) yield return f;
+            // A zip strike to the far dummy, then a sprint attack back at the near ones.
+            s.Pad.Move = new Vector2(0.05f, 1f);
+            foreach (int f in s.Tap(Btn.Zip, 3)) yield return f;
+            s.Pad.Move = Vector2.Zero;
+            foreach (int f in s.WaitUntil(() => s.Model.CurrentMove == null, 90)) yield return f;
+            foreach (int f in s.Idle(30)) yield return f;
+            s.Pad.Move = new Vector2(0f, -1f);
+            s.Pad.Dodge = true;   // hold to sprint away, then turn and kick
+            foreach (int f in s.Idle(40)) yield return f;
+            s.Pad.Move = new Vector2(0f, 1f);
+            foreach (int f in s.Idle(30)) yield return f;
+            s.Pad.Light = true;
+            foreach (int f in s.Idle(3)) yield return f;
+            s.Pad.Light = false;
+            s.Pad.Dodge = false;
+            s.Pad.Move = Vector2.Zero;
+            foreach (int f in s.WaitUntil(() => s.Model.CurrentMove == null, 90)) yield return f;
+            foreach (int f in s.Idle(40)) yield return f;
         }
 
         static IEnumerable<int> ChainScript(Scene s, int hits)
@@ -283,9 +437,19 @@ namespace VaatusRevenge.CombatSim
         static void Gallery(AnimRecorder rec)
         {
             var keys = typeof(AnimationKeys).GetFields().Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()).ToList();
-            ElementMoveSet moves = ElementMoveSet.CreateFireFluid();
             var timings = new Dictionary<string, MoveData>();
-            foreach (MoveData m in AllMoves(moves)) if (!string.IsNullOrEmpty(m.AnimationKey)) timings[m.AnimationKey] = m;
+            var styles = new Dictionary<string, string>();   // a key's own element's style, so it plays from that stance
+            ElementLoadout loadout = ElementLoadout.CreateFluid();
+            foreach (ElementId element in new[] { ElementId.Fire, ElementId.Water, ElementId.Earth, ElementId.Air })
+            {
+                ElementMoveSet moves = loadout.Get(element);
+                foreach (MoveData m in AllMoves(moves))
+                {
+                    if (string.IsNullOrEmpty(m.AnimationKey)) continue;
+                    timings[m.AnimationKey] = m;
+                    styles[m.AnimationKey] = moves.AnimationStyle;
+                }
+            }
             foreach (EnemyTuning t in new[] { EnemyTuning.CreateDaoSoldier(), EnemyTuning.CreateCrossbowman(), EnemyTuning.CreateSparringDummy() })
             {
                 foreach (EnemyAttackData a in t.Attacks) if (a.Move != null && !string.IsNullOrEmpty(a.Move.AnimationKey)) timings[a.Move.AnimationKey] = a.Move;
@@ -302,13 +466,16 @@ namespace VaatusRevenge.CombatSim
                 if (rec.Covered.Contains(key)) continue;
                 string kind = enemyKinds.TryGetValue(key, out string k) ? k : "player";
                 timings.TryGetValue(key, out MoveData move);
-                rec.GalleryClip(key, kind, move);
+                styles.TryGetValue(key, out string style);
+                rec.GalleryClip(key, kind, move, style);
             }
         }
 
         internal static IEnumerable<MoveData> AllMoves(ElementMoveSet m)
         {
             foreach (MoveData x in m.LightChain) yield return x;
+            foreach (MoveData x in m.PauseChain) yield return x;
+            yield return m.DodgeStrike;
             foreach (MoveData x in m.AirChain) yield return x;
             yield return m.Launcher;
             yield return m.AbilityNorth;
@@ -328,6 +495,7 @@ namespace VaatusRevenge.CombatSim
         {
             public bool Light, Heavy, Dodge, Jump, Guard, Skill, Zip, AbilityNorth, AbilityEast;
             public Vector2 Move;
+            public ElementId Element;   // picked this frame (RB + a face button), None otherwise
 
             public void Set(Btn b, bool down)
             {
@@ -360,9 +528,9 @@ namespace VaatusRevenge.CombatSim
                 this.rec = rec;
                 Title = title;
                 World = new SimWorld(SimLevel.Empty());
-                Session.MakePreset(Preset.Fluid, out PlayerTuning tuning, out ElementMoveSet moves);
+                Session.MakePreset(Preset.Fluid, out PlayerTuning tuning, out ElementLoadout loadout);
                 if (playerHealth > 0f) tuning.MaxHealth = playerHealth;
-                World.AddPlayer(tuning, moves, Vector3.Zero, 0f);
+                World.AddPlayer(tuning, loadout, Vector3.Zero, 0f);
                 World.FixedCameraYaw = 0f;
                 Rigs.Add(new AnimRig(World.Player, "player", 1f));
             }
@@ -437,7 +605,9 @@ namespace VaatusRevenge.CombatSim
                     ZipStrike = ButtonState.From(Pad.Zip, last.Zip),
                     AbilityNorth = ButtonState.From(Pad.AbilityNorth, last.AbilityNorth),
                     AbilityEast = ButtonState.From(Pad.AbilityEast, last.AbilityEast),
+                    ElementSelect = Pad.Element,
                 };
+                Pad.Element = ElementId.None;   // a pick is one frame
                 last = Pad;
                 World.Step(input, Dt);
                 float dt = World.LastGameDt;
@@ -473,6 +643,37 @@ namespace VaatusRevenge.CombatSim
                 return Tap(b, frames);
             }
 
+            // The stick pushed 'degrees' round from straight at the nearest living enemy (0 = toward it, 180 = away, +90 = to
+            // its right as you face it). The scenes use a fixed camera yaw of 0, so stick x/y are world x/z.
+            public Vector2 StickTowardFoe(float degrees)
+            {
+                SimEnemy foe = World.Enemies.Where(e => e.IsAlive).OrderBy(e => Vector3.DistanceSquared(e.Feet, World.Player.Feet)).FirstOrDefault();
+                Vector3 to = foe != null ? Directions.Flatten(foe.Feet - World.Player.Feet) : Vector3.UnitZ;
+                float yaw = MathF.Atan2(to.X, to.Z) + degrees * AnimMath.Deg2Rad;
+                return new Vector2(MathF.Sin(yaw), MathF.Cos(yaw));
+            }
+
+            // Walks toward the nearest living enemy until within 'distance' (feet to feet), at most two seconds.
+            public IEnumerable<int> WalkToFoe(float distance)
+            {
+                for (int i = 0; i < 120; i++)
+                {
+                    SimEnemy foe = World.Enemies.Where(e => e.IsAlive).OrderBy(e => Vector3.DistanceSquared(e.Feet, World.Player.Feet)).FirstOrDefault();
+                    if (foe == null || Directions.Flatten(foe.Feet - World.Player.Feet).Length() <= distance) break;
+                    Pad.Move = StickTowardFoe(0f) * 0.6f;
+                    Frame();
+                    yield return 0;
+                }
+                Pad.Move = Vector2.Zero;
+            }
+
+            // Switch element (hold RB + the element's button for a frame).
+            public IEnumerable<int> Switch(ElementId element)
+            {
+                Pad.Element = element;
+                return Idle(1);
+            }
+
             public IEnumerable<int> WaitUntil(Func<bool> done, int maxFrames)
             {
                 for (int i = 0; i < maxFrames && !done(); i++)
@@ -495,6 +696,11 @@ namespace VaatusRevenge.CombatSim
             public readonly int Id;
             static int nextId;
             public FighterAnimInput LastInput;
+            // Build 05 trace fields (player only): the running move's string branch and the grade of the press that started
+            // it, and the running dodge's kind.
+            public ComboBranch Branch;
+            public BeatGrade Grade;
+            public DodgeKind Dodge;
 
             public AnimRig(SimFighter fighter, string kind, float scale)
             {
@@ -555,7 +761,17 @@ namespace VaatusRevenge.CombatSim
             {
                 if (Fighter is SimPlayer p)
                 {
-                    for (int i = 0; i < p.FrameEvents.Count; i++) PlayerFeed.OnEvent(p.FrameEvents[i]);
+                    for (int i = 0; i < p.FrameEvents.Count; i++)
+                    {
+                        PlayerEvent e = p.FrameEvents[i];
+                        PlayerFeed.OnEvent(e);
+                        if (e.Type == PlayerEventType.AttackStarted)
+                        {
+                            Branch = e.Branch;
+                            Grade = e.Grade;
+                        }
+                        else if (e.Type == PlayerEventType.DodgeStarted) Dodge = e.DodgeKind;
+                    }
                     SimFighter target = StrikeTarget(world, p);
                     // Aim at where the target's body really is (a launched enemy lies flat, well below its capsule's
                     // chest height): its chest as last animated, like PlayerController reading HumanoidBody.ChestAnchor.
@@ -628,7 +844,8 @@ namespace VaatusRevenge.CombatSim
                 {
                     if (!first) sb.Append(',');
                     first = false;
-                    sb.Append('[').Append(F(pr.Position.X)).Append(',').Append(F(pr.Position.Y)).Append(',').Append(F(pr.Position.Z)).Append(',').Append(pr.IsFire ? 1 : 0).Append(']');
+                    sb.Append('[').Append(F(pr.Position.X)).Append(',').Append(F(pr.Position.Y)).Append(',').Append(F(pr.Position.Z)).Append(',').Append(pr.IsFire ? 1 : 0)
+                        .Append(',').Append(Q(pr.IsFire ? ElementName(pr.Damage.Element) : "")).Append(']');
                 }
                 sb.Append("]}");
                 FrameCount++;
@@ -645,6 +862,16 @@ namespace VaatusRevenge.CombatSim
                 string state = rig.Fighter is SimPlayer p ? p.Model.State.ToString() : ((SimEnemy)rig.Fighter).Brain.State.ToString();
                 sb.Append("{\"id\":").Append(rig.Id).Append(",\"kind\":").Append(Q(rig.Kind)).Append(",\"state\":").Append(Q(state));
                 sb.Append(",\"key\":").Append(Q(key)).Append(",\"alive\":").Append(rig.Fighter.IsAlive ? "true" : "false");
+                if (rig.Fighter is SimPlayer player)
+                {
+                    PlayerCombatModel m = player.Model;
+                    sb.Append(",\"el\":").Append(Q(ElementName(m.ActiveElement)));
+                    bool attacking = m.State == PlayerState.Attacking;
+                    sb.Append(",\"branch\":").Append(Q(attacking ? rig.Branch.ToString() : ""));
+                    sb.Append(",\"grade\":").Append(Q(attacking ? rig.Grade.ToString() : ""));
+                    sb.Append(",\"dodge\":").Append(Q(m.State == PlayerState.Dodging ? rig.Dodge.ToString() : ""));
+                    sb.Append(",\"combo\":").Append(m.ComboCount).Append(",\"mix\":").Append(m.MixLevel);
+                }
                 sb.Append(",\"yaw\":").Append(F(rig.Fighter.Yaw));
                 Vector3 feet = rig.Fighter.Feet;
                 sb.Append(",\"pos\":[").Append(F(feet.X)).Append(',').Append(F(feet.Y)).Append(',').Append(F(feet.Z)).Append(']');
@@ -693,29 +920,42 @@ namespace VaatusRevenge.CombatSim
                         float duration = Math.Max(0.2f, m.Active + 0.15f);
                         // As PlayerFeedback: the launcher's column rises under the launched enemy (EnemyEffect), the slam's
                         // ring appears where the enemy lands; at the strike itself they're a burst from the limb.
+                        string el = ElementName(e.Element);
                         if (key == EffectKeys.Pillar || key == EffectKeys.Slam)
-                            fx.Add(Fx(EffectKeys.Burst, e.Origin, key == EffectKeys.Slam ? -Vector3.UnitY : dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id));
-                        else fx.Add(Fx(key, e.Origin, dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id));
+                            fx.Add(Fx(EffectKeys.Burst, e.Origin, key == EffectKeys.Slam ? -Vector3.UnitY : dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id, el));
+                        else fx.Add(Fx(key, e.Origin, dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id, el));
                         if (key != EffectKeys.Burst && key != EffectKeys.Trail)
-                            fx.Add(Fx(EffectKeys.Trail, e.Origin, dir, m.Range, m.ArcDegrees, m.Active + 0.05f, LimbJoint(m.Limb), rig.Id));
-                        float ext = StrikeExtension(rig, m.Limb);
+                            fx.Add(Fx(EffectKeys.Trail, e.Origin, dir, m.Range, m.ArcDegrees, m.Active + 0.05f, LimbJoint(m.Limb), rig.Id, el));
+                        // A flurry's later sub-hits change hands (Air's palm changes): the striking hand is whichever is out.
+                        bool laterSubHit = e.MoveInstanceId != 0 && e.AttackId != e.MoveInstanceId;
+                        float ext = laterSubHit && m.Limb != Limb.LeftFoot && m.Limb != Limb.RightFoot
+                            ? Math.Max(StrikeExtension(rig, Limb.LeftFist), StrikeExtension(rig, Limb.RightFist))
+                            : StrikeExtension(rig, m.Limb);
                         extensions.Add((m.DisplayName, ext));
                         MeasureAim(rig, m, scene);
                         break;
                     }
                     case PlayerEventType.ProjectileLaunched:
-                        fx.Add(Fx("muzzle", e.Origin, e.Direction, 1f, 0f, 0.15f, (int)BodyJoint.RightHand, rig.Id));
+                        fx.Add(Fx("muzzle", e.Origin, e.Direction, 1f, 0f, 0.15f, (int)BodyJoint.RightHand, rig.Id, ElementName(e.Element)));
                         extensions.Add((e.Move != null ? e.Move.DisplayName : "projectile", StrikeExtension(rig, e.Move != null ? e.Move.Limb : Limb.BothFists)));
                         break;
                     case PlayerEventType.PlungeImpact:
-                        fx.Add(Fx(EffectKeys.Slam, e.Origin, -Vector3.UnitY, e.Radius, 360f, 0.45f, (int)BodyJoint.RightFoot, rig.Id));
+                    {
+                        string plunge = e.Move != null && !string.IsNullOrEmpty(e.Move.EffectKey) ? e.Move.EffectKey : EffectKeys.Slam;
+                        fx.Add(Fx(plunge == EffectKeys.Slam || plunge == EffectKeys.Stomp || plunge == EffectKeys.Wave ? plunge : EffectKeys.Slam,
+                            e.Origin, -Vector3.UnitY, e.Radius, 360f, 0.45f, (int)BodyJoint.RightFoot, rig.Id, ElementName(((SimPlayer)rig.Fighter).Model.ActiveElement)));
                         break;
+                    }
                     case PlayerEventType.DodgeStarted:
-                        fx.Add(Fx("jet", rig.Fighter.Feet, -e.Direction, 1f, 0f, 0.3f, (int)BodyJoint.RightFoot, rig.Id));
+                        fx.Add(Fx("jet", rig.Fighter.Feet, -e.Direction, 1f, 0f, 0.3f, (int)BodyJoint.RightFoot, rig.Id, ElementName(e.Element)));
                         break;
                     case PlayerEventType.AttackStarted:
                         if (e.AttackKind == PlayerAttackKind.ZipStrike && e.Move != null)
-                            fx.Add(Fx("jet", rig.Fighter.Feet, -Directions.FromYaw(rig.Fighter.Yaw), 1f, 0f, e.Move.Startup + e.Move.Active, (int)BodyJoint.RightFoot, rig.Id));
+                            fx.Add(Fx("jet", rig.Fighter.Feet, -Directions.FromYaw(rig.Fighter.Yaw), 1f, 0f, e.Move.Startup + e.Move.Active, (int)BodyJoint.RightFoot, rig.Id,
+                                ElementName(e.Element)));
+                        break;
+                    case PlayerEventType.ElementSwitched:
+                        fx.Add(Fx("switch", rig.Fighter.AimPoint, Vector3.UnitY, 0.6f, 0f, 0.35f, (int)BodyJoint.Chest, rig.Id, ElementName(e.Element)));
                         break;
                     case PlayerEventType.Deflected:
                         fx.Add(Fx("spark", rig.Fighter.AimPoint, Vector3.UnitZ, 0.5f, 0f, 0.2f, (int)BodyJoint.RightHand, rig.Id));
@@ -818,10 +1058,17 @@ namespace VaatusRevenge.CombatSim
                 }
             }
 
-            static string Fx(string key, Vector3 o, Vector3 d, float range, float arc, float duration, int joint, int fighter)
+            // el: the element whose look the effect takes ("fire", "water", "earth", "air"; enemies' effects say "").
+            static string Fx(string key, Vector3 o, Vector3 d, float range, float arc, float duration, int joint, int fighter, string el = "")
             {
                 return "{\"key\":" + Q(key) + ",\"o\":[" + F(o.X) + "," + F(o.Y) + "," + F(o.Z) + "],\"d\":[" + F(d.X) + "," + F(d.Y) + "," + F(d.Z)
-                       + "],\"range\":" + F(range) + ",\"arc\":" + F(arc) + ",\"dur\":" + F(duration) + ",\"joint\":" + joint + ",\"fighter\":" + fighter + "}";
+                       + "],\"range\":" + F(range) + ",\"arc\":" + F(arc) + ",\"dur\":" + F(duration) + ",\"joint\":" + joint + ",\"fighter\":" + fighter
+                       + ",\"el\":" + Q(el) + "}";
+            }
+
+            public static string ElementName(ElementId element)
+            {
+                return element == ElementId.None ? "" : element.ToString().ToLowerInvariant();
             }
 
             static string CaptionFor(Scene s)
@@ -829,6 +1076,7 @@ namespace VaatusRevenge.CombatSim
                 PlayerCombatModel m = s.Model;
                 MoveData move = m.CurrentMove;
                 if (move != null) return move.DisplayName;
+                if (m.State == PlayerState.Dodging && !m.IsAirDashing) return m.MoveSet.Dodge.DisplayName;
                 switch (m.State)
                 {
                     case PlayerState.Dodging: return m.IsAirDashing ? "Air Dash" : m.MoveSet.Dodge.DisplayName;
@@ -843,10 +1091,10 @@ namespace VaatusRevenge.CombatSim
             }
 
             // A clip on its own, on a fighter standing at the origin: 0.3 s of guard, the clip, 0.4 s of guard.
-            public void GalleryClip(string key, string kind, MoveData move)
+            public void GalleryClip(string key, string kind, MoveData move, string style = null)
             {
                 BeginScene("Gallery: " + key);
-                var rig = new GalleryRig(kind);
+                var rig = new GalleryRig(kind, style);
                 ClipTiming timing = move != null ? ClipTiming.FromMove(move) : default;
                 bool frameData = move != null;
                 float length = frameData ? Math.Max(0.6f, timing.Total + 0.2f) : 1.6f;
@@ -885,6 +1133,7 @@ namespace VaatusRevenge.CombatSim
             {
                 AnimationCue action = rig.Animator.ActionCue;
                 sb.Append("{\"id\":").Append(900).Append(",\"kind\":").Append(Q(rig.Kind)).Append(",\"state\":\"Gallery\"");
+                if (rig.Kind == "player") sb.Append(",\"el\":").Append(Q(string.IsNullOrEmpty(rig.Animator.Style) ? "fire" : rig.Animator.Style));
                 sb.Append(",\"key\":").Append(Q(action.IsValid ? action.Key : rig.Animator.LocomotionCue.Key)).Append(",\"alive\":true,\"yaw\":0,\"pos\":[0,0,0],\"j\":[");
                 for (int j = 0; j < BodyJoints.Count; j++)
                 {
@@ -908,11 +1157,11 @@ namespace VaatusRevenge.CombatSim
                 public readonly FighterAnimator Animator;
                 public readonly ForwardKinematics Fk;
 
-                public GalleryRig(string kind)
+                public GalleryRig(string kind, string style)
                 {
                     Kind = kind;
                     HumanoidSkeleton skeleton = HumanoidSkeleton.Create(null, kind == "soldier" ? 1.04f : 1f);
-                    Animator = new FighterAnimator(PoseLibrary.Default, skeleton, AnimRig.StyleOf(kind));
+                    Animator = new FighterAnimator(PoseLibrary.Default, skeleton, style ?? AnimRig.StyleOf(kind));
                     Fk = new ForwardKinematics(skeleton);
                 }
             }

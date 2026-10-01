@@ -10,10 +10,13 @@ checked without Unity.
 Needs: pip install matplotlib imageio imageio-ffmpeg (ffmpeg comes with imageio-ffmpeg).
 
 What you see: a 3/4 camera that follows the player; each fighter drawn as thick limbs with joints, a torso, a head
-with a face marker (so facing reads); team colours (player red and gold, soldiers dark red with a sword,
-crossbowmen tan, dummies straw); a 1 m ground grid; fire effects as translucent orange shapes matching their
-EffectKey (cone, ring, ribbon, pillar, slam, trails, jets); projectiles; and a caption with the move name.
-Outputs are scratch files: never commit renders.
+with a face marker (so facing reads); team colours (the Avatar in the chosen character sheet's colours: crimson
+tunic, bare arms with black bracers, black sash, maroon trousers, dark shin wraps; soldiers dark red with a sword,
+crossbowmen tan, dummies straw); a 1 m ground grid; effects as translucent shapes matching their EffectKey (cone,
+ring, ribbon, pillar, slam, trails, jets, and since Build 05 wave, line, dome, vortex, shards, stomp) coloured by the
+element that made them (fire orange, water blue, earth brown, air pale green-white); a ring round the player's
+shadow in the active element's colour; projectiles; and a caption with the move name, the element, the string
+branch and the beat grade. Outputs are scratch files: never commit renders.
 """
 import argparse
 import json
@@ -29,7 +32,10 @@ from matplotlib.patches import Circle, Polygon  # noqa: E402
 J = {}  # joint name -> index, filled from the file
 
 COLOURS = {
-    "player": {"body": "#b8321e", "limb": "#d2452a", "trim": "#f0b429", "skin": "#e0a878", "dark": "#5a1a10"},
+    # the chosen character sheet (docs/Art/Character-Sheets/Player-Avatar-Style-B-chosen.webp): crimson sleeveless tunic,
+    # bare warm-tan arms with black leather bracers, black sash with gold trim, maroon trousers, dark shin wraps, black shoes
+    "player": {"body": "#8c1d2c", "limb": "#c98a5c", "trim": "#d4a43a", "skin": "#c98a5c", "dark": "#2a1416",
+               "uarm": "#c98a5c", "farm": "#231a1a", "thigh": "#4a1420", "shin": "#3a2a26", "foot": "#141010", "fist": "#c98a5c"},
     "soldier": {"body": "#5e1a1a", "limb": "#7a2424", "trim": "#2b2b2b", "skin": "#c89878", "dark": "#240808"},
     "crossbow": {"body": "#9c7f55", "limb": "#b39468", "trim": "#5b4a30", "skin": "#c89878", "dark": "#3b2f1d"},
     "dummy": {"body": "#c9a86a", "limb": "#d8bb80", "trim": "#8a6a3a", "skin": "#c9a86a", "dark": "#6a5230"},
@@ -37,16 +43,34 @@ COLOURS = {
 FIRE = "#ff7a1a"
 FIRE_HOT = "#ffd24a"
 
-# Limb segments: (from, to, thickness in metres, colour role)
+# Each element's effect colours (outer, hot core). Effects carry "el"; enemies' and old files' effects are fire-coloured.
+ELEMENT_COLOURS = {
+    "fire": (FIRE, FIRE_HOT),
+    "water": ("#2f8fe0", "#a8dcff"),
+    "earth": ("#8a6a3a", "#d2b07a"),
+    "air": ("#a9cfc4", "#f2fbf7"),
+}
+
+
+def element_colours(el):
+    return ELEMENT_COLOURS.get(el or "fire", ELEMENT_COLOURS["fire"])
+
+# Limb segments: (from, to, thickness in metres, colour role). The thigh/shin/foot/uarm/farm roles fall back to the
+# kind's limb/trim colours (enemies); the player has its own (bare upper arms, bracers, trousers, wraps, shoes).
 SEGMENTS = [
-    ("LeftUpperLeg", "LeftLowerLeg", 0.15, "limb"), ("LeftLowerLeg", "LeftFoot", 0.12, "limb"), ("LeftFoot", "LeftToes", 0.09, "trim"),
-    ("RightUpperLeg", "RightLowerLeg", 0.15, "limb"), ("RightLowerLeg", "RightFoot", 0.12, "limb"), ("RightFoot", "RightToes", 0.09, "trim"),
+    ("LeftUpperLeg", "LeftLowerLeg", 0.16, "thigh"), ("LeftLowerLeg", "LeftFoot", 0.12, "shin"), ("LeftFoot", "LeftToes", 0.09, "foot"),
+    ("RightUpperLeg", "RightLowerLeg", 0.16, "thigh"), ("RightLowerLeg", "RightFoot", 0.12, "shin"), ("RightFoot", "RightToes", 0.09, "foot"),
     ("Hips", "Spine", 0.26, "body"), ("Spine", "Chest", 0.28, "body"), ("Chest", "UpperChest", 0.3, "body"),
     ("UpperChest", "Neck", 0.12, "skin"), ("Neck", "Head", 0.1, "skin"),
     ("LeftShoulder", "LeftUpperArm", 0.12, "body"), ("RightShoulder", "RightUpperArm", 0.12, "body"),
-    ("LeftUpperArm", "LeftLowerArm", 0.11, "limb"), ("LeftLowerArm", "LeftHand", 0.09, "limb"),
-    ("RightUpperArm", "RightLowerArm", 0.11, "limb"), ("RightLowerArm", "RightHand", 0.09, "limb"),
+    ("LeftUpperArm", "LeftLowerArm", 0.11, "uarm"), ("LeftLowerArm", "LeftHand", 0.1, "farm"),
+    ("RightUpperArm", "RightLowerArm", 0.11, "uarm"), ("RightLowerArm", "RightHand", 0.1, "farm"),
 ]
+ROLE_FALLBACK = {"thigh": "limb", "shin": "limb", "foot": "trim", "uarm": "limb", "farm": "limb", "fist": "skin"}
+
+
+def colour_of(colours, role):
+    return colours.get(role) or colours[ROLE_FALLBACK.get(role, "limb")]
 
 
 class Camera:
@@ -212,8 +236,14 @@ class Renderer:
         ax.text(12, 24, frame["scene"], color="#e8e8e8", fontsize=11, family="DejaVu Sans", clip_on=True)
         ax.text(12, 44, "t = %.2f s" % frame["t"], color="#9aa0a6", fontsize=8, clip_on=True)
         caption = frame["caption"] or ""
+        el = player.get("el", "")
         if caption:
-            ax.text(self.w / 2, self.h - 22, caption, color=FIRE_HOT, fontsize=16, ha="center", weight="bold", clip_on=True)
+            ax.text(self.w / 2, self.h - 22, caption, color=element_colours(el)[1], fontsize=16, ha="center", weight="bold", clip_on=True)
+        if el:
+            tags = [el.capitalize()] + [player[k] for k in ("branch", "grade", "dodge") if player.get(k)]
+            if player.get("combo"):
+                tags.append("%d hits" % player["combo"] + (", MIX %d" % player["mix"] if player.get("mix", 0) >= 2 else ""))
+            ax.text(self.w / 2, self.h - 44, "  ".join(tags), color=element_colours(el)[0], fontsize=9, ha="center", clip_on=True)
         for f in fighters:
             head = joints_of(f)[J["Head"]]
             x, y, z = self.cam.project(add(head, (0, 0.42, 0)))
@@ -232,6 +262,9 @@ class Renderer:
         x, y, z = self.cam.project((hips[0], 0.0, hips[2]))
         r = self.cam.scale(0.38, z)
         ax.add_patch(Circle((x, y), r, color="#000000", alpha=0.35, lw=0, zorder=1))
+        if f.get("el"):
+            # the active element, as a ring on the floor round the player
+            self.ring((hips[0], 0.01, hips[2]), 0.48, element_colours(f["el"])[0], 0.55, 0.04)[1](ax)
 
     def fighter_items(self, f):
         colours = COLOURS.get(f["kind"], COLOURS["player"])
@@ -245,12 +278,12 @@ class Renderer:
             if b.endswith("Toes"):
                 # draw the foot on past the toes joint a little
                 pb = add(pb, mul(sub(pb, pa), 0.45))
-            items.append(self.segment(pa, pb, thickness, colours[role], alpha))
+            items.append(self.segment(pa, pb, thickness, colour_of(colours, role), alpha))
         # hands and fists
         for side in ("Left", "Right"):
             lower, hand = joints[J[side + "LowerArm"]], joints[J[side + "Hand"]]
             fist = add(hand, mul(norm(sub(hand, lower)), 0.07))
-            items.append(self.ball(fist, 0.065, colours["trim"] if f["kind"] == "player" else colours["skin"], alpha))
+            items.append(self.ball(fist, 0.065, colour_of(colours, "fist"), alpha))
         # torso plate between shoulders and hips (gives the body mass)
         items.append(self.torso(joints, colours, alpha))
         # head with a face marker so facing reads
@@ -311,8 +344,10 @@ class Renderer:
             if kind == "soldier":
                 ax.add_patch(Circle((pc[0], pc[1] - r * 0.3), r * 0.95, color=colours["dark"], alpha=alpha, lw=0, zorder=5))
             elif kind == "player":
-                top = self.cam.project(add(centre, mul(up, 0.13)))
-                ax.add_patch(Circle((top[0], top[1]), r * 0.35, color="#2a1a12", alpha=alpha, lw=0, zorder=5))   # topknot
+                ax.add_patch(Circle((pc[0], pc[1] - r * 0.35), r * 0.9, color="#151012", alpha=alpha, lw=0, zorder=5))   # black hair
+                top = self.cam.project(add(centre, mul(up, 0.15)))
+                ax.add_patch(Circle((top[0], top[1]), r * 0.38, color="#151012", alpha=alpha, lw=0, zorder=5))   # high topknot
+                ax.add_patch(Circle((top[0], top[1] + r * 0.3), r * 0.16, color="#7a1020", alpha=alpha, lw=0, zorder=5))   # red tie
             ax.plot([pc[0], pn[0]], [pc[1], pn[1]], color="#1a1a1a", lw=max(1.5, r * 0.35), alpha=alpha, zorder=5)
         return pc[2] - 0.02, paint
 
@@ -341,6 +376,7 @@ class Renderer:
 
     def fx_items(self, fx, age, frame):
         key = fx["key"]
+        outer, hot = element_colours(fx.get("el"))
         dur = max(fx["dur"], 1e-3)
         u = min(1.0, age / dur)
         fade = max(0.0, 1.0 - u)
@@ -355,7 +391,7 @@ class Renderer:
             reach = fx["range"] * min(1.0, 0.35 + u * 1.6)
             pts = [o] + [add(o, (math.sin(yaw + a) * reach, d[1] * reach, math.cos(yaw + a) * reach))
                          for a in [(-half + 2 * half * i / 12) for i in range(13)]]
-            items.append(self.poly(pts, FIRE, 0.45 * fade + 0.1))
+            items.append(self.poly(pts, outer, 0.45 * fade + 0.1))
         elif key == "whip":
             yaw = math.atan2(d[0], d[2])
             half = math.radians(fx["arc"]) / 2
@@ -371,35 +407,93 @@ class Renderer:
                 a = end_angle + (1 - s) * 0.5 * (1 if sweep < 1 else 0.3) * (0.6 - s)
                 r = fx["range"] * s
                 pts.append(add(hand, (math.sin(a) * r, -0.3 * s * s, math.cos(a) * r)))
-            items.append(self.ribbon(pts, FIRE, fade))
+            items.append(self.ribbon(pts, outer, fade))
         elif key in ("wheel",):
-            items.append(self.ring((o[0], 0.02, o[2]), fx["range"] * min(1.0, 0.2 + u * 1.5), FIRE, 0.6 * fade + 0.15, 0.25))
-        elif key == "slam":
-            items.append(self.ring((o[0], 0.02, o[2]), max(0.5, fx["range"]) * min(1.0, 0.2 + u * 2), FIRE, 0.6 * fade + 0.1, 0.25))
-            items.append(self.flame_ball(add(o, (0, 0.3 * (1 - u), 0)), 0.45 * fade + 0.1, fade))
+            items.append(self.ring((o[0], 0.02, o[2]), fx["range"] * min(1.0, 0.2 + u * 1.5), outer, 0.6 * fade + 0.15, 0.25))
+        elif key in ("slam", "stomp"):
+            items.append(self.ring((o[0], 0.02, o[2]), max(0.5, fx["range"]) * min(1.0, 0.2 + u * 2), outer, 0.6 * fade + 0.1, 0.25))
+            if key == "slam":
+                items.append(self.flame_ball(add(o, (0, 0.3 * (1 - u), 0)), 0.45 * fade + 0.1, fade, outer, hot))
+            else:
+                # cracks running out from the impact
+                for k in range(6):
+                    a = k * math.pi / 3 + 0.4
+                    r = max(0.6, fx["range"]) * min(1.0, 0.3 + u * 2)
+                    items.append(self.streak((o[0], 0.02, o[2]), (o[0] + math.sin(a) * r, 0.02, o[2] + math.cos(a) * r), fade, hot, 0.05))
         elif key == "pillar":
             height = 3.2 * min(1.0, u * 2.5)
-            items.append(self.pillar((o[0], 0.0, o[2]), height, 0.3, fade))
+            items.append(self.pillar((o[0], 0.0, o[2]), height, 0.3, fade, outer, hot))
         elif key == "burst":
             if fighter is not None:
                 p = joints_of(fighter)[fx["joint"]]
                 reach = min(fx["range"], 3.5) * 0.35
-                items.append(self.flame_ball(add(p, mul(d, reach * u)), 0.18 + 0.25 * u, fade))
+                items.append(self.flame_ball(add(p, mul(d, reach * u)), 0.18 + 0.25 * u, fade, outer, hot))
         elif key == "trail":
             hist = self.history.get(fx["fighter"], [])
             pts = [h[fx["joint"]] for h in hist[-8:]]
             if len(pts) >= 2:
-                items.append(self.ribbon(pts, FIRE_HOT, fade, width=0.12))
+                items.append(self.ribbon(pts, hot, fade, width=0.12))
             if fighter is not None:
-                items.append(self.flame_ball(joints_of(fighter)[fx["joint"]], 0.12, fade))
+                items.append(self.flame_ball(joints_of(fighter)[fx["joint"]], 0.12, fade, outer, hot))
+        elif key == "wave":
+            # a crescent surge travelling out along the strike
+            yaw = math.atan2(d[0], d[2])
+            half = math.radians(min(max(fx["arc"], 40), 140)) / 2
+            r = max(1.0, fx["range"]) * min(1.0, 0.25 + u * 1.4)
+            inner = max(0.2, r - 0.5)
+            arc_out = [add(o, (math.sin(yaw + a) * r, -0.6 + 0.5 * math.cos(a / max(half, 1e-3) * 1.4), math.cos(yaw + a) * r))
+                       for a in [(-half + 2 * half * i / 10) for i in range(11)]]
+            arc_in = [add(o, (math.sin(yaw + a) * inner, -0.8, math.cos(yaw + a) * inner)) for a in [(half - 2 * half * i / 10) for i in range(11)]]
+            items.append(self.poly(arc_out + arc_in, outer, 0.45 * fade + 0.1))
+        elif key == "line":
+            # a straight strip along the ground from the fighter, with spikes popping up along it
+            base = (o[0], 0.02, o[2])
+            flat = norm((d[0], 0.0, d[2])) if (d[0] or d[2]) else (0, 0, 1)
+            reach = fx["range"] * min(1.0, 0.2 + u * 2)
+            items.append(self.streak(base, add(base, mul(flat, reach)), fade, outer, 0.22))
+            n = max(2, int(reach / 0.8))
+            for k in range(1, n + 1):
+                p = add(base, mul(flat, reach * k / n))
+                items.append(self.streak(p, add(p, (0, 0.5 * fade + 0.1, 0)), fade, hot, 0.07))
+        elif key == "dome":
+            # a shell round the body: a ground ring and three arcs over the top
+            centre = (o[0], 0.0, o[2])
+            r = max(1.0, fx["range"]) * min(1.0, 0.3 + u * 2)
+            items.append(self.ring((centre[0], 0.02, centre[2]), r, outer, 0.55 * fade + 0.1, 0.2))
+            for k in range(3):
+                a = k * math.pi / 3
+                pts = [add(centre, (math.sin(a) * r * math.cos(t), r * math.sin(t) * 0.9, math.cos(a) * r * math.cos(t)))
+                       for t in [i * math.pi / 12 for i in range(13)]]
+                items.append(self.ribbon(pts, hot, fade * 0.8, width=0.08))
+        elif key == "vortex":
+            # a spiral winding round the fighter (or the strike's origin), turning as it fades
+            centre = (o[0], 0.0, o[2])
+            if fighter is not None:
+                hips = joints_of(fighter)[J["Hips"]]
+                centre = (hips[0], 0.0, hips[2])
+            r = max(0.6, min(fx["range"], 4.0)) * 0.4
+            spin = u * 6.0
+            pts = [add(centre, (math.sin(spin + t) * r * (0.4 + 0.6 * t / 9.4), 0.2 + 1.6 * t / 9.4, math.cos(spin + t) * r * (0.4 + 0.6 * t / 9.4)))
+                   for t in [i * 0.4 for i in range(24)]]
+            items.append(self.ribbon(pts, outer, fade, width=0.1))
+        elif key == "shards":
+            # a few small fast pieces fanning out along the strike
+            for k in (-1, 0, 1):
+                side = norm(cross(d, (0, 1, 0)))
+                a = add(o, mul(side, 0.12 * k))
+                b = add(a, add(mul(d, 1.2 * u + 0.3), mul(side, 0.25 * k * u)))
+                items.append(self.streak(a, b, fade, hot, 0.05))
+        elif key == "switch":
+            # the element switch: a flash ring round the chest in the new element's colour
+            items.append(self.ring((o[0], o[1], o[2]), 0.3 + 0.5 * u, outer, 0.7 * fade, 0.06))
         elif key == "jet":
             if fighter is not None:
                 js = joints_of(fighter)
                 for foot in ("LeftFoot", "RightFoot"):
                     p = js[J[foot]]
-                    items.append(self.streak(p, add(p, mul(d, 0.9 * fade + 0.2)), fade))
+                    items.append(self.streak(p, add(p, mul(d, 0.9 * fade + 0.2)), fade, outer))
         elif key in ("muzzle", "spark"):
-            items.append(self.flame_ball(o, 0.25 * (1 - u) + 0.05, fade))
+            items.append(self.flame_ball(o, 0.25 * (1 - u) + 0.05, fade, outer, hot))
         elif key == "embers":
             if fighter is not None:
                 hist = self.history.get(fx["fighter"], [])
@@ -446,43 +540,44 @@ class Renderer:
                         lw=self.cam.scale(width, pa[2]), solid_capstyle="round", zorder=2)
         return depth + 5.0, paint
 
-    def pillar(self, base, height, radius, alpha):
+    def pillar(self, base, height, radius, alpha, outer=FIRE, hot=FIRE_HOT):
         bottom, top = self.cam.project(base), self.cam.project(add(base, (0, height, 0)))
         w = self.cam.scale(radius, bottom[2])
 
         def paint(ax):
             ax.add_patch(Polygon([(bottom[0] - w, bottom[1]), (bottom[0] + w, bottom[1]), (top[0] + w * 0.4, top[1]), (top[0] - w * 0.4, top[1])],
-                                 closed=True, color=FIRE, alpha=0.35 * alpha, lw=0, zorder=6))
+                                 closed=True, color=outer, alpha=0.35 * alpha, lw=0, zorder=6))
             ax.add_patch(Polygon([(bottom[0] - w * 0.4, bottom[1]), (bottom[0] + w * 0.4, bottom[1]), (top[0], top[1])],
-                                 closed=True, color=FIRE_HOT, alpha=0.45 * alpha, lw=0, zorder=6))
+                                 closed=True, color=hot, alpha=0.45 * alpha, lw=0, zorder=6))
         return bottom[2] - 0.2, paint
 
-    def flame_ball(self, p, radius, alpha):
+    def flame_ball(self, p, radius, alpha, outer=FIRE, hot=FIRE_HOT):
         x, y, z = self.cam.project(p)
         r = self.cam.scale(radius, z)
 
         def paint(ax):
-            ax.add_patch(Circle((x, y), r, color=FIRE, alpha=max(0.0, min(1.0, 0.55 * alpha + 0.05)), lw=0, zorder=7))
-            ax.add_patch(Circle((x, y), r * 0.5, color=FIRE_HOT, alpha=max(0.0, min(1.0, 0.7 * alpha + 0.05)), lw=0, zorder=7))
+            ax.add_patch(Circle((x, y), r, color=outer, alpha=max(0.0, min(1.0, 0.55 * alpha + 0.05)), lw=0, zorder=7))
+            ax.add_patch(Circle((x, y), r * 0.5, color=hot, alpha=max(0.0, min(1.0, 0.7 * alpha + 0.05)), lw=0, zorder=7))
         return z - 0.4, paint
 
-    def streak(self, a, b, alpha):
+    def streak(self, a, b, alpha, colour=FIRE, width=0.14):
         pa, pb = self.cam.project(a), self.cam.project(b)
 
         def paint(ax):
-            ax.plot([pa[0], pb[0]], [pa[1], pb[1]], color=FIRE, alpha=max(0.0, min(1.0, 0.8 * alpha)), lw=self.cam.scale(0.14, pa[2]),
+            ax.plot([pa[0], pb[0]], [pa[1], pb[1]], color=colour, alpha=max(0.0, min(1.0, 0.8 * alpha)), lw=self.cam.scale(width, pa[2]),
                     solid_capstyle="round", zorder=7)
         return pa[2] - 0.2, paint
 
     def projectile_item(self, p):
         x, y, z = self.cam.project((p[0], p[1], p[2]))
-        fire = p[3] == 1
-        r = self.cam.scale(0.3 if fire else 0.08, z)
+        player = p[3] == 1
+        outer, hot = element_colours(p[4] if len(p) > 4 else "fire")
+        r = self.cam.scale(0.3 if player else 0.08, z)
 
         def paint(ax):
-            ax.add_patch(Circle((x, y), r, color=FIRE if fire else "#cfcfcf", alpha=0.9, lw=0, zorder=8))
-            if fire:
-                ax.add_patch(Circle((x, y), r * 0.5, color=FIRE_HOT, alpha=0.9, lw=0, zorder=8))
+            ax.add_patch(Circle((x, y), r, color=outer if player else "#cfcfcf", alpha=0.9, lw=0, zorder=8))
+            if player:
+                ax.add_patch(Circle((x, y), r * 0.5, color=hot, alpha=0.9, lw=0, zorder=8))
         return z - 0.5, paint
 
 

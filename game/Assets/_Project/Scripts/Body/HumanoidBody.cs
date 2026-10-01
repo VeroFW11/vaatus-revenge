@@ -503,12 +503,16 @@ namespace VaatusRevenge
 
             public void BuildAll()
             {
+                bool tunic = look.Outfit == BodyOutfit.CrossCollar;
+
                 // Torso: pelvis with a sash, belly, chest, shoulders.
                 Box("Pelvis", BodyJoint.Hips, new Vector3(0.33f * b, 0.22f * k, 0.22f * b), new Vector3(0f, -0.03f * k, 0f), look.Pants, PartGroup.Body, 0.4f);
-                Box("Sash", BodyJoint.Hips, new Vector3(0.35f * b, 0.075f * k, 0.235f * b), new Vector3(0f, 0.06f * k, 0f), look.Trim, PartGroup.Limb, 0.35f);
+                if (tunic) BuildSashAndHem();
+                else Box("Sash", BodyJoint.Hips, new Vector3(0.35f * b, 0.075f * k, 0.235f * b), new Vector3(0f, 0.06f * k, 0f), look.Trim, PartGroup.Limb, 0.35f);
                 Box("Belly", BodyJoint.Spine, new Vector3(0.29f * b, 0.18f * k, 0.19f * b), new Vector3(0f, 0.07f * k, 0f), look.Cloth, PartGroup.Body, 0.45f);
                 Box("ChestShape", BodyJoint.Chest, new Vector3(0.35f * b, 0.2f * k, 0.22f * b), new Vector3(0f, 0.08f * k, 0.005f), look.Cloth, PartGroup.Body, 0.45f);
                 Box("Shoulders", BodyJoint.UpperChest, new Vector3(0.41f * b, 0.15f * k, 0.21f * b), new Vector3(0f, 0.05f * k, -0.005f), look.Cloth, PartGroup.Body, 0.5f);
+                if (tunic) BuildCollar();
                 if (look.Armour)
                 {
                     Box("Breastplate", BodyJoint.Chest, new Vector3(0.37f * b, 0.24f * k, 0.24f * b), new Vector3(0f, 0.1f * k, 0.01f), look.ArmourColor, PartGroup.Body, 0.3f);
@@ -522,7 +526,8 @@ namespace VaatusRevenge
                 {
                     case BodyHeadgear.Topknot:
                         Box("Hair", BodyJoint.Head, new Vector3(0.2f * k, 0.11f * k, 0.22f * k), new Vector3(0f, 0.19f * k, -0.01f * k), look.Dark, PartGroup.Body, 0.9f);
-                        Box("Topknot", BodyJoint.Head, new Vector3(0.07f * k, 0.08f * k, 0.07f * k), new Vector3(0f, 0.26f * k, -0.03f * k), look.Dark, PartGroup.Body, 1f);
+                        if (tunic) BuildTiedTopknot();
+                        else Box("Topknot", BodyJoint.Head, new Vector3(0.07f * k, 0.08f * k, 0.07f * k), new Vector3(0f, 0.26f * k, -0.03f * k), look.Dark, PartGroup.Body, 1f);
                         break;
                     case BodyHeadgear.Helmet:
                         Box("Helmet", BodyJoint.Head, new Vector3(0.24f * k, 0.15f * k, 0.25f * k), new Vector3(0f, 0.2f * k, -0.005f * k), look.ArmourColor, PartGroup.Body, 0.7f);
@@ -542,17 +547,39 @@ namespace VaatusRevenge
                     Capsule(n + "Collar", BodyJoints.Shoulder(side), armAxis, 0.055f * b, 0.06f * b, skeleton.RestOffset(BodyJoints.UpperArm(side)).Length(), look.Cloth, PartGroup.Body);
                     if (look.Armour)
                         Box(n + "Pauldron", BodyJoints.Shoulder(side), new Vector3(0.15f * b, 0.07f * k, 0.16f * b), new Vector3(sign * 0.14f * k, 0.035f * k, 0f), look.ArmourColor, PartGroup.Body, 0.4f);
-                    Capsule(n + "Sleeve", BodyJoints.UpperArm(side), armAxis, 0.058f * b, 0.047f * b, skeleton.UpperArmLength, look.Cloth, PartGroup.Body);
-                    Capsule(n + "Forearm", BodyJoints.LowerArm(side), armAxis, 0.047f * b, 0.037f * b, skeleton.ForearmLength, look.Trim, PartGroup.Limb);
+                    if (tunic)
+                    {
+                        // sleeveless: bare upper arm and forearm, a leather bracer from mid-forearm to the wrist
+                        Capsule(n + "UpperArm", BodyJoints.UpperArm(side), armAxis, 0.056f * b, 0.046f * b, skeleton.UpperArmLength, look.Skin, PartGroup.Body);
+                        Capsule(n + "Forearm", BodyJoints.LowerArm(side), armAxis, 0.046f * b, 0.036f * b, skeleton.ForearmLength, look.Skin, PartGroup.Limb);
+                        BuildBracer(n, side, armAxis);
+                    }
+                    else
+                    {
+                        Capsule(n + "Sleeve", BodyJoints.UpperArm(side), armAxis, 0.058f * b, 0.047f * b, skeleton.UpperArmLength, look.Cloth, PartGroup.Body);
+                        Capsule(n + "Forearm", BodyJoints.LowerArm(side), armAxis, 0.047f * b, 0.037f * b, skeleton.ForearmLength, look.Trim, PartGroup.Limb);
+                    }
                     Box(n + "FistShape", BodyJoints.Hand(side), new Vector3(0.1f * k, 0.085f * k, 0.095f * k), armAxis * (0.055f * k), look.Skin, PartGroup.Fist, 0.4f);
                     Transform fist = GreyboxShapes.CreatePivot(n + "FistAnchor", Bone(BodyJoints.Hand(side)), armAxis * (0.08f * k));
                     if (side == BodySide.Left) body.leftFist = fist;
                     else body.rightFist = fist;
 
                     Vector3 down = Vector3.down;
-                    Capsule(n + "Thigh", BodyJoints.UpperLeg(side), down, 0.085f * b, 0.062f * b, skeleton.ThighLength, look.Pants, PartGroup.Body);
-                    Capsule(n + "Shin", BodyJoints.LowerLeg(side), down, 0.062f * b, 0.046f * b, skeleton.ShinLength, look.Trim, PartGroup.Limb);
-                    Box(n + "Shoe", BodyJoints.Foot(side), new Vector3(0.1f * k, 0.07f * k, 0.25f * k), new Vector3(0f, -0.045f * k, 0.06f * k), look.Dark, PartGroup.Limb, 0.35f);
+                    if (tunic)
+                    {
+                        // baggy trousers billowing to the calf, gathered there into the shin wraps
+                        Capsule(n + "Thigh", BodyJoints.UpperLeg(side), down, 0.097f * b, 0.08f * b, skeleton.ThighLength, look.Pants, PartGroup.Body);
+                        Segment(n + "TrouserCuff", BodyJoints.LowerLeg(side), down, 0f, 0.42f * skeleton.ShinLength, 0.08f * b, 0.062f * b, look.Pants, PartGroup.Body);
+                        Segment(n + "ShinWraps", BodyJoints.LowerLeg(side), down, 0.36f * skeleton.ShinLength, 0.97f * skeleton.ShinLength, 0.06f * b, 0.046f * b,
+                            look.Wraps, PartGroup.Limb);
+                    }
+                    else
+                    {
+                        Capsule(n + "Thigh", BodyJoints.UpperLeg(side), down, 0.085f * b, 0.062f * b, skeleton.ThighLength, look.Pants, PartGroup.Body);
+                        Capsule(n + "Shin", BodyJoints.LowerLeg(side), down, 0.062f * b, 0.046f * b, skeleton.ShinLength, look.Trim, PartGroup.Limb);
+                    }
+                    Box(n + "Shoe", BodyJoints.Foot(side), new Vector3(0.1f * k, 0.07f * k, 0.25f * k), new Vector3(0f, -0.045f * k, 0.06f * k),
+                        tunic ? look.Shoes : look.Dark, PartGroup.Limb, 0.35f);
                     Transform foot = GreyboxShapes.CreatePivot(n + "FootAnchor", Bone(BodyJoints.Foot(side)), new Vector3(0f, -0.05f * k, 0.14f * k));
                     if (side == BodySide.Left) body.leftFoot = foot;
                     else body.rightFoot = foot;
@@ -561,6 +588,54 @@ namespace VaatusRevenge
                 body.chestAnchor = GreyboxShapes.CreatePivot("ChestAnchor", Bone(BodyJoint.UpperChest), new Vector3(0f, 0.02f * k, 0.14f * k));
                 body.headAnchor = GreyboxShapes.CreatePivot("HeadAnchor", Bone(BodyJoint.Head), new Vector3(0f, 0.11f * k, 0f));
                 BuildWeapon();
+            }
+
+            // ---- The Avatar's outfit (BodyOutfit.CrossCollar) ----
+
+            // The wide sash with gold-trimmed edges, its knot and tail hanging at the left hip, and the tunic's skirt below it
+            // with a gold hem.
+            void BuildSashAndHem()
+            {
+                Box("TunicSkirt", BodyJoint.Hips, new Vector3(0.35f * b, 0.13f * k, 0.235f * b), new Vector3(0f, -0.035f * k, 0f), look.Cloth, PartGroup.Body, 0.4f);
+                Box("TunicHem", BodyJoint.Hips, new Vector3(0.356f * b, 0.018f * k, 0.24f * b), new Vector3(0f, -0.1f * k, 0f), look.SashTrim, PartGroup.Body, 0.3f);
+                Box("Sash", BodyJoint.Hips, new Vector3(0.355f * b, 0.1f * k, 0.24f * b), new Vector3(0f, 0.07f * k, 0f), look.Sash, PartGroup.Limb, 0.35f);
+                Box("SashTrimTop", BodyJoint.Hips, new Vector3(0.36f * b, 0.016f * k, 0.245f * b), new Vector3(0f, 0.12f * k, 0f), look.SashTrim, PartGroup.Limb, 0.3f);
+                Box("SashTrimBottom", BodyJoint.Hips, new Vector3(0.36f * b, 0.016f * k, 0.245f * b), new Vector3(0f, 0.02f * k, 0f), look.SashTrim, PartGroup.Limb, 0.3f);
+                float left = (float)BodySide.Left;
+                Box("SashKnot", BodyJoint.Hips, new Vector3(0.07f * k, 0.07f * k, 0.04f * k), new Vector3(left * 0.09f * b, 0.07f * k, 0.125f * b), look.Sash, PartGroup.Limb, 0.6f);
+                Box("SashTail", BodyJoint.Hips, new Vector3(0.075f * k, 0.3f * k, 0.02f * k), new Vector3(left * 0.115f * b, -0.1f * k, 0.125f * b), look.Sash, PartGroup.Limb, 0.25f);
+                Box("SashTailTrim", BodyJoint.Hips, new Vector3(0.08f * k, 0.016f * k, 0.024f * k), new Vector3(left * 0.115f * b, -0.245f * k, 0.125f * b), look.SashTrim, PartGroup.Limb, 0.3f);
+            }
+
+            // The cross collar: the undershirt showing in a V down the chest, the two lapels edging it (left over right), and
+            // the pendant at the throat on its cord.
+            void BuildCollar()
+            {
+                Box("Undershirt", BodyJoint.Chest, new Vector3(0.11f * b, 0.17f * k, 0.016f * k), new Vector3(0f, 0.1f * k, 0.116f * b), look.Undershirt, PartGroup.Body, 0.3f);
+                Box("UndershirtNeck", BodyJoint.UpperChest, new Vector3(0.12f * b, 0.09f * k, 0.016f * k), new Vector3(0f, 0.05f * k, 0.105f * b), look.Undershirt, PartGroup.Body, 0.3f);
+                Mesh lapel = BodyMeshes.RoundedBox(new Vector3(0.035f * b, 0.24f * k, 0.018f * k), 0.3f);
+                Add("LeftLapel", Bone(BodyJoint.Chest), lapel, new Vector3(-0.045f * b, 0.11f * k, 0.12f * b), Quaternion.Euler(0f, 0f, 24f), look.TunicEdge, PartGroup.Body);
+                Add("RightLapel", Bone(BodyJoint.Chest), lapel, new Vector3(0.045f * b, 0.11f * k, 0.121f * b), Quaternion.Euler(0f, 0f, -24f), look.TunicEdge, PartGroup.Body);
+                Box("PendantCord", BodyJoint.UpperChest, new Vector3(0.008f * k, 0.06f * k, 0.008f * k), new Vector3(0f, 0.04f * k, 0.112f * b), look.Dark, PartGroup.Body, 0.5f);
+                Box("Pendant", BodyJoint.Chest, new Vector3(0.042f * k, 0.048f * k, 0.014f * k), new Vector3(0f, 0.165f * k, 0.126f * b), look.Pendant, PartGroup.Body, 0.7f);
+            }
+
+            // A leather bracer from mid-forearm to the wrist, with two straps round it.
+            void BuildBracer(string n, BodySide side, Vector3 armAxis)
+            {
+                float forearm = skeleton.ForearmLength;
+                Segment(n + "Bracer", BodyJoints.LowerArm(side), armAxis, 0.38f * forearm, 0.97f * forearm, 0.052f * b, 0.046f * b, look.Bracers, PartGroup.Limb);
+                Segment(n + "BracerStrapUpper", BodyJoints.LowerArm(side), armAxis, 0.5f * forearm, 0.56f * forearm, 0.055f * b, 0.054f * b, look.BracerStraps, PartGroup.Limb);
+                Segment(n + "BracerStrapLower", BodyJoints.LowerArm(side), armAxis, 0.78f * forearm, 0.84f * forearm, 0.051f * b, 0.05f * b, look.BracerStraps, PartGroup.Limb);
+            }
+
+            // Black hair gathered into a high topknot, tied in dark red with the tie's ribbon hanging down the back.
+            void BuildTiedTopknot()
+            {
+                Box("HairBack", BodyJoint.Head, new Vector3(0.19f * k, 0.15f * k, 0.07f * k), new Vector3(0f, 0.12f * k, -0.08f * k), look.Dark, PartGroup.Body, 0.8f);
+                Box("Topknot", BodyJoint.Head, new Vector3(0.08f * k, 0.085f * k, 0.08f * k), new Vector3(0f, 0.3f * k, -0.035f * k), look.Dark, PartGroup.Body, 1f);
+                Box("HairTie", BodyJoint.Head, new Vector3(0.086f * k, 0.024f * k, 0.086f * k), new Vector3(0f, 0.258f * k, -0.035f * k), look.HairTie, PartGroup.Body, 0.6f);
+                Box("HairRibbon", BodyJoint.Head, new Vector3(0.03f * k, 0.12f * k, 0.012f * k), new Vector3(0.015f * k, 0.19f * k, -0.122f * k), look.HairTie, PartGroup.Body, 0.3f);
             }
 
             void BuildWeapon()
@@ -609,6 +684,13 @@ namespace VaatusRevenge
             void Capsule(string name, BodyJoint joint, Vector3 axis, float r0, float r1, float length, Color color, PartGroup group)
             {
                 Add(name, Bone(joint), BodyMeshes.TaperedCapsule(r0, r1, length), Vector3.zero, Quaternion.FromToRotation(Vector3.up, axis), color, group);
+            }
+
+            // Part of a limb: a tapered capsule along 'axis' from 'from' to 'to' metres past the joint (a bracer, a cuff, wraps).
+            void Segment(string name, BodyJoint joint, Vector3 axis, float from, float to, float r0, float r1, Color color, PartGroup group)
+            {
+                Add(name, Bone(joint), BodyMeshes.TaperedCapsule(r0, r1, Mathf.Max(0.001f, to - from)), axis * from, Quaternion.FromToRotation(Vector3.up, axis),
+                    color, group);
             }
 
             Renderer Add(string name, Transform parent, Mesh mesh, Vector3 position, Quaternion rotation, Color color, PartGroup group)
