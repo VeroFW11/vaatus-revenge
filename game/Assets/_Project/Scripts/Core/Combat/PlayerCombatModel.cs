@@ -9,9 +9,11 @@ namespace VaatusRevenge.Core
     // Momentum, damage and death. Pure C#, deterministic (same inputs = same result), so the offline
     // harness can play it with bot inputs and the Unity PlayerController is only an adapter.
     //
-    // Split over four files: this one (state, public API, the order of one frame), .Actions (attacks,
-    // charge, plunge, skill, heal, stagger), .Defense (dodge, guard, deflect, incoming hits) and
-    // .Locomotion (walking, sprinting, jumping, facing and velocity).
+    // Split over several files: this one (state, public API, the order of one frame), .Actions (attacks,
+    // charge, plunge, skill, heal, stagger), .Defense (dodge, guard, deflect, incoming hits), .Locomotion
+    // (walking, sprinting, jumping, facing and velocity), .Rhythm (the beat, string memory, the pause branch),
+    // .Combo (the hit counter and MIX), .Switch (element switching), .Danger (danger sense) and .Views (read-only
+    // state for the HUD).
     //
     // HOW TO DRIVE IT (Unity side, once per Update):
     //   1. result = model.Tick(Time.deltaTime, input, world)   (dt <= 0 is safe: nothing advances)
@@ -21,8 +23,9 @@ namespace VaatusRevenge.Core
     //   5. incoming hits: model.ReceiveHit(hit, transform.forward); your hits: model.OnAttackLanded(result, attackId);
     //      a HitOutcome.Parried from a target: model.OnParried(). Events these raise arrive with the next Tick.
     //
-    // Tuning: keeps references to the PlayerTuning / ElementMoveSet it's given and reads them every frame,
-    // so Inspector edits apply live. It never writes to them (they may be shared ScriptableObject data).
+    // Tuning: keeps references to the PlayerTuning / ElementLoadout (four ElementMoveSets) it's given and reads them
+    // every frame, so Inspector edits apply live. It never writes to them (they may be shared ScriptableObject data).
+    // MoveSet is the ACTIVE element's set; a running action keeps the set it started with (actionSet) to its end.
     public sealed partial class PlayerCombatModel
     {
         const float Epsilon = 1e-4f;
@@ -36,17 +39,22 @@ namespace VaatusRevenge.Core
         static readonly AerialSettings FallbackAerial = new AerialSettings();
 
         PlayerTuning tuning;
-        ElementMoveSet moveSet;
+        ElementLoadout loadout;
+        ElementId activeElement;
+        ElementMoveSet moveSet;       // the active element's set (what a new action uses)
+        ElementMoveSet actionSet;     // the set the running action started with (= moveSet while free); never null
 
         readonly StaminaMeter stamina = new StaminaMeter();
         readonly PoiseMeter poise = new PoiseMeter();
-        readonly MomentumMeter momentum = new MomentumMeter();
+        // Each element's identity meter (Fire's Momentum), indexed by ElementId. Every one ticks with its own element's
+        // settings, so switching away never empties one; a hit's multiplier comes from the meter of the hit's element.
+        readonly MomentumMeter[] meters = { new MomentumMeter(), new MomentumMeter(), new MomentumMeter(), new MomentumMeter(), new MomentumMeter() };
         readonly InputBuffer buffer = new InputBuffer();
         readonly TapHoldResolver dodgeButton = new TapHoldResolver();
         readonly ActionTimeline action = new ActionTimeline();
         readonly List<PlayerEvent> events = new List<PlayerEvent>(32);
         readonly List<PlayerEvent> pendingEvents = new List<PlayerEvent>(16);
-        readonly AttackRecord[] recentAttacks = new AttackRecord[8];
+        readonly AttackRecord[] recentAttacks = new AttackRecord[16];
         readonly int[] recentHitsTaken = new int[8];
         int recentAttackCursor;
         int recentHitCursor;
@@ -56,6 +64,7 @@ namespace VaatusRevenge.Core
             public int AttackId;
             public float MomentumGain;
             public bool Rewarded;
+            public ElementId Element;
         }
 
         bool insideTick;
@@ -104,18 +113,24 @@ namespace VaatusRevenge.Core
         bool healApplied;
         double counterWindowUntil = double.NegativeInfinity;
 
-        public PlayerCombatModel(PlayerTuning tuning, ElementMoveSet moveSet, int ownerId = 0, float facingYaw = 0f)
+        public PlayerCombatModel(PlayerTuning tuning, ElementLoadout loadout, int ownerId = 0, float facingYaw = 0f)
         {
             this.tuning = tuning ?? PlayerTuning.CreateFluid();
-            this.moveSet = moveSet ?? ElementMoveSet.CreateFireFluid();
+            SetLoadout(loadout);
             OwnerId = ownerId;
             ResetState(facingYaw);
+        }
+
+        // One element only (the setup before Build 05): a loadout holding just this set.
+        public PlayerCombatModel(PlayerTuning tuning, ElementMoveSet moveSet, int ownerId = 0, float facingYaw = 0f)
+            : this(tuning, ElementLoadout.FromSingle(moveSet ?? ElementMoveSet.CreateFireFluid()), ownerId, facingYaw)
+        {
         }
 
         // ---------------------------------------------------------------- read-only state (HUD, harness)
 
         public PlayerTuning Tuning => tuning;
-        public ElementMoveSet MoveSet => moveSet;
+        public ElementMoveSet MoveSet => moveSet;    // the ACTIVE element's moves
         public int OwnerId { get; set; }             // CombatIds id of the player's Combatant, used as DamageInfo.SourceId
         public double Clock => clock;
         public PlayerState State => state;
@@ -126,9 +141,10 @@ namespace VaatusRevenge.Core
         public float Stamina => stamina.Current;
         public float MaxStamina => Math.Max(0f, tuning.MaxStamina);
         public float Poise => poise.Current;
-        public float Momentum => momentum.Current;
+        // The active element's identity meter (Fire: Momentum; the others have none in this build).
+        public float Momentum => MeterOf(activeElement).Current;
         public float MaxMomentum => MomentumRules.Enabled ? MomentumRules.Max : 0f;
-        public float MomentumMultiplier => momentum.DamageMultiplier(MomentumRules);
+        public float MomentumMultiplier => MeterOf(activeElement).DamageMultiplier(MomentumRules);
         public int HealCharges => healCharges;
         public int MaxHealCharges => Math.Max(0, tuning.HealCharges);
 
@@ -175,12 +191,25 @@ namespace VaatusRevenge.Core
 
         bool IsInMove => state == PlayerState.Attacking || state == PlayerState.Charging || state == PlayerState.Plunging;
         int ChainLength => moveSet.LightChain == null ? 0 : moveSet.LightChain.Length;
-        DodgeProfile Dodge => moveSet.Dodge ?? FallbackDodge;
-        GuardSettings Guard => moveSet.Guard ?? FallbackGuard;
-        ChargeSettings Charge => moveSet.Charge ?? FallbackCharge;
-        PlungeSettings Plunge => moveSet.Plunge ?? FallbackPlunge;
-        MomentumSettings MomentumRules => moveSet.Momentum ?? FallbackMomentum;
-        AerialSettings Aerial => moveSet.Aerial ?? FallbackAerial;
+        // A running action reads the settings of the set it started with (C12: switching mid-dodge never changes the dodge).
+        DodgeProfile Dodge => actionSet.Dodge ?? FallbackDodge;
+        GuardSettings Guard => actionSet.Guard ?? FallbackGuard;
+        ChargeSettings Charge => actionSet.Charge ?? FallbackCharge;
+        PlungeSettings Plunge => actionSet.Plunge ?? FallbackPlunge;
+        AerialSettings Aerial => actionSet.Aerial ?? FallbackAerial;
+        MomentumSettings MomentumRules => MomentumRulesOf(activeElement);
+
+        MomentumSettings MomentumRulesOf(ElementId element)
+        {
+            ElementMoveSet set = loadout.Get(element);
+            return set != null && set.Momentum != null ? set.Momentum : FallbackMomentum;
+        }
+
+        MomentumMeter MeterOf(ElementId element)
+        {
+            int index = (int)element;
+            return index >= 0 && index < meters.Length ? meters[index] : meters[0];
+        }
 
         // ---------------------------------------------------------------- one frame
 
@@ -207,10 +236,12 @@ namespace VaatusRevenge.Core
                 frameRealDt = world.RealDeltaTime > 0f ? world.RealDeltaTime : dt;
                 realClock += frameRealDt;
                 bodyHeight = world.SelfHeight;
+                lastPosition = world.Position;
                 ReadInput(input, dt);
                 buffer.Expire(clock, tuning.InputBufferWindow, tuning.QueuedPressMaxAge);
                 UpdateGrounding(dt, world);
                 UpdateTimers(dt);
+                UpdateThreats();
                 AdvanceAction(dt, world);
                 TryRunBufferedCommand(world);
                 UpdateHeldStates(dt);
@@ -257,6 +288,7 @@ namespace VaatusRevenge.Core
                 tuning.DodgeTrigger, tuning.TapHoldThreshold);
 
             if (state == PlayerState.Dead) return;
+            ReadElementSelect(input.ElementSelect);
 
             // Ability chords (hold the guard button, then a face button: Heavy, AbilityNorth, AbilityEast). The guard
             // button is the chord's modifier, so its own press was only ever the first half of the chord: the chord
@@ -342,21 +374,27 @@ namespace VaatusRevenge.Core
         // enemies still counts once). Use the AttackId from the event for projectiles that land later.
         public void OnAttackLanded(in HitResult result, int attackId)
         {
+            OnAttackLanded(result, attackId, false);
+        }
+
+        // Same, for the attack started most recently.
+        public void OnAttackLanded(in HitResult result)
+        {
+            OnAttackLanded(result, lastAttackId, false);
+        }
+
+        // targetAirborne: the target was in the air (juggled) when it was hit (ComboHit.InAir).
+        public void OnAttackLanded(in HitResult result, int attackId, bool targetAirborne)
+        {
             if (result.Outcome != HitOutcome.Hit || attackId == 0) return;
             for (int i = 0; i < recentAttacks.Length; i++)
             {
                 if (recentAttacks[i].AttackId != attackId) continue;
                 if (recentAttacks[i].Rewarded) return;
                 recentAttacks[i].Rewarded = true;
-                momentum.Gain(recentAttacks[i].MomentumGain, MomentumRules);
+                MeterOf(recentAttacks[i].Element).Gain(recentAttacks[i].MomentumGain, MomentumRulesOf(recentAttacks[i].Element));
                 return;
             }
-        }
-
-        // Same, for the attack started most recently.
-        public void OnAttackLanded(in HitResult result)
-        {
-            OnAttackLanded(result, lastAttackId);
         }
 
         // An enemy deflected our attack: we stagger.
@@ -369,7 +407,7 @@ namespace VaatusRevenge.Core
 
         void RememberAttack(int attackId, float momentumGain)
         {
-            recentAttacks[recentAttackCursor] = new AttackRecord { AttackId = attackId, MomentumGain = momentumGain };
+            recentAttacks[recentAttackCursor] = new AttackRecord { AttackId = attackId, MomentumGain = momentumGain, Element = actionSet.Element };
             recentAttackCursor = (recentAttackCursor + 1) % recentAttacks.Length;
             lastAttackId = attackId;
         }
@@ -382,7 +420,8 @@ namespace VaatusRevenge.Core
         {
             var info = new DamageInfo();
             if (move == null) return info;
-            float damageScale = momentum.DamageMultiplier(MomentumRules);
+            ElementId element = ElementOfAttack(attackId);
+            float damageScale = MeterOf(element).DamageMultiplier(MomentumRulesOf(element));
             float poiseScale = 1f;
             float hitstop = move.Hitstop;
             if (tier == ChargeTier.FaJin)
@@ -411,7 +450,22 @@ namespace VaatusRevenge.Core
             info.LaunchSpeed = move.LaunchSpeed;
             info.AirLift = move.AirLift;
             info.SlamSpeed = move.SlamSpeed;
+            info.Element = element;
+            info.PullDistance = move.PullDistance;
             return info;
+        }
+
+        // The element an attack was made with (an attack no longer remembered: the active element).
+        ElementId ElementOfAttack(int attackId)
+        {
+            if (attackId != 0)
+            {
+                for (int i = 0; i < recentAttacks.Length; i++)
+                {
+                    if (recentAttacks[i].AttackId == attackId) return recentAttacks[i].Element;
+                }
+            }
+            return activeElement;
         }
 
         public DamageInfo BuildDamage(in PlayerEvent evt)
@@ -439,6 +493,12 @@ namespace VaatusRevenge.Core
         // events), health and stamina keep their share of the maximum, the input buffer is cleared.
         public void ApplyTuning(PlayerTuning newTuning, ElementMoveSet newMoveSet)
         {
+            ApplyTuning(newTuning, ElementLoadout.FromSingle(newMoveSet ?? ElementMoveSet.CreateFireFluid()));
+        }
+
+        // The same with all four elements. The active element stays if it is still learned.
+        public void ApplyTuning(PlayerTuning newTuning, ElementLoadout newLoadout)
+        {
             float healthShare = health / MaxHealth;
             float staminaShare = MaxStamina > 0f ? stamina.Current / MaxStamina : 1f;
             if (state != PlayerState.Dead && state != PlayerState.Staggered)
@@ -447,7 +507,7 @@ namespace VaatusRevenge.Core
                 EnterFreeState();
             }
             tuning = newTuning ?? PlayerTuning.CreateFluid();
-            moveSet = newMoveSet ?? ElementMoveSet.CreateFireFluid();
+            SetLoadout(newLoadout);
             if (state != PlayerState.Dead) health = Math.Max(1f, healthShare * MaxHealth);
             stamina.Set(staminaShare * MaxStamina, MaxStamina);
             poise.Reset(tuning.MaxPoise);
@@ -464,6 +524,7 @@ namespace VaatusRevenge.Core
         public void Respawn(float newFacingYaw)
         {
             if (state != PlayerState.Dead) ExitAction(true);
+            ClearThreats();
             ResetState(newFacingYaw);
             Emit(PlayerEventType.Respawned);
         }
@@ -475,7 +536,7 @@ namespace VaatusRevenge.Core
             health = MaxHealth;
             stamina.Reset(MaxStamina);
             poise.Reset(tuning.MaxPoise);
-            momentum.Reset();
+            for (int i = 0; i < meters.Length; i++) meters[i].Reset();
             healCharges = MaxHealCharges;
             buffer.Clear();
             dodgeButton.Reset();
@@ -498,6 +559,8 @@ namespace VaatusRevenge.Core
             readyCueAnnounced = false;
             heavyPressRealClock = double.NegativeInfinity;
             counterWindowUntil = double.NegativeInfinity;
+            ResetCombo();
+            ClearStringMemory();
             ResetDefense();
             ResetLocomotion(newFacingYaw);
         }
@@ -557,7 +620,7 @@ namespace VaatusRevenge.Core
                 string bufferText = buffer.HasCommand ? buffer.Command + (buffer.Locked ? "(queued)" : "") : "-";
                 return string.Format(CultureInfo.InvariantCulture,
                     "{0}{1}{2} | HP {3:0}/{4:0} ST {5:0}/{6:0} PO {7:0} MO {8:0} x{9:0.00} | heal {10} | buf {11} | inv {12} | charge {13:0.00} | ctr {14:0.00}",
-                    state, move, phaseText, health, MaxHealth, stamina.Current, MaxStamina, poise.Current, momentum.Current,
+                    state, move, phaseText, health, MaxHealth, stamina.Current, MaxStamina, poise.Current, Momentum,
                     MomentumMultiplier, healCharges, bufferText, IsInvulnerable ? "YES" : "no", ChargeTime, CounterWindowRemaining);
             }
         }

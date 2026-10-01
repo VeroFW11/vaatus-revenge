@@ -15,6 +15,8 @@ namespace VaatusRevenge
     // hitstop on a clean hit (the brief freeze sells the weight of the blow), a little extra screen shake for
     // its weapon, and a stagger for itself when its swing was deflected. A deflected BOLT doesn't stagger the
     // archer: it's standing far away and the deflect only snuffed the bolt.
+    // Danger sense: every brain event is passed to DangerSenseRelay (RelayDanger), which tells the player's model
+    // what is coming and when; the model raises the warnings at the player's own lead times.
     public sealed class EnemyStrikes
     {
         // More per-attack bolt handlers than this means the attack list was edited a lot while playing: start over.
@@ -23,6 +25,7 @@ namespace VaatusRevenge
         readonly List<HitReport> reports = new List<HitReport>(4);
         readonly List<BoltHitHandler> boltHandlers = new List<BoltHitHandler>(2);
         int openAttackId;
+        int relayedAttackerId;        // whose strikes the player was told about (called off in EndAll)
 
         // The strike's active window just opened: sweep its arc from where it was aimed.
         // attackerFeet: where the enemy stands (its pivot), so the player's perfect-dodge reward knows which way
@@ -55,6 +58,19 @@ namespace VaatusRevenge
             model.NotifyEnemyStrike(e.Origin, e.Direction, move, attackerFeet.ToNumerics());
         }
 
+        // Danger sense: call for EVERY event of the brain, in order (wind-ups register the strikes, bolts refresh them,
+        // interruptions call them off). attackerFeet: where the enemy stands.
+        public void RelayDanger(in EnemyEvent e, EnemyBrain brain, Vector3 attackerFeet)
+        {
+            if (brain == null) return;
+            PlayerController player = PlayerController.Instance;
+            if (player == null) return;
+            PlayerCombatModel model = player.Model;
+            if (model == null) return;
+            relayedAttackerId = brain.OwnerId;
+            DangerSenseRelay.OnEnemyEvent(in e, brain, brain.OwnerId, attackerFeet.ToNumerics(), player.transform.position.ToNumerics(), model);
+        }
+
         // Every later frame of the active window: same swing, from where the (lunging) enemy is now.
         public void ContinueMelee(EnemyBrain brain, Vector3 feet, EnemyFeedbackSettings feedback)
         {
@@ -81,6 +97,11 @@ namespace VaatusRevenge
         {
             if (openAttackId != 0) MeleeHitQuery.EndAttack(openAttackId);
             openAttackId = 0;
+            // Nothing this enemy wound up may keep warning the player once it's dead, reset or switched off.
+            if (relayedAttackerId == 0) return;
+            PlayerController player = PlayerController.Instance;
+            PlayerCombatModel model = player != null ? player.Model : null;
+            if (model != null) model.CancelIncomingStrikes(relayedAttackerId);
         }
 
         public void LaunchBolt(in EnemyEvent e, EnemyBrain brain, EnemyFighter owner)

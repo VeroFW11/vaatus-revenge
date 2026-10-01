@@ -25,5 +25,7 @@ namespace VaatusRevenge.Core
         public float Cooldown = 0f;                  // seconds before this attack can be picked again
         public int HitCount = 1;                     // > 1 = a combo or burst of several strikes or bolts
         public float HitInterval = 0.35f;            // seconds between the starts of those strikes/bolts
+        public bool HideDangerSense = false;         // true = the player's danger sense never shows it (bosses only, sparingly)
+        public float DangerLeadScale = 1f;           // scales the danger sense's lead times for this attack (a feint, a slow one)
     }
 }

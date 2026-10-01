@@ -36,6 +36,9 @@ namespace VaatusRevenge
         [SerializeField] private MoveSetAsset fluidMoves;
         [SerializeField] private PlayerTuningAsset punishingTuning;
         [SerializeField] private MoveSetAsset punishingMoves;
+        [Tooltip("The four elements for each preset. When set, F5 / F6 swap these whole loadouts instead of the single move sets.")]
+        [SerializeField] private ElementLoadoutAsset fluidLoadout;
+        [SerializeField] private ElementLoadoutAsset punishingLoadout;
 
         [Header("Fighters")]
         [Tooltip("Where the player respawns: its position is the feet, its forward the facing. Empty = where the player started.")]
@@ -121,6 +124,24 @@ namespace VaatusRevenge
             this.punishingTuning = punishingTuning;
             this.punishingMoves = punishingMoves;
             this.playerSpawn = playerSpawn;
+        }
+
+        // The same with all four elements per preset.
+        public void Configure(PlayerTuningAsset fluidTuning, ElementLoadoutAsset fluidLoadout,
+                              PlayerTuningAsset punishingTuning, ElementLoadoutAsset punishingLoadout, Transform playerSpawn)
+        {
+            this.fluidTuning = fluidTuning;
+            this.fluidLoadout = fluidLoadout;
+            this.punishingTuning = punishingTuning;
+            this.punishingLoadout = punishingLoadout;
+            this.playerSpawn = playerSpawn;
+        }
+
+        // Shows or hides every enemy the director resets (the tutorial clears the arena for the sparring partner).
+        // STUB: package D implements it.
+        public void SetEnemiesActive(bool active)
+        {
+            Debug.Log("SandboxDirector.SetEnemiesActive(" + active + ") is not implemented yet.", this);
         }
 
         public void RegisterEnemy(EnemyController enemy)
@@ -224,8 +245,8 @@ namespace VaatusRevenge
             if (keyboard.escapeKey.wasPressedThisFrame) SetPaused(!paused);
             if (keyboard.f2Key.wasPressedThisFrame) ToggleDebugSlowMotion();
             if (keyboard.f4Key.wasPressedThisFrame) RespawnPlayer();
-            if (keyboard.f5Key.wasPressedThisFrame) ApplyPreset(fluidTuning, fluidMoves, "F5");
-            if (keyboard.f6Key.wasPressedThisFrame) ApplyPreset(punishingTuning, punishingMoves, "F6");
+            if (keyboard.f5Key.wasPressedThisFrame) ApplyPreset(fluidTuning, fluidLoadout, fluidMoves, "F5");
+            if (keyboard.f6Key.wasPressedThisFrame) ApplyPreset(punishingTuning, punishingLoadout, punishingMoves, "F6");
             if (keyboard.tKey.wasPressedThisFrame) ResetEnemies();
         }
 
@@ -238,7 +259,7 @@ namespace VaatusRevenge
                 : "Slow motion off");
         }
 
-        void ApplyPreset(PlayerTuningAsset tuning, MoveSetAsset moves, string key)
+        void ApplyPreset(PlayerTuningAsset tuning, ElementLoadoutAsset loadout, MoveSetAsset moves, string key)
         {
             PlayerController current = ResolvePlayer();
             if (current == null)
@@ -246,14 +267,15 @@ namespace VaatusRevenge
                 ShowToast("No player to apply the preset to");
                 return;
             }
-            if (tuning == null || moves == null)
+            if (tuning == null || (loadout == null && moves == null))
             {
                 Debug.LogWarning("SandboxDirector: the " + key + " preset has no tuning or move set asset assigned. Select 'Systems' "
                                  + "and fill in the Presets fields, or rebuild with Vaatu's Revenge > Build Fire Combat Sandbox.", this);
                 ShowToast(key + " preset is missing (see Console)");
                 return;
             }
-            current.ApplyTuning(tuning, moves);
+            if (loadout != null) current.ApplyTuning(tuning, loadout);
+            else current.ApplyTuning(tuning, moves);
             ShowToast("Preset: " + (string.IsNullOrEmpty(tuning.PresetName) ? tuning.name : tuning.PresetName));
         }
 

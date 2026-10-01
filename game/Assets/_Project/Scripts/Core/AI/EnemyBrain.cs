@@ -77,6 +77,10 @@ namespace VaatusRevenge.Core
         bool strikeLanded;            // a strike of the current attack hit the player (OnStrikeLanded)
         float launchedTime;           // seconds since the launch (juggle limit, and the stuck-in-the-air safety net)
         bool launchedLeftGround;      // the launch has actually carried it off the ground (landing counts after that)
+        int lastCountedMoveInstance;  // the break-out counts one hit per player move (a multi-hit palm flurry is one hit)
+        Vector3 lastPosition;         // where it and its target stood last frame: a pulling hit draws it toward the target
+        Vector3 lastTargetPosition;
+        bool targetKnown;
 
         protected EnemyBrain(EnemyTuning tuning, AttackTokenPool tokens, int ownerId, int seed, float facingYaw)
         {
@@ -146,6 +150,10 @@ namespace VaatusRevenge.Core
 
         public Vector3 Home => home;
 
+        // true = never starts an attack (no swings, no break-out): the tutorial's partner while you practise. Kept
+        // through Reset; set it back to false to let it fight.
+        public bool Passive { get; set; }
+
         // For subclasses.
         protected DeterministicRandom Random { get; }
         protected bool LeashLimited => leashLimited;   // true when the leash blocked outward movement last frame
@@ -173,6 +181,9 @@ namespace VaatusRevenge.Core
                     home = world.Position;
                     homeKnown = true;
                 }
+                lastPosition = world.Position;
+                lastTargetPosition = world.TargetPosition;
+                targetKnown = world.HasTarget;
                 clock += dt;
                 stateTime += dt;
                 sinceHit += dt;
@@ -364,7 +375,7 @@ namespace VaatusRevenge.Core
         // Commits to an attack: takes a token if this enemy uses them. False = no token free (keep circling).
         protected bool ReserveAttack(int index)
         {
-            if (AttackAt(index) == null) return false;
+            if (Passive || AttackAt(index) == null) return false;
             if (tokens != null && tuning.UsesAttackToken && !tokens.TryAcquire(OwnerId)) return false;
             PendingAttackIndex = index;
             return true;
@@ -381,7 +392,7 @@ namespace VaatusRevenge.Core
         protected void StartAttack(int index, in EnemyWorldState world)
         {
             EnemyAttackData attack = AttackAt(index);
-            if (attack == null)
+            if (attack == null || Passive)
             {
                 CancelPendingAttack();
                 return;
@@ -423,12 +434,16 @@ namespace VaatusRevenge.Core
         // Hits on the break-out itself (its wind-up, shove or recovery) never count, so pressing through the glow
         // can't re-arm the next shove. Hits after it ends do count, but nothing arms until the cooldown (Cooldown
         // seconds from the break-out's START) is over: see TryArmBreakOut.
-        void CountHitForBreakOut()
+        // A multi-hit move (Air's palm flurries) counts once: hits are counted per MoveInstanceId, so three presses still
+        // mean three hits, not nine.
+        void CountHitForBreakOut(int moveInstanceId)
         {
             EnemyBreakOutRule rule = tuning.BreakOut;
             if (rule == null || !rule.Enabled || rule.Attack == null || rule.Attack.Move == null) return;
             if (breakOutArmed > 0f || IsBreakingOut) return;
             if (Phase == AttackPhase.Recovery && !(rule.CountsTradedRecoveryHits && strikeLanded)) return;   // an earned punish
+            if (moveInstanceId != 0 && moveInstanceId == lastCountedMoveInstance) return;
+            lastCountedMoveInstance = moveInstanceId;
             breakOutHitTimes[breakOutHitCursor] = clock;
             breakOutHitCursor = (breakOutHitCursor + 1) % breakOutHitTimes.Length;
             TryArmBreakOut();
@@ -464,7 +479,7 @@ namespace VaatusRevenge.Core
         {
             EnemyBreakOutRule rule = tuning.BreakOut;
             EnemyAttackData attack = rule != null ? rule.Attack : null;
-            if (attack == null || attack.Move == null || !rule.Enabled)
+            if (attack == null || attack.Move == null || !rule.Enabled || Passive)
             {
                 breakOutArmed = 0f;
                 return;
@@ -766,9 +781,22 @@ namespace VaatusRevenge.Core
             }
             else if (state != EnemyState.Staggered)
             {
-                CountHitForBreakOut();
+                CountHitForBreakOut(hit.MoveInstanceId);
             }
+            if (!result.PoiseBroken) Pull(hit);
             return result;
+        }
+
+        // A pulling hit (Water's whip and roll-back) draws the enemy toward the attacker, stopping PullStopDistance short.
+        // Armour (hyper armour, the break-out) holds it in place.
+        void Pull(in DamageInfo hit)
+        {
+            if (!(hit.PullDistance > 0f) || !targetKnown || HasHyperArmor || IsBreakingOut) return;
+            Vector3 toAttacker = Directions.Flatten(lastTargetPosition - lastPosition);
+            float distance = toAttacker.Length();
+            float amount = Math.Min(hit.PullDistance, distance - Math.Max(0f, tuning.PullStopDistance));
+            if (!(amount > 0f)) return;
+            knockback.Start(toAttacker / distance, amount, tuning.KnockbackTime);
         }
 
         // Hyper armour runs from Move.HyperArmorFrom (e.g. halfway through a big wind-up) until the last strike ends.
@@ -947,6 +975,8 @@ namespace VaatusRevenge.Core
             ClearBreakOutHits();
             breakOutArmed = 0f;
             breakOutCooldown = 0f;
+            lastCountedMoveInstance = 0;
+            targetKnown = false;
             Random.Reseed(seed);
             OnReset();
         }

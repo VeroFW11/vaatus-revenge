@@ -16,7 +16,7 @@ namespace VaatusRevenge.Core
     //
     // The fighter faces +Z; lengths are metres for a 1.8 m fighter; angles are degrees. Fire's stance leads with
     // the left side (left foot and fist forward), so the lead hand jabs and the rear hand crosses.
-    public static class PoseLibraryDefaults
+    public static partial class PoseLibraryDefaults
     {
         const BodySide L = BodySide.Left;
         const BodySide R = BodySide.Right;
@@ -28,6 +28,7 @@ namespace VaatusRevenge.Core
             AddStates(clips);
             AddPlayerMoves(clips);
             AddEnemyMoves(clips);
+            AddPlaceholders(clips);
             return clips.ToArray();
         }
 

@@ -29,6 +29,8 @@ namespace VaatusRevenge.Core
                                                      // (no stun-locking; decided 28 Sep). Deflects still stagger.
         public float ParriedStaggerDuration = 1.3f;  // stunned time when the player deflects this enemy's attack
         public float KnockbackTime = 0.15f;          // a clean hit's knockback distance is covered over this long
+        public float PullStopDistance = 1.5f;        // a pulling hit (MoveData.PullDistance) stops drawing it in this far from the
+                                                     // attacker (centre to centre), so it never ends up inside the player
 
         // --- Juggling (launchers and air combos) ---
         public bool Launchable = true;               // a launcher can throw it into the air (bosses and brutes: false)
@@ -81,6 +83,17 @@ namespace VaatusRevenge.Core
         public static EnemyTuning CreateDaoSoldier()
         {
             return new EnemyTuning();
+        }
+
+        // The tutorial's sparring partner: a Dao Soldier who can't die and can be launched. The tutorial switches its
+        // attacks on and off (EnemyBrain.Passive).
+        public static EnemyTuning CreateTutorialPartner()
+        {
+            EnemyTuning t = CreateDaoSoldier();
+            t.DisplayName = "Sparring Partner";
+            t.Unkillable = true;
+            t.Launchable = true;
+            return t;
         }
 
         public static EnemyTuning CreateCrossbowman()

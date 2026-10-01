@@ -33,7 +33,8 @@ namespace VaatusRevenge.Core
     //   AbilityNorth  hold LB + Y (L1 + Triangle) / hold Q + F        ability slot (Fire: Fire Whip, mid range)
     //   AbilityEast   hold LB + B (L1 + Circle) / hold Q + Left Shift ability slot (Fire: Flame Wheel, close all round)
     //   Skill      tap RB (R1) / right mouse          Fire Blast
-    //   ElementSelect  hold RB + Y/B/A/X (R1 + face button) / 1-4
+    //   ElementSelect  hold RB + a face button / 1-4 (ElementButtonLayout: B Fire, X Water, A Earth, Y Air; keys 1-4 Fire,
+    //                  Water, Earth, Air). Mid-string it is a switch strike: the next hit comes out in that element
     //   Heal       D-pad down / R
     //   LockOn     R3 / middle mouse or Tab (optional: off unless you press it)
     //   SwitchTargetDelta  mouse wheel / Z,C (stick flicks are detected by the lock-on code from Look)
@@ -58,6 +59,6 @@ namespace VaatusRevenge.Core
         public ButtonState AbilityEast;  // ability slot: hold LB + B (Circle) / hold Q + Left Shift
 
         public int SwitchTargetDelta; // -1 = previous/left, +1 = next/right, 0 = none (edge-triggered)
-        public ElementId ElementSelect; // None unless a direction was pressed this frame (edge-triggered)
+        public ElementId ElementSelect; // None unless an element was picked this frame (edge-triggered; see ElementButtonLayout)
     }
 }

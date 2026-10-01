@@ -82,9 +82,24 @@ namespace VaatusRevenge.Core
         public float GapCloseDistance = 4.5f;        // free-flow: a light attack at a soft-lock target out of reach lunges up to
                                                      // this much further than its own LungeDistance to close the gap (0 = off)
 
+        // --- Combos (Build 05) ---
+        public RhythmTuning Rhythm = new RhythmTuning();             // the beat: on-beat presses speed the string up
+        public ComboTuning Combo = new ComboTuning();                // the hit counter
+        public MixTuning Mix = new MixTuning();                      // the multi-element bonus
+        public ElementSwitchTuning ElementSwitch = new ElementSwitchTuning();
+        public DangerSenseSettings DangerSense = new DangerSenseSettings();
+        public float StringMemoryAfterAction = 0.45f;  // a string survives a dodge, zip, ability or skill: X pressed this soon
+                                                       // after it continues at the next hit instead of starting over
+        public float DodgeStrikeGrace = 0.20f;         // attack this soon after a dodge ends, at a target: the dodge strike
+
+        // Bumped when the defaults change in a way old assets must not keep (the sandbox builder offers to reset an
+        // asset whose DataVersion is behind). New fields read 0 in an asset saved before they existed.
+        public int DataVersion = 0;
+        public const int CurrentDataVersion = 5;
+
         public static PlayerTuning CreateFluid()
         {
-            return new PlayerTuning();
+            return new PlayerTuning { DataVersion = CurrentDataVersion };
         }
 
         // Elden Ring-like: dodge on release, slower stamina, sprint costs stamina, tighter buffer.
@@ -101,6 +116,14 @@ namespace VaatusRevenge.Core
             t.SprintStaminaDrain = 6f;
             t.InputBufferWindow = 0.2f;
             t.DodgeTrigger = DodgeTrigger.OnRelease;
+            t.Rhythm = RhythmTuning.CreatePunishing();
+            t.Combo = ComboTuning.CreatePunishing();
+            t.Mix = MixTuning.CreatePunishing();
+            t.ElementSwitch = ElementSwitchTuning.CreatePunishing();
+            t.DangerSense = DangerSenseSettings.CreatePunishing();
+            t.StringMemoryAfterAction = 0.35f;
+            t.DodgeStrikeGrace = 0.10f;
+            t.DataVersion = CurrentDataVersion;
             return t;
         }
     }

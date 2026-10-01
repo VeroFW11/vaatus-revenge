@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using VaatusRevenge.Core;
@@ -16,7 +17,8 @@ namespace VaatusRevenge
     //   hold LB + Y (Q + F)            = AbilityNorth (Fire: Fire Whip, mid range)
     //   hold LB + B (Q + Left Shift)   = AbilityEast (Fire: Flame Wheel, close, all round)
     //   LB + A is an empty slot and still jumps.
-    //   hold RB + Y / B / A / X        = pick an element (Up / Right / Down / Left slot). RB then fires nothing:
+    //   hold RB + Y / B / A / X        = pick an element (ElementButtonLayout, colour-matched: Y Air, B Fire, A Earth,
+    //                                  X Water; 1-4 on the keyboard are Fire, Water, Earth, Air). RB then fires nothing:
     //                                  the Fire Blast comes from a quick RB tap on its own, on release. The mouse only counts while the cursor is captured: click the Game view to
     // capture it (that click is not an attack), Esc or switching windows releases it. The gamepad and keyboard
     // work either way.
@@ -42,8 +44,9 @@ namespace VaatusRevenge
         // Right-stick tilt that counts as "the player is using the gamepad now".
         const float GamepadActivityTilt = 0.25f;
 
-        [Tooltip("Element picked by RB + each face button / number key, in the order Y or 1, B or 2, A or 3, X or 4.")]
-        [SerializeField] private ElementId[] elementSlots = { ElementId.Fire, ElementId.Water, ElementId.Earth, ElementId.Air };
+        [Tooltip("Element picked by RB + each face button (colour-matched: Y Air, B Fire, A Earth, X Water) and by the number "
+                 + "keys 1-4 (Fire, Water, Earth, Air).")]
+        [SerializeField] private ElementButtonLayout elementLayout = new ElementButtonLayout();
         [Tooltip("Capture the mouse when the Game view is clicked (Esc releases it).")]
         [SerializeField] private bool lockCursorOnClick = true;
         [Tooltip("RB (R1) held no longer than this, with no face button pressed, fires the ranged skill when let go. "
@@ -70,6 +73,7 @@ namespace VaatusRevenge
         float skillPadHeldTime;
         bool skillPadChordUsed;
         readonly bool[] faceSwallowed = new bool[4];       // a face button used for an element pick: ignored until let go
+        readonly ElementId[] padSlots = new ElementId[ElementButtonLayout.SlotCount];   // ElementSlots, refreshed each frame
         bool gameplayEnabled = true;
         bool usingGamepad;
         bool mouseButtonsBlocked;
@@ -79,6 +83,18 @@ namespace VaatusRevenge
         public PlayerInputFrame Frame => frame;
         // True when the last thing the player touched was a gamepad (for button prompts and rumble).
         public bool UsingGamepad => usingGamepad;
+        // The element each face button picks with RB held, in the order Y, B, A, X (the HUD's element wheel).
+        public IReadOnlyList<ElementId> ElementSlots
+        {
+            get
+            {
+                RefreshPadSlots();
+                return padSlots;
+            }
+        }
+        // RB (R1) is held: a face button now picks an element (the wheel grows and shows "RB +").
+        public bool ElementModifierHeld => gameplayEnabled && skillPad != null && skillPad.IsPressed();
+        public ElementButtonLayout ElementLayout => elementLayout;
         public bool GameplayEnabled => gameplayEnabled;
         public bool CursorLocked => Cursor.lockState == CursorLockMode.Locked;
 
@@ -266,7 +282,7 @@ namespace VaatusRevenge
             {
                 faceSwallowed[face] = true;
                 skillPadChordUsed = true;
-                if (picked == ElementId.None && elementSlots != null && face < elementSlots.Length) picked = elementSlots[face];
+                if (picked == ElementId.None && elementLayout != null) picked = elementLayout.PadSlot(face);
             }
             if (!faceSwallowed[face]) return;
             if (!button.Held) faceSwallowed[face] = false;
@@ -352,9 +368,14 @@ namespace VaatusRevenge
             for (int i = 0; i < elementActions.Length; i++)
             {
                 if (!elementActions[i].WasPressedThisFrame()) continue;
-                return elementSlots != null && i < elementSlots.Length ? elementSlots[i] : ElementId.None;
+                return elementLayout != null ? elementLayout.KeySlot(i) : ElementId.None;
             }
             return ElementId.None;
+        }
+
+        void RefreshPadSlots()
+        {
+            for (int i = 0; i < padSlots.Length; i++) padSlots[i] = elementLayout != null ? elementLayout.PadSlot(i) : ElementId.None;
         }
 
         void UpdateActiveDevice(Vector2 stickLook, Vector2 mouseLook, bool mouseClicked)

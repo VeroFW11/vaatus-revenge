@@ -403,7 +403,16 @@ namespace VaatusRevenge.Core
         // lock target, or when not locked on, away from the nearest enemy within BackOffRadius.
         void UpdateMomentum(float dt, in PlayerWorldState world)
         {
-            MomentumSettings rules = MomentumRules;
+            // Every element's meter ticks with its own settings (an element without a meter just stays at zero).
+            for (ElementId element = ElementId.Fire; element <= ElementId.Air; element++)
+            {
+                MomentumSettings rules = MomentumRulesOf(element);
+                MeterOf(element).Tick(dt, rules, IsBackingOff(rules, world));
+            }
+        }
+
+        bool IsBackingOff(MomentumSettings rules, in PlayerWorldState world)
+        {
             bool backingOff = false;
             bool hasThreat = world.HasLockTarget;
             Vector3 threat = world.LockTargetPosition;
@@ -423,7 +432,7 @@ namespace VaatusRevenge.Core
                     backingOff = awaySpeed > rules.BackOffSpeedThreshold;
                 }
             }
-            momentum.Tick(dt, rules, backingOff);
+            return backingOff;
         }
     }
 }

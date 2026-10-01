@@ -66,6 +66,15 @@ namespace VaatusRevenge.Core
         public bool HyperArmor = false;              // true = poise can't break from HyperArmorFrom until active ends (damage still hurts)
         public float HyperArmorFrom = 0f;            // seconds from move start when hyper armour begins (0 = from the start)
 
+        // --- Element mechanics (Build 05) ---
+        public int HitCount = 1;                     // > 1: sub-hits spread over the active frames, sub-hit k live from
+        public float HitInterval = 0f;               // ActiveStart + k x HitInterval. Damage and poise are per sub-hit; each has its
+                                                     // own AttackId (Active must cover (HitCount - 1) x HitInterval)
+        public float PullDistance = 0f;              // > 0: a clean hit draws the target toward the attacker by up to this (Water)
+        public float OrbitDegrees = 0f;              // > 0: the lunge curves round the target, ending this many degrees round it (Air)
+        public float HealOnHit = 0f;                 // health the attacker gets back per clean hit (Water restores you)...
+        public float HealPerMoveMax = 0f;            // ...at most this much per move (0 = HealOnHit)
+
         // --- Projectile (Fire Blast, crossbow bolts) ---
         public bool LaunchesProjectile = false;      // true = launches Projectile when startup ends instead of a melee arc
         public ProjectileSpec Projectile = new ProjectileSpec();

@@ -28,13 +28,19 @@ namespace VaatusRevenge
     [RequireComponent(typeof(CharacterController), typeof(Combatant), typeof(HumanoidBody))]
     public class PlayerController : MonoBehaviour, IDamageReceiver
     {
+        // GameplayEvent's signature: every combat-model event, by reference (no copy, no garbage).
+        public delegate void PlayerEventHandler(in PlayerEvent e);
+
         public static PlayerController Instance { get; private set; }
 
         [Tooltip("Player numbers (health, stamina, movement, input feel) plus the feel settings (shake, rumble, flashes). "
                  + "Empty = built-in Fluid defaults.")]
         [SerializeField] private PlayerTuningAsset tuningAsset;
-        [Tooltip("The element's moves: light chain, heavy, sprint and jump attacks, skill, dodge, guard. "
-                 + "Empty = built-in Fire (Fluid) defaults.")]
+        [Tooltip("The four elements' move sets and which are learned (RB + a face button switches). When set, it is used "
+                 + "instead of the single move set below.")]
+        [SerializeField] private ElementLoadoutAsset loadoutAsset;
+        [Tooltip("One element's moves, used when there is no loadout: light chain, heavy, sprint and jump attacks, skill, "
+                 + "dodge, guard. Empty = built-in Fire (Fluid) defaults.")]
         [SerializeField] private MoveSetAsset moveSetAsset;
 
         CharacterController body;
@@ -50,6 +56,12 @@ namespace VaatusRevenge
         PlayerTuning fallbackTuning;
         ElementMoveSet fallbackMoveSet;
         PlayerFeedbackSettings fallbackFeedback;
+        // The loadout handed to the model. Built from the assets and rebuilt only when what they hold changes, so the
+        // model keeps one stable object (a new one would end the combo every frame).
+        ElementLoadout cachedLoadout;
+        // Set by ApplyTuning(PlayerTuning, ElementLoadout): plain data that wins over the assets until Configure is called.
+        PlayerTuning runtimeTuning;
+        ElementLoadout runtimeLoadout;
         bool warnedNoTuning;
         bool warnedNoMoveSet;
 
@@ -70,12 +82,34 @@ namespace VaatusRevenge
         // Raised once each time the player dies, from this component's Update.
         public event Action Died;
 
+        // Every event the combat model raised this frame, in order, after this component's own handling (hit checks,
+        // projectiles, effects). For the tutorial and anything else that follows the fight. Valid during the call only.
+        public event PlayerEventHandler GameplayEvent;
+
         // ---------------------------------------------------------------- building the player
 
         // Builds a complete player: CharacterController (pivot at the feet), Combatant on Team Player with a
         // chest-height aim point, grey-box body on the Player layer, and this component configured with the
         // given assets. Works in edit mode (the sandbox builder saves the result into the scene) and at runtime.
         public static PlayerController Spawn(Transform parent, Vector3 position, float yaw, PlayerTuningAsset tuning, MoveSetAsset moveSet)
+        {
+            PlayerController player = SpawnBody(parent, position, yaw, tuning);
+            player.Configure(tuning, moveSet);
+            player.gameObject.SetActive(true);
+            return player;
+        }
+
+        // The same with all four elements.
+        public static PlayerController Spawn(Transform parent, Vector3 position, float yaw, PlayerTuningAsset tuning, ElementLoadoutAsset loadout)
+        {
+            PlayerController player = SpawnBody(parent, position, yaw, tuning);
+            player.Configure(tuning, loadout);
+            player.gameObject.SetActive(true);
+            return player;
+        }
+
+        // Everything but the move assets; returned switched off (the caller configures it, then switches it on).
+        static PlayerController SpawnBody(Transform parent, Vector3 position, float yaw, PlayerTuningAsset tuning)
         {
             PlayerBodySettings settings = tuning != null && tuning.Body != null ? tuning.Body : new PlayerBodySettings();
             float radius = Mathf.Max(0.01f, settings.Radius);
@@ -114,10 +148,7 @@ namespace VaatusRevenge
             humanoid.Build(look);
             Layers.SetRecursively(go, Layers.Player); // after Build, so every body part is on the layer too
 
-            PlayerController player = go.AddComponent<PlayerController>();
-            player.Configure(tuning, moveSet);
-            go.SetActive(true);
-            return player;
+            return go.AddComponent<PlayerController>();
         }
 
         // Edit-time wiring: only stores the assets (safe before Awake). At runtime an existing model picks the
@@ -126,6 +157,23 @@ namespace VaatusRevenge
         {
             tuningAsset = tuning;
             moveSetAsset = moveSet;
+            loadoutAsset = null;
+            ClearRuntimeTuning();
+        }
+
+        // The same with all four elements (the loadout wins over a single move set).
+        public void Configure(PlayerTuningAsset tuning, ElementLoadoutAsset loadout)
+        {
+            tuningAsset = tuning;
+            loadoutAsset = loadout;
+            ClearRuntimeTuning();
+        }
+
+        void ClearRuntimeTuning()
+        {
+            runtimeTuning = null;
+            runtimeLoadout = null;
+            cachedLoadout = null;
             warnedNoTuning = false;
             warnedNoMoveSet = false;
         }
@@ -136,6 +184,21 @@ namespace VaatusRevenge
         public void ApplyTuning(PlayerTuningAsset tuning, MoveSetAsset moveSet)
         {
             Configure(tuning, moveSet);
+            if (model != null) SyncTuning();
+        }
+
+        public void ApplyTuning(PlayerTuningAsset tuning, ElementLoadoutAsset loadout)
+        {
+            Configure(tuning, loadout);
+            if (model != null) SyncTuning();
+        }
+
+        // Plain data instead of assets (e.g. the tutorial forcing the Fluid rules): wins until Configure is called again.
+        // Null keeps what the assets give for that part.
+        public void ApplyTuning(PlayerTuning tuning, ElementLoadout loadout)
+        {
+            runtimeTuning = tuning;
+            runtimeLoadout = loadout;
             if (model != null) SyncTuning();
         }
 
@@ -172,6 +235,7 @@ namespace VaatusRevenge
         public PlayerCombatModel Model => model;
         public PlayerTuningAsset TuningAsset => tuningAsset;
         public MoveSetAsset MoveSetAsset => moveSetAsset;
+        public ElementLoadoutAsset LoadoutAsset => loadoutAsset;
 
         // The feel settings in use (the tuning asset's, or built-in defaults). Never null.
         public PlayerFeedbackSettings Feedback
@@ -194,7 +258,14 @@ namespace VaatusRevenge
             }
         }
 
-        public string MoveSetPresetName => moveSetAsset != null && moveSetAsset.PresetName != null ? moveSetAsset.PresetName : "";
+        public string MoveSetPresetName
+        {
+            get
+            {
+                if (loadoutAsset != null) return loadoutAsset.PresetName ?? "";
+                return moveSetAsset != null && moveSetAsset.PresetName != null ? moveSetAsset.PresetName : "";
+            }
+        }
 
         public bool IsDead => model != null && model.State == PlayerState.Dead;
         public float Health01 => model != null ? Mathf.Clamp01(model.Health / model.MaxHealth) : 1f;
@@ -239,7 +310,8 @@ namespace VaatusRevenge
             }
         }
 
-        // "" unless a locked element was just picked; shown for Feedback.ElementMessageDuration real seconds.
+        // "" unless an element not learned yet was just picked (ElementSwitchDenied); shown for
+        // Feedback.ElementMessageDuration real seconds.
         public string ElementMessage => elementMessage;
         public float ElementMessageRemaining => elementMessageRemaining;
 
@@ -376,13 +448,14 @@ namespace VaatusRevenge
                 HandleGameplayEvent(in e, settings);
                 feel.OnEvent(in e, model, settings);
                 animationFeed.OnEvent(in e);
+                RaiseGameplayEvent(in e);
             }
 
             // 5. A hitbox keeps checking while it's open: an enemy can step into a swing after it started.
             if (dt > 0f) QueryActiveAttack(settings);
 
             UpdateDeath();
-            UpdateElementSelect(input.ElementSelect, settings);
+            UpdateElementMessage();
             feel.Tick(model, settings, dt, Time.unscaledDeltaTime);
             if (animatorDriver != null)
             {
@@ -413,6 +486,7 @@ namespace VaatusRevenge
             {
                 world.HasNearestEnemy = true;
                 world.NearestEnemyPosition = nearest.Feet.ToNumerics();
+                world.NearestEnemyRadius = nearest.Radius;
             }
 
             LockOnController lockOn = LockOnController.Instance;
@@ -592,6 +666,24 @@ namespace VaatusRevenge
                 case PlayerEventType.Deflected:
                     if (model.IsAlive && settings.DeflectHitstop > 0f) TimeScaleController.Hitstop(settings.DeflectHitstop);
                     break;
+                case PlayerEventType.ElementSwitchDenied:
+                    // Only an element you haven't learned gets a message (cooldown and same element are silent).
+                    if (e.DenyReason == SwitchDeniedReason.NotLearned) ShowElementMessage(e.Element, settings);
+                    break;
+            }
+        }
+
+        void RaiseGameplayEvent(in PlayerEvent e)
+        {
+            PlayerEventHandler handler = GameplayEvent;
+            if (handler == null) return;
+            try
+            {
+                handler(in e);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception, this); // a broken listener must not break the player's frame
             }
         }
 
@@ -605,7 +697,7 @@ namespace VaatusRevenge
             for (int i = 0; i < hits.Count; i++)
             {
                 HitReport report = hits[i];
-                model.OnAttackLanded(in report.Result, attackId); // Momentum, at most once per attack
+                model.OnAttackLanded(in report.Result, attackId, IsAirborne(report.Target)); // counter, Momentum: once per attack
                 feel.OnHitReport(in report, settings);
                 if (report.Result.Outcome == HitOutcome.Hit) clean = true;
                 else if (report.Result.Outcome == HitOutcome.Parried) parried = true;
@@ -637,7 +729,7 @@ namespace VaatusRevenge
         {
             // A fireball can land after the player died, respawned or was removed from the scene.
             if (this == null || !isActiveAndEnabled || model == null || !model.IsAlive) return;
-            model.OnAttackLanded(in report.Result, damage.AttackId);
+            model.OnAttackLanded(in report.Result, damage.AttackId, IsAirborne(report.Target));
             PlayerFeedbackSettings settings = Feedback;
             feel.OnHitReport(in report, settings);
             // A deflected fireball just fizzles: the caster isn't staggered from across the arena.
@@ -682,24 +774,26 @@ namespace VaatusRevenge
             }
         }
 
-        // RB + face button / 1-4. Only the move set's own element is learned; picking another shows a message for a moment.
-        void UpdateElementSelect(ElementId picked, PlayerFeedbackSettings settings)
+        // The model switches elements itself (RB + face button / 1-4, from PlayerInputFrame.ElementSelect); picking one
+        // not learned yet raises ElementSwitchDenied, which shows a message for a moment.
+        void ShowElementMessage(ElementId picked, PlayerFeedbackSettings settings)
         {
-            if (elementMessageRemaining > 0f)
-            {
-                // Real time: it's UI, so it shouldn't hang around longer during hitstop or slow motion.
-                elementMessageRemaining -= Time.unscaledDeltaTime;
-                if (elementMessageRemaining <= 0f) ClearElementMessage();
-            }
-            if (picked == ElementId.None || !model.IsAlive) return;
-            ElementMoveSet moveSet = model.MoveSet;
-            if (moveSet != null && picked == moveSet.Element)
-            {
-                ClearElementMessage(); // already this element: nothing to switch
-                return;
-            }
             elementMessageRemaining = Mathf.Max(0f, settings.ElementMessageDuration);
             elementMessage = elementMessageRemaining > 0f ? LockedElementMessage(settings.ElementLockedMessage, picked) : "";
+        }
+
+        void UpdateElementMessage()
+        {
+            if (elementMessageRemaining <= 0f) return;
+            // Real time: it's UI, so it shouldn't hang around longer during hitstop or slow motion.
+            elementMessageRemaining -= Time.unscaledDeltaTime;
+            if (elementMessageRemaining <= 0f) ClearElementMessage();
+        }
+
+        // A target in the air (juggled): its CharacterController isn't touching the ground.
+        static bool IsAirborne(Combatant target)
+        {
+            return target != null && target.TryGetComponent(out CharacterController controller) && controller.enabled && !controller.isGrounded;
         }
 
         void ClearElementMessage()
@@ -716,7 +810,7 @@ namespace VaatusRevenge
             if (!Application.isPlaying) return false; // edit time: nothing to simulate
             CacheComponents();
             // OwnerId must be our Combatant's id: the hit system uses it to stop our own swings hitting us.
-            model = new PlayerCombatModel(ResolveTuning(), ResolveMoveSet(), combatant != null ? combatant.Id : 0, transform.eulerAngles.y);
+            model = new PlayerCombatModel(ResolveTuning(), ResolveLoadout(), combatant != null ? combatant.Id : 0, transform.eulerAngles.y);
             return true;
         }
 
@@ -726,12 +820,13 @@ namespace VaatusRevenge
         void SyncTuning()
         {
             PlayerTuning tuning = ResolveTuning();
-            ElementMoveSet moveSet = ResolveMoveSet();
-            if (!ReferenceEquals(model.Tuning, tuning) || !ReferenceEquals(model.MoveSet, moveSet)) model.ApplyTuning(tuning, moveSet);
+            ElementLoadout loadout = ResolveLoadout();
+            if (!ReferenceEquals(model.Tuning, tuning) || !ReferenceEquals(model.Loadout, loadout)) model.ApplyTuning(tuning, loadout);
         }
 
         PlayerTuning ResolveTuning()
         {
+            if (runtimeTuning != null) return runtimeTuning;
             if (tuningAsset != null && tuningAsset.Tuning != null) return tuningAsset.Tuning;
             if (!warnedNoTuning)
             {
@@ -741,6 +836,21 @@ namespace VaatusRevenge
             }
             if (fallbackTuning == null) fallbackTuning = PlayerTuning.CreateFluid();
             return fallbackTuning;
+        }
+
+        // The runtime loadout if one was applied, else the loadout asset's, else the single move set's. The cached object is
+        // kept for as long as it still holds what the assets hold.
+        ElementLoadout ResolveLoadout()
+        {
+            if (runtimeLoadout != null) return runtimeLoadout;
+            if (loadoutAsset != null)
+            {
+                if (!loadoutAsset.Matches(cachedLoadout)) cachedLoadout = loadoutAsset.ToLoadout();
+                return cachedLoadout;
+            }
+            ElementMoveSet single = ResolveMoveSet();
+            if (cachedLoadout == null || !ReferenceEquals(cachedLoadout.Get(cachedLoadout.Starting), single)) cachedLoadout = ElementLoadout.FromSingle(single);
+            return cachedLoadout;
         }
 
         ElementMoveSet ResolveMoveSet()
@@ -762,6 +872,7 @@ namespace VaatusRevenge
             get
             {
                 if (model != null) return model.Tuning;
+                if (runtimeTuning != null) return runtimeTuning;
                 return tuningAsset != null ? tuningAsset.Tuning : null;
             }
         }
@@ -771,6 +882,8 @@ namespace VaatusRevenge
             get
             {
                 if (model != null) return model.MoveSet;
+                if (runtimeLoadout != null) return runtimeLoadout.Get(runtimeLoadout.FirstUsable());
+                if (loadoutAsset != null && loadoutAsset.Fire != null) return loadoutAsset.Fire.MoveSet;
                 return moveSetAsset != null ? moveSetAsset.MoveSet : null;
             }
         }

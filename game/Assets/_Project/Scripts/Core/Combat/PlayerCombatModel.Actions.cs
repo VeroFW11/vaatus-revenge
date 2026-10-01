@@ -715,6 +715,7 @@ namespace VaatusRevenge.Core
             }
             chainIndex = -1;
             if (interrupted && state == PlayerState.Charging) chargeTime = 0f;
+            actionSet = moveSet;   // the next action (or none) uses the active element
         }
     }
 }

@@ -5,17 +5,23 @@ namespace VaatusRevenge.Core
     // Everything one element can do on the standard buttons: the light chain, the charged heavy, sprint
     // and jump attacks, the ranged skill, the zip strike, the dodge, guard/parry (and whether this element
     // blocks at all: Guard.Style) and the element's identity mechanic.
-    // Switching element = switching move set, so the same buttons do that element's moves.
+    // Switching element = switching move set, so the same buttons do that element's moves (ElementLoadout holds
+    // all four; the other elements' data lives in ElementMoveSet.Water/.Earth/.Air.cs).
     //
     // Lives inside a MoveSetAsset (ScriptableObject). The model reads it live and never writes to it.
     // Field defaults are Fire with the Fluid preset.
     [Serializable]
-    public class ElementMoveSet
+    public partial class ElementMoveSet
     {
         public string DisplayName = "Fire";
         public ElementId Element = ElementId.Fire;
+        public string AnimationStyle = "";                       // the body's style for this element's stance and clip
+                                                                 // overrides ("" = Fire, "water", "earth", "air")
 
         public MoveData[] LightChain = CreateFireLightChain();   // light presses walk through this; after the last it loops
+        public MoveData[] PauseChain = CreateFirePauseChain();   // X X, wait, X: the pause branch (after it, back to LightChain[0])
+        public MoveData DodgeStrike = CreateFireDodgeStrike();   // X late in a dodge: a counter that takes the string's next slot
+        public ElementRhythm Rhythm = CreateFireRhythm();        // how this element's martial art changes the beat
         public MoveData Launcher = CreateFireLauncher();         // attack held on the ground: throws the target up, you follow
         public MoveData[] AirChain = CreateFireAirChain();       // attack in the air: walks through this (doesn't loop)
         public AerialSettings Aerial = new AerialSettings();
@@ -41,47 +47,80 @@ namespace VaatusRevenge.Core
         public GuardSettings Guard = new GuardSettings();
         public MomentumSettings Momentum = new MomentumSettings();
 
+        // Bumped when the defaults change in a way old assets must not keep (the sandbox builder offers to reset an
+        // asset whose DataVersion is behind). A field missing from an old asset keeps its initialiser, so it reads 0.
+        public int DataVersion = 0;
+        public const int CurrentDataVersion = 5;
+
         public static ElementMoveSet CreateFireFluid()
         {
-            return new ElementMoveSet();
+            return new ElementMoveSet { DataVersion = CurrentDataVersion };
         }
 
         // Elden Ring-like commitment: costlier attacks and dodge, no dodge-cancelling into attacks, no
         // perfect-dodge reward, and attacks can only be dodge-cancelled late in their recovery.
         public static ElementMoveSet CreateFirePunishing()
         {
-            var set = new ElementMoveSet();
-            for (int i = 0; i < set.LightChain.Length; i++) set.LightChain[i].StaminaCost = 13f;
-            for (int i = 0; i < set.AirChain.Length; i++) set.AirChain[i].StaminaCost = 11f;
-            set.Heavy.StaminaCost = 28f;
-            set.ZipStrike.StaminaCost = 20f;
-            set.Launcher.StaminaCost = 18f;
-            set.AbilityNorth.StaminaCost = 26f;
-            set.AbilityEast.StaminaCost = 28f;
-            var all = new System.Collections.Generic.List<MoveData>(set.LightChain);
-            all.AddRange(set.AirChain);
-            all.AddRange(new[] { set.Heavy, set.SprintAttack, set.Skill, set.ZipStrike, set.Launcher, set.AbilityNorth, set.AbilityEast });
-            foreach (MoveData move in all) move.DodgeCancelAt = move.ActiveEnd + move.Recovery * 0.6f;
-            set.Aerial.AirAttacksPerJump = 4;
-            set.Aerial.AirDashesPerJump = 0;
-            set.Charge.CanDodgeCancelCharge = false;
-            set.PlungeAttack.DodgeCancelAt = set.PlungeAttack.Recovery;   // no dodging out of a landing
-
-            DodgeProfile d = set.Dodge;
-            d.StaminaCost = 16f;
-            d.Duration = 0.36f;
-            d.IFrameStart = 0.04f;
-            d.IFrameEnd = 0.30f;
-            d.EndRecovery = 0.12f;
-            d.AttackCancelAt = 0.48f;
-            d.NextDodgeAt = 0.48f;
-            d.PerfectDodgeEnabled = false;
+            ElementMoveSet set = CreateFireFluid();
+            ApplyPunishing(set);
             return set;
+        }
+
+        // Turns a Fluid move set into its Punishing version, the same rules for every element: stamina costs by slot,
+        // every move dodge-cancellable only late in its recovery, a smaller air game, no dodging out of a charge or a
+        // plunge landing, and the Punishing dodge (DodgeProfile.ApplyPunishing).
+        public static void ApplyPunishing(ElementMoveSet set)
+        {
+            if (set == null) return;
+            SetStamina(set.LightChain, 13f);
+            SetStamina(set.PauseChain, 13f);
+            SetStamina(set.AirChain, 11f);
+            SetStamina(set.DodgeStrike, 11f);
+            SetStamina(set.Heavy, 28f);
+            SetStamina(set.ZipStrike, 20f);
+            SetStamina(set.Launcher, 18f);
+            SetStamina(set.AbilityNorth, 26f);
+            SetStamina(set.AbilityEast, 28f);
+            LateDodgeCancel(set.LightChain);
+            LateDodgeCancel(set.PauseChain);
+            LateDodgeCancel(set.AirChain);
+            LateDodgeCancel(set.DodgeStrike, set.Heavy, set.SprintAttack, set.Skill, set.ZipStrike, set.Launcher, set.AbilityNorth,
+                set.AbilityEast);
+            if (set.Aerial != null)
+            {
+                set.Aerial.AirAttacksPerJump = 4;
+                set.Aerial.AirDashesPerJump = 0;
+            }
+            if (set.Charge != null) set.Charge.CanDodgeCancelCharge = false;
+            if (set.PlungeAttack != null) set.PlungeAttack.DodgeCancelAt = set.PlungeAttack.Recovery;   // no dodging out of a landing
+            if (set.Dodge != null) set.Dodge.ApplyPunishing();
+        }
+
+        static void SetStamina(MoveData[] moves, float cost)
+        {
+            if (moves == null) return;
+            for (int i = 0; i < moves.Length; i++) SetStamina(moves[i], cost);
+        }
+
+        static void SetStamina(MoveData move, float cost)
+        {
+            if (move != null) move.StaminaCost = cost;
+        }
+
+        static void LateDodgeCancel(params MoveData[] moves)
+        {
+            if (moves == null) return;
+            foreach (MoveData move in moves)
+            {
+                if (move != null) move.DodgeCancelAt = move.ActiveEnd + move.Recovery * 0.6f;
+            }
         }
 
         // Northern Shaolin's five-strike string: lead punch, rear punch, front snap kick (tan tui), a spinning kick and
         // a double-palm push that throws a cone of fire. Each hit reaches a little further and hits a little harder,
         // so the string walks you forward: Fire's relentless pressure.
+        // Fluid: hits 1-4 can be dodged out of from their first frame (you can always dodge the start of a hit); the
+        // finisher commits for a moment (DodgeCancelAt 0.30). Punishing overwrites these (ApplyPunishing).
         // Poise damage over the whole string is 43, just under a Dao Soldier's 45: one full string never staggers a
         // fresh soldier by itself (playtest report 01, a rule the tests pin); a string and a bit does.
         static MoveData[] CreateFireLightChain()
@@ -137,6 +176,55 @@ namespace VaatusRevenge.Core
                 StaminaCost = 14f, MomentumGain = 12f                // the committed finisher earns a little more
             };
             return new[] { jab, cross, snap, spin, palm };
+        }
+
+        // The pause branch (X X, wait, X): a low spinning sweep that takes the legs, then a rising kick that throws the
+        // foe up. Poise 8 + 9 + 10 + 12 = 39 with the first two chain hits, plus a jab = 47: still under a soldier's 52.
+        static MoveData[] CreateFirePauseChain()
+        {
+            var sweep = new MoveData
+            {
+                DisplayName = "Sweeping Flame Kick", Kind = HitKind.Light, Limb = Limb.RightFoot,
+                AnimationKey = AnimationKeys.SweepKick, EffectKey = EffectKeys.Trail,
+                Startup = 0.16f, Active = 0.12f, Recovery = 0.34f,
+                Damage = 11f, PoiseDamage = 10f, GuardStaminaDamage = 11f, Knockback = 0.4f, Hitstop = 0.05f,
+                Range = 3.0f, ArcDegrees = 160f, OriginForward = 0f, LungeDistance = 0.6f,
+                ComboWindowStart = 0.20f, ComboWindowEnd = 0.48f, ChainCancelAt = 0.30f, DodgeCancelAt = 0f,
+                StaminaCost = 10f, MomentumGain = 8f
+            };
+            var rising = new MoveData
+            {
+                DisplayName = "Rising Phoenix Kick", Kind = HitKind.Light, Limb = Limb.RightFoot,
+                AnimationKey = AnimationKeys.RisingPhoenixKick, EffectKey = EffectKeys.Pillar,
+                Startup = 0.20f, Active = 0.12f, Recovery = 0.46f,
+                Damage = 14f, PoiseDamage = 12f, GuardStaminaDamage = 14f, Knockback = 0.6f, Hitstop = 0.065f,
+                Range = 2.8f, ArcDegrees = 100f, VerticalReach = 1.6f, LungeDistance = 0.4f,
+                LaunchSpeed = 10f, SelfLift = 0f,
+                ComboWindowStart = 0.52f, ComboWindowEnd = 0.80f, ChainCancelAt = 0.50f, DodgeCancelAt = 0.30f,
+                StaminaCost = 12f, MomentumGain = 12f
+            };
+            return new[] { sweep, rising };
+        }
+
+        // Turning Heel Counter: out of a dodge, a spinning back kick that dashes back in. It takes the string's next slot.
+        static MoveData CreateFireDodgeStrike()
+        {
+            return new MoveData
+            {
+                DisplayName = "Turning Heel Counter", Kind = HitKind.Light, Limb = Limb.RightFoot,
+                AnimationKey = AnimationKeys.SpinBackKick, EffectKey = EffectKeys.Burst,
+                Startup = 0.10f, Active = 0.10f, Recovery = 0.28f,
+                Damage = 11f, PoiseDamage = 7f, GuardStaminaDamage = 11f, Knockback = 0.5f, Hitstop = 0.05f,
+                Range = 2.8f, ArcDegrees = 140f, LungeDistance = 0.6f,
+                ComboWindowStart = 0.12f, ComboWindowEnd = 0.38f, ChainCancelAt = 0.22f, DodgeCancelAt = 0f,
+                StaminaCost = 0f, MomentumGain = 8f
+            };
+        }
+
+        // Northern Shaolin keeps a steady, relentless beat: every on-beat press feeds Momentum.
+        static ElementRhythm CreateFireRhythm()
+        {
+            return new ElementRhythm { OnBeatMomentumBonus = 3f };
         }
 
         // Rising Dragon Kick: a rising front kick that throws the target up and carries you after it.

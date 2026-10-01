@@ -215,7 +215,7 @@ namespace VaatusRevenge.Core
                 if (hit.Parryable && deflectArmed && clock - deflectPressClock <= guard.DeflectWindow + Epsilon)
                 {
                     deflectCaught = true;
-                    momentum.Gain(guard.DeflectMomentumGain, MomentumRules);
+                    MeterOf(actionSet.Element).Gain(guard.DeflectMomentumGain, MomentumRulesOf(actionSet.Element));
                     Emit(new PlayerEvent { Type = PlayerEventType.Deflected, Amount = guard.DeflectMomentumGain, Direction = hit.Direction });
                     return new HitResult { Outcome = HitOutcome.Parried };
                 }
@@ -298,7 +298,7 @@ namespace VaatusRevenge.Core
                 float angle = (float)Math.Acos(Angles.Clamp(cos, -1f, 1f)) * Directions.Rad2Deg;
                 if (angle <= dodge.PerfectTowardMaxAngle) gain += Math.Max(0f, dodge.PerfectTowardBonus);
             }
-            momentum.Gain(gain, MomentumRules);
+            MeterOf(actionSet.Element).Gain(gain, MomentumRulesOf(actionSet.Element));
             counterWindowUntil = clock + Math.Max(0f, dodge.CounterWindow);
             Emit(new PlayerEvent
             {

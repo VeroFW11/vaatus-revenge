@@ -37,5 +37,6 @@ namespace VaatusRevenge.Core
         // from it drains Momentum even when not locked on.
         public bool HasNearestEnemy;
         public Vector3 NearestEnemyPosition;
+        public float NearestEnemyRadius;    // its body radius (0 = unknown): a slip-in dodge toward it stops short of its body
     }
 }

@@ -367,6 +367,7 @@ namespace VaatusRevenge
             {
                 EnemyEvent e = events[i];
                 animationFeed.OnEvent(in e);
+                strikes.RelayDanger(in e, b, transform.position);   // danger sense: the player hears about every wind-up
                 switch (e.Type)
                 {
                     case EnemyEventType.Aggroed:
