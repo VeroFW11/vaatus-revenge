@@ -156,6 +156,7 @@ namespace VaatusRevenge.Core
                 LocalVelocity = ToLocal(model.Velocity, facing),
                 YawDelta = yawDelta,
                 Sprinting = state == PlayerState.Sprinting,
+                DashIn = model.CurrentAttackKind == PlayerAttackKind.DodgeStrike,
                 Dead = state == PlayerState.Dead,
                 ActionKey = "",
                 ActionSerial = serial,

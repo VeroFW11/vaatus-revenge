@@ -14,14 +14,16 @@ namespace VaatusRevenge.Core
 
         // Feed this frame's button edges. Returns true when the press counts as a tap (a dodge) this frame.
         // dt may be 0 (frozen frame): edges are still handled, the hold timer just doesn't advance.
-        public bool Update(bool pressed, bool released, bool held, float dt, DodgeTrigger trigger, float threshold)
+        // pressAge: how long the button had already been down when the press was reported (a press the pad's chord
+        // reader held back, ButtonState.PressDelay), so the hold is timed from the real press.
+        public bool Update(bool pressed, bool released, bool held, float dt, DodgeTrigger trigger, float threshold, float pressAge = 0f)
         {
             bool tap = false;
             if (pressed)
             {
                 pressSeen = true;
                 holdReached = false;
-                HeldTime = 0f;
+                HeldTime = pressAge > 0f ? pressAge : 0f;
                 if (trigger == DodgeTrigger.OnPress) tap = true;
             }
             else if (held && pressSeen && dt > 0f)

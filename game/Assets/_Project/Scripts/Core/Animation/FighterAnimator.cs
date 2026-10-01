@@ -12,6 +12,7 @@ namespace VaatusRevenge.Core
         public Vector3 LocalVelocity;       // m/s in the fighter's own frame (x right, y up, z forward)
         public float YawDelta;              // degrees the fighter turned this frame (+ = right)
         public bool Sprinting;
+        public bool DashIn;                 // the strike is a dash back in (the dodge strike): it strides up to DashStrideMaxSpeed
         public bool Dead;                   // no secondary motion on a corpse
 
         public string ActionKey;            // AnimationKeys id of the action or state to show ("" = walk/run/idle)
@@ -731,7 +732,10 @@ namespace VaatusRevenge.Core
             float speed = new Vector2(velocity.X, velocity.Z).Length();
             float wanted = action && input.Grounded && !input.Dead
                 ? AnimMath.Clamp((speed - s.LeapSpeed) * s.LeapLiftPerSpeed, 0f, s.MaxLeapLift) * (1f - strideWeight) : 0f;
-            float rate = wanted > leapLift ? s.LeapLiftRiseRate : s.LeapLiftFallRate;
+            // Still in the strike, the rush over (all but stopped): land now (the blow lands on a planted foot). Otherwise
+            // the slower fall keeps the hand-back to locomotion soft and a re-anchored foot from dragging.
+            float fallRate = action && input.HasFrameData && s.LeapLiftLandRate > 0f && speed < s.LeapLandSpeed ? s.LeapLiftLandRate : s.LeapLiftFallRate;
+            float rate = wanted > leapLift ? s.LeapLiftRiseRate : fallRate;
             leapLift = rate > 0f ? leapLift + (wanted - leapLift) * AnimMath.ExpBlend(rate, dt) : wanted;
             if (wanted <= 0f && leapLift < 1e-3f) leapLift = 0f;
             if (!input.Grounded || input.Dead) return;
@@ -775,8 +779,9 @@ namespace VaatusRevenge.Core
             bool eligible = s.LungeStrides && action && input.Grounded && !input.Dead && input.HasFrameData && clip != null
                             && !clip.Glides && output[PoseSpec.Leg(BodySide.Left, 7)] < 0.5f && output[PoseSpec.Leg(BodySide.Right, 7)] < 0.5f;
             float blend = Math.Max(0.1f, s.StrideBlendSpeed);
+            float maxSpeed = input.DashIn ? Math.Max(s.StrideMaxSpeed, s.DashStrideMaxSpeed) : s.StrideMaxSpeed;
             float wanted = eligible
-                ? AnimMath.SmoothStep((speed - s.StrideMinSpeed) / blend) * (1f - AnimMath.SmoothStep((speed - s.StrideMaxSpeed) / blend))
+                ? AnimMath.SmoothStep((speed - s.StrideMinSpeed) / blend) * (1f - AnimMath.SmoothStep((speed - maxSpeed) / blend))
                 : 0f;
             GaitSettings gait = library.Gait ?? fallbackGait;
             float rootYaw = output[PoseChannel.RootYaw];

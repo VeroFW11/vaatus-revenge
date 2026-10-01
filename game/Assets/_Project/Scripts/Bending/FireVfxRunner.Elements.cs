@@ -180,6 +180,41 @@ namespace VaatusRevenge
             float size = s.BurstSize * 0.8f;
             Cloud(s, position + dir * (size * 0.3f), dir * 2f, 6f, size, s.BurstLifetime * 0.5f);
             Shockwave(s, position + dir * (size * 0.5f), dir, size * 0.2f, size * 1.4f, s.BurstLifetime * 0.5f);
+            // Earth (J4-03, spec 8.1 item 2 / 8.4 item 5): the boulder came out of the ground, so the ground it left kicks up
+            // grit and dust under the throw (nothing when the throw is too high above the floor to have come from it).
+            if (ElementFxRules.StoneFromFloor(element))
+                FloorStone(s, position, dir, 0.7f, FloorBelow(position), Mathf.Clamp(s.BurstPieces / 2, 0, 6), s.BurstLifetime);
+        }
+
+        // Earth's thrown boulder being drawn out of the ground (J4-03): over the throw's wind-up a block of rock the size of
+        // the boulder rises out of the floor under the launch point, up to the launch height, with dust and grit breaking
+        // out round it; it's gone as the throw lets go, where the flying boulder takes over. Nothing in the air or too high
+        // above the floor (ElementFxRules.FloorStoneUnder): no stone without ground.
+        internal void ElementRaiseStone(ElementId element, Vector3 launchPoint, float size, float duration)
+        {
+            if (!ElementFxRules.StoneFromFloor(element) || !(duration > 0f) || !(size > 0f)) return;
+            ElementVfxStyle s = ElementVfx.StyleOf(element);
+            float floor = FloorBelow(launchPoint);
+            float height = launchPoint.y - floor;
+            if (!ElementFxRules.FloorStoneUnder(element, height)) return;
+            Vector3 ground = new Vector3(launchPoint.x, floor, launchPoint.z);
+            Vector3 blockSize = new Vector3(size * 0.85f, size * 0.75f, size * 0.9f);
+            // Starts buried (its top at the floor) and decelerates into the launch point exactly as the wind-up ends.
+            Vector3 start = ground - Vector3.up * (blockSize.y * 0.5f);
+            float rise = Mathf.Max(0.01f, launchPoint.y - start.y);
+            const float drag = 6f;
+            float lift = rise * drag / (1f - Mathf.Exp(-drag * duration));
+            FireVfxPiece block = Chunk(s, VfxSlot.Rock, start, Vector3.up * lift, drag, blockSize, blockSize, blockSize, 0.5f, duration);
+            if (block != null)
+            {
+                block.Rotation = Quaternion.AngleAxis(Random.Range(0f, 360f), Vector3.up);
+                block.Gravity = 0f;
+                block.HasFloor = false;
+                block.SpinSpeed = 0f;
+                Place(block);
+            }
+            Cloud(s, ground + Vector3.up * 0.1f, Vector3.up * 0.5f, 3f, s.BurstSize * 0.8f, duration + s.BurstLifetime * 0.5f);
+            FloorStone(s, ground + Vector3.up * 0.1f, Vector3.zero, 0.5f, floor, Mathf.Clamp(s.BurstPieces / 2, 0, 6), s.BurstLifetime);
         }
 
         // Pieces fan across the arc and travel exactly to range in the cone's lifetime.

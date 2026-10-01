@@ -151,7 +151,7 @@ namespace VaatusRevenge.Core
                 ComboWindowStart = 0.52f, ComboWindowEnd = 0.80f, ChainCancelAt = 0.56f, DodgeCancelAt = 0.36f,
                 StaminaCost = 14f, MomentumGain = 0f,
                 LaunchesProjectile = true,
-                Projectile = new ProjectileSpec { Speed = 24f, Radius = 0.6f, MaxRange = 18f, Gravity = 6f, ExplosionRadius = 2.5f, VisualScale = 1.8f }
+                Projectile = new ProjectileSpec { Speed = 24f, Radius = 0.6f, MaxRange = 18f, Gravity = 6f, ExplosionRadius = 2.5f, VisualScale = 0.9f }
             };
             return new[] { raise, hurl };
         }
@@ -333,7 +333,7 @@ namespace VaatusRevenge.Core
                 ComboWindowStart = 0f, ComboWindowEnd = 0f, ChainCancelAt = 0.46f, DodgeCancelAt = 0.34f,
                 StaminaCost = 22f, MomentumGain = 0f,
                 LaunchesProjectile = true,
-                Projectile = new ProjectileSpec { Speed = 26f, Radius = 0.5f, MaxRange = 22f, Gravity = 4f, ExplosionRadius = 1.8f, VisualScale = 1.6f }
+                Projectile = new ProjectileSpec { Speed = 26f, Radius = 0.5f, MaxRange = 22f, Gravity = 4f, ExplosionRadius = 1.8f, VisualScale = 0.9f }
             };
         }
 

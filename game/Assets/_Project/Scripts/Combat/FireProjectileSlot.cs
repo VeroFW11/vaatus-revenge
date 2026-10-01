@@ -88,9 +88,11 @@ namespace VaatusRevenge
             float length = 0.7f * VisualScale;
             Bolt.transform.localScale = new Vector3(0.04f * VisualScale, 0.04f * VisualScale, length);
             Bolt.transform.localPosition = new Vector3(0f, 0f, -length * 0.5f);
-            // The boulder is a little smaller than its hit radius, so a near miss still looks like one.
+            // The boulder fits inside its hit sphere (VisualScale under 1, J4-03), so a near miss still looks like one and no
+            // corner pokes through a body or the camera. Turned about the vertical only: a random tilt stood the cube on a
+            // corner, 1.5x taller than the hit. It tumbles end over end in flight (MoveVisual).
             Rock.transform.localScale = new Vector3(size * 0.85f, size * 0.75f, size * 0.9f);
-            Rock.transform.localRotation = Random.rotationUniform;
+            Rock.transform.localRotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
             if (trailMaterial != null && Trail.sharedMaterial != trailMaterial) Trail.sharedMaterial = trailMaterial;
             Trail.colorGradient = trailColors;
             Trail.time = trailTime;

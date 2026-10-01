@@ -8,6 +8,10 @@ namespace VaatusRevenge.Core
         public bool Held;      // down this frame
         public bool Pressed;   // went down this frame
         public bool Released;  // went up this frame
+        // With Pressed: how long ago (real seconds) the button really went down, when the press was held back before
+        // being reported (PadChordReader waits a moment after Y / B / A in case RB follows: a chord pressed thumb first).
+        // The rules count the press from then, so the buffer and the dodge's tap/hold timer aren't shifted. 0 normally.
+        public float PressDelay;
 
         public static ButtonState From(bool heldNow, bool heldLastFrame)
         {

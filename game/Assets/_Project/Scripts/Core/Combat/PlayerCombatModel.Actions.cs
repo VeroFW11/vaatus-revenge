@@ -562,10 +562,19 @@ namespace VaatusRevenge.Core
         // by up to ArriveLungeMaxExtraStartup to make room, and attackStartClock moves by that much so the beat, the combo
         // window and every later mark keep their place relative to the strike. A circling (orbit) lunge keeps circling through
         // its active frames, but closes in on the target by the strike.
+        //
+        // The dash's speed is eased (J4-02): it starts from the way you were already moving along it (a dodge's exit, even
+        // backwards out of an evade, never reversed in one frame), rises over ArriveLungeRampIn, and slows over the last
+        // ArriveLungeRampOut to arrive at no more than ArriveLungeEndSpeed (no 20 m/s dead stop on contact). The stretched
+        // startup is solved for that eased profile, so the peak still stays under ArriveLungeMaxSpeed and the dash still
+        // ends exactly at the contact point.
         void PlanArrival(MoveData move, PlayerAttackKind kind, in PlayerWorldState world)
         {
             lungeArrives = false;
             approachScale = 1f;
+            arrival = default(ArrivalProfile);
+            orbitTurnEase = default(ArrivalProfile);
+            arrivalCarry = default(ArrivalCarry);
             if (kind == PlayerAttackKind.ZipStrike || !(lungeDistance > 0f)) return;
             float minOwn = tuning.ArriveLungeMinDistance;
             bool longOwn = minOwn > 0f && move.LungeDistance > minOwn;
@@ -587,10 +596,143 @@ namespace VaatusRevenge.Core
             float startup = move.ActiveStart / rate;
             float maxSpeed = tuning.ArriveLungeMaxSpeed;
             if (!(maxSpeed > 0f) || !(startup > 0f)) return;
-            float extra = Angles.Clamp(distance / maxSpeed - startup, 0f, Math.Max(0f, tuning.ArriveLungeMaxExtraStartup));
-            if (!(extra > 1e-4f)) return;
-            approachScale = startup / (startup + extra);
-            attackStartClock += extra;
+
+            // The eased profile's speeds (m/s): in from the current motion along the dash, out to the arrival speed.
+            float rampIn = Math.Max(0f, tuning.ArriveLungeRampIn), rampOut = Math.Max(0f, tuning.ArriveLungeRampOut);
+            Vector3 carried = Directions.Flatten(lastVelocity) * Angles.Clamp(tuning.ArriveLungeEntryCarry, 0f, 1f);
+            if (carried.Length() > maxSpeed) carried = Vector3.Normalize(carried) * maxSpeed;
+            // A straight dash eases in from your speed along it (backwards included); a circling one from standing still.
+            // Whatever motion that leaves (sideways, or all of it for a circle) carries on and dies away (ArrivalCarry).
+            Vector3 along = LungeDirection(world);
+            float entry = orbiting ? 0f : Vector3.Dot(carried, along);
+            float exit = Math.Max(0f, tuning.ArriveLungeEndSpeed);
+            bool eased = (rampIn > 0f || rampOut > 0f) && distance > 1e-3f;
+            // Time needed for the profile's peak to stay under maxSpeed (the ramps cover less ground than full speed).
+            float needed = distance / maxSpeed;
+            if (eased && orbiting) needed = distance / maxSpeed + rampIn;   // the circle eases in (its turn runs on, so a full ramp)
+            else if (eased) needed = (distance - entry * rampIn * 0.5f - Math.Min(exit, maxSpeed) * rampOut * 0.5f) / maxSpeed + 0.5f * (rampIn + rampOut);
+            float extra = Angles.Clamp(needed - startup, 0f, Math.Max(0f, tuning.ArriveLungeMaxExtraStartup));
+            if (extra > 1e-4f)
+            {
+                approachScale = startup / (startup + extra);
+                attackStartClock += extra;
+            }
+            else extra = 0f;
+            if (!eased) return;
+            float time = startup + extra;
+            // The ramps are only as long as the speed change needs at ArriveLungeMaxAccel (a short gap-closer from standing
+            // barely eases; a dodge strike flying backwards takes the full ramp), so a short dash isn't turned into a peaky
+            // triangle faster than it was.
+            if (orbiting)
+            {
+                // The circle's closing in eases like a straight dash; its turn (which runs on through the active frames)
+                // eases in over the same time.
+                float close = Math.Max(0f, orbitStartRadius - orbitEndRadius);
+                float closeExit = close > 1e-3f ? Math.Min(exit, close / time) : 0f;
+                arrival = PlanEased(Math.Max(close, 1e-3f), time, 0f, closeExit, rampIn, rampOut);
+                float turnTime = move.ActiveEnd > 0f ? move.ActiveEnd / rate + extra : time;
+                float turnIn = tuning.ArriveLungeMaxAccel > 0f ? Math.Min(rampIn, distance / time / tuning.ArriveLungeMaxAccel) : rampIn;
+                orbitTurnEase = ArrivalProfile.Plan(1f, turnTime, 0f, 1f / turnTime, turnIn, 0f);
+            }
+            else arrival = PlanEased(distance, time, entry, exit, rampIn, rampOut);
+            Vector3 residual = carried - along * entry;
+            float carryRamp = tuning.ArriveLungeMaxAccel > 0f ? Math.Min(rampIn, residual.Length() / tuning.ArriveLungeMaxAccel) : rampIn;
+            arrivalCarry = ArrivalCarry.Plan(residual, time, carryRamp);
+        }
+
+        // An eased profile whose ramps are as long as its speed changes need at ArriveLungeMaxAccel, at most rampIn / rampOut.
+        ArrivalProfile PlanEased(float distance, float time, float entry, float exit, float rampIn, float rampOut)
+        {
+            float accel = tuning.ArriveLungeMaxAccel;
+            float inTime = rampIn, outTime = rampOut;
+            for (int pass = 0; pass < 2 && accel > 0f; pass++)
+            {
+                float peak = ArrivalProfile.Plan(distance, time, entry, exit, inTime, outTime).PeakSpeed(distance, time);
+                inTime = Math.Min(rampIn, Math.Abs(peak - entry) / accel);
+                outTime = Math.Min(rampOut, Math.Max(0f, peak - exit) / accel);
+            }
+            return ArrivalProfile.Plan(distance, time, entry, exit, inTime, outTime);
+        }
+
+        // The motion you had as an arriving lunge starts that its eased profile doesn't take over (sideways, or all of it
+        // for a circling strike): it carries on and dies away over the ramp-in, then is paid back evenly by the strike, so
+        // the body never changes direction in one frame and still arrives exactly where the lunge was aimed.
+        struct ArrivalCarry
+        {
+            public bool Active;
+            Vector3 velocity;
+            float time, share;
+
+            public static ArrivalCarry Plan(Vector3 velocity, float time, float rampIn)
+            {
+                var c = new ArrivalCarry();
+                if (!(velocity.LengthSquared() > 1e-4f) || !(time > 1e-4f) || !(rampIn > 0f)) return c;
+                c.Active = true;
+                c.velocity = velocity;
+                c.time = time;
+                c.share = Math.Min(rampIn / time, 0.6f);
+                return c;
+            }
+
+            // Offset from the planned path at u (0..1 through the startup): rises over the ramp, back to 0 by the strike.
+            public Vector3 Offset(float u)
+            {
+                if (u <= 0f || u >= 1f) return Vector3.Zero;
+                float a = share;
+                float metres = u <= a ? time * (u - u * u / (2f * a)) : time * (0.5f * a) * (1f - (u - a) / (1f - a));
+                return velocity * metres;
+            }
+        }
+
+        // An arriving lunge's speed over its (stretched) startup, normalised: time and distance both run 0..1. Speed ramps
+        // linearly from Start to Peak over [0, In], holds, then ramps to End over [1 - Out, 1]; the area under it is 1.
+        struct ArrivalProfile
+        {
+            const float MaxRampShare = 0.4f;
+            public bool Active;
+            float start, peak, end, rampIn, rampOut;
+
+            public static ArrivalProfile Plan(float distance, float time, float entrySpeed, float exitSpeed, float rampInTime, float rampOutTime)
+            {
+                var p = new ArrivalProfile();
+                if (!(distance > 1e-4f) || !(time > 1e-4f)) return p;
+                // Ramps take at most MaxRampShare of the dash each, so a short dash isn't a peaky triangle (twice its mean speed).
+                float a = Math.Min(rampInTime / time, MaxRampShare), b = Math.Min(rampOutTime / time, MaxRampShare);
+                float scale = time / distance;                       // m/s -> normalised speed
+                float w0 = entrySpeed * scale, we = exitSpeed * scale;
+                float body = 1f - 0.5f * (a + b);
+                if (!(body > 1e-3f)) return p;
+                float peak = (1f - 0.5f * w0 * a - 0.5f * we * b) / body;
+                if (peak < we) we = peak = (1f - 0.5f * w0 * a) / (1f - 0.5f * a);   // too short to slow down: hold the speed
+                if (!(peak > 0f)) return p;
+                p.Active = true;
+                p.start = w0;
+                p.peak = peak;
+                p.end = we;
+                p.rampIn = a;
+                p.rampOut = b;
+                return p;
+            }
+
+            // The fastest it goes, in m/s, for a dash of this distance and time.
+            public float PeakSpeed(float distance, float time)
+            {
+                return Active && time > 0f ? Math.Max(peak, Math.Max(start, end)) * distance / time : (time > 0f ? distance / time : 0f);
+            }
+
+            // Share of the dash covered at u (0..1 through the startup).
+            public float Progress(float u)
+            {
+                if (u <= 0f) return 0f;
+                if (u >= 1f) return 1f;
+                float a = rampIn, b = rampOut;
+                if (u <= a) return start * u + (peak - start) * u * u / (2f * Math.Max(a, 1e-6f));
+                float atA = 0.5f * (start + peak) * a;
+                float cruiseEnd = 1f - b;
+                if (u <= cruiseEnd) return atA + peak * (u - a);
+                float s = u - cruiseEnd;
+                return atA + peak * (cruiseEnd - a) + peak * s - (peak - end) * s * s / (2f * Math.Max(b, 1e-6f));
+            }
         }
 
         // How far the running attack's clock moves this frame: dt x its playback rate, slower before the strike while a

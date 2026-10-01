@@ -50,7 +50,7 @@ namespace VaatusRevenge.Core
         // Bumped when the defaults change in a way old assets must not keep (the sandbox builder offers to reset an
         // asset whose DataVersion is behind). A field missing from an old asset keeps its initialiser, so it reads 0.
         public int DataVersion = 0;
-        public const int CurrentDataVersion = 7;   // 6: Build 05 verify (dodge strike reach, Water/Air dash ease, side-slip circle)
+        public const int CurrentDataVersion = 8;   // 6: Build 05 verify (dodge strike reach, Water/Air dash ease, side-slip circle); 8: Earth boulders fit their hit size (J4-03)
                                                    // 7: verify round 3 (slam finishers drop you with the foe, Tiger Claw Rake's swipe)
 
         public static ElementMoveSet CreateFireFluid()

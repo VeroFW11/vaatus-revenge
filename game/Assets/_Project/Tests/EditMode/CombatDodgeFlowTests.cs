@@ -251,6 +251,62 @@ namespace VaatusRevenge.Tests
             }
         }
 
+        // Build 05 verify round 4 (J4-02): X pressed during an evade out cancels it into the dodge strike while the body is
+        // still flying backwards at ~18 m/s. The dash back in must ease: no one-frame velocity change over 20 m/s (it used to
+        // flip -17.6 -> +20 in one frame and stop dead from 20 on contact), never over ArriveLungeMaxSpeed, slowing to an
+        // arrival no faster than about ArriveLungeEndSpeed, and still at the target as it strikes.
+        [Test]
+        public void DodgeStrikeDashEasesInAndOut([Values(ElementId.Fire, ElementId.Water, ElementId.Earth, ElementId.Air)] ElementId element,
+                                                 [Values(false, true)] bool punishing)
+        {
+            PlayerDriver d = punishing ? PlayerDriver.Elements(PlayerTuning.CreatePunishing(), ElementLoadout.CreatePunishing()) : PlayerDriver.Elements();
+            if (element != d.Model.ActiveElement)
+            {
+                d.Select = element;
+                d.Step();
+                d.Run(30);
+            }
+            var target = new Vector3(0f, 0f, 1.5f);
+            d.Target(target);
+            if (punishing) d.Tap(Pad.Dodge, Down);               // Punishing dodges on release
+            else d.Step(Pad.Dodge, Down);
+            d.RunUntil(x => x.Model.State == PlayerState.Dodging, 30, Pad.None, Down);
+            d.Run(3, Pad.None, Down);
+            // X mid-dodge (pressed again until it takes: Punishing's buffer is short): it runs at the dodge's attack cancel
+            // point, with the body still flying backwards.
+            Vector3 previous = Directions.Flatten(d.Last.Velocity);
+            for (int i = 0; i < 60 && d.Started == 0; i++)
+            {
+                previous = Directions.Flatten(d.Last.Velocity);
+                d.Step(i % 4 == 0 ? Pad.Light : Pad.None);
+            }
+            Assert.AreEqual(PlayerAttackKind.DodgeStrike, d.LastStarted.AttackKind, element.ToString());
+            float worstChange = (Directions.Flatten(d.Last.Velocity) - previous).Length();
+            float fastest = 0f, arrival = 0f;
+            previous = Directions.Flatten(d.Last.Velocity);
+            int frames = 0;
+            while (d.Model.Phase != AttackPhase.Active && frames++ < 120)
+            {
+                d.Step();
+                Vector3 v = Directions.Flatten(d.Last.Velocity);
+                worstChange = Math.Max(worstChange, (v - previous).Length());
+                fastest = Math.Max(fastest, v.Length());
+                arrival = v.Length();                            // ends as the frame the strike goes active
+                previous = v;
+            }
+            PlayerTuning t = d.Model.Tuning;
+            Assert.LessOrEqual(worstChange, 20f, element + ": no whiplash");
+            // (Air's circle path adds its turn, which runs on past the strike: when the startup stretch is used up its eased
+            // peak may pass the straight-line cap a little.)
+            float cap = element == ElementId.Air ? t.ArriveLungeMaxSpeed * 1.15f : t.ArriveLungeMaxSpeed + 0.5f;
+            Assert.LessOrEqual(fastest, cap, element + ": never over the dash speed cap");
+            // (Air's circling strike keeps circling through its active frames: it closes in, it doesn't stop.)
+            if (element != ElementId.Air)
+                Assert.LessOrEqual(arrival, t.RunSpeed, element + ": slows into the strike (at most run speed), no dead stop from full speed");
+            float body = d.World.SelfRadius + d.World.SoftTargetRadius;
+            Assert.LessOrEqual(Directions.Flatten(target - d.World.Position).Length() - body, 1.0f, element + ": at the target as it strikes");
+        }
+
         static IncomingStrike StrikeFrom(PlayerDriver d, int attacker, Vector3 feet, float inSeconds)
         {
             return new IncomingStrike

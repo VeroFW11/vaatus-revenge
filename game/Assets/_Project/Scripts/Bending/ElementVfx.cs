@@ -212,6 +212,15 @@ namespace VaatusRevenge
             if (r != null) r.ElementCone(element, origin, direction, range, arcDegrees);
         }
 
+        // Earth's thrown boulder rising out of the floor under its launch point over the throw's wind-up (J4-03). Other
+        // elements: nothing (their projectile is bent from the body, which canon allows).
+        public static void RaiseStone(ElementId element, Vector3 launchPoint, float size, float duration)
+        {
+            if (IsFire(element)) return;
+            FireVfxRunner r = FireVfx.Runner;
+            if (r != null) r.ElementRaiseStone(element, launchPoint, size, duration);
+        }
+
         // A column rising height metres from feet (under a launched enemy).
         public static void Pillar(ElementId element, Vector3 feet, float height)
         {

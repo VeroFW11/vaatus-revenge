@@ -337,14 +337,38 @@ namespace VaatusRevenge.Core
                 float turnBefore = MotionCurves.WindowProgress(action.PreviousTime, 0f, move.ActiveEnd, 0f);
                 float turnAfter = MotionCurves.WindowProgress(action.Time, 0f, move.ActiveEnd, 0f);
                 float closeEnd = arrives ? move.ActiveStart : move.ActiveEnd;
-                return OrbitStep(world, turnBefore, turnAfter,
-                    MotionCurves.WindowProgress(action.PreviousTime, 0f, closeEnd, 0f), MotionCurves.WindowProgress(action.Time, 0f, closeEnd, 0f));
+                float closeBefore = MotionCurves.WindowProgress(action.PreviousTime, 0f, closeEnd, 0f);
+                float closeAfter = MotionCurves.WindowProgress(action.Time, 0f, closeEnd, 0f);
+                if (lungeArrives && orbitTurnEase.Active)
+                {
+                    turnBefore = orbitTurnEase.Progress(turnBefore);
+                    turnAfter = orbitTurnEase.Progress(turnAfter);
+                }
+                if (lungeArrives && arrival.Active)
+                {
+                    closeBefore = arrival.Progress(closeBefore);
+                    closeAfter = arrival.Progress(closeAfter);
+                }
+                return OrbitStep(world, turnBefore, turnAfter, closeBefore, closeAfter) + CarryStep(move);
             }
             float end = arrives ? move.ActiveStart : move.ActiveEnd;
             float start = !lungeArrives && move.LungeTime > 0f ? Math.Max(0f, end - move.LungeTime) : 0f;
             float before = MotionCurves.WindowProgress(action.PreviousTime, start, end, 0f);
             float after = MotionCurves.WindowProgress(action.Time, start, end, 0f);
-            return LimitApproach(LungeDirection(world) * (lungeDistance * (after - before)), world);
+            if (lungeArrives && arrival.Active && end > 0f)
+            {
+                // Eased in from your motion and out to the arrival speed (PlanArrival): no one-frame reversal, no dead stop.
+                before = arrival.Progress(action.PreviousTime / end);
+                after = arrival.Progress(action.Time / end);
+            }
+            return LimitApproach(LungeDirection(world) * (lungeDistance * (after - before)), world) + CarryStep(move);
+        }
+
+        // This frame's share of an arriving lunge's carried motion (PlanArrival's ArrivalCarry): zero once it strikes.
+        Vector3 CarryStep(MoveData move)
+        {
+            if (!lungeArrives || !arrivalCarry.Active || !(move.ActiveStart > 0f)) return Vector3.Zero;
+            return arrivalCarry.Offset(action.Time / move.ActiveStart) - arrivalCarry.Offset(action.PreviousTime / move.ActiveStart);
         }
 
         // Air's circling strikes (MoveData.OrbitDegrees): the lunge curves round the target, ending OrbitDegrees round it,

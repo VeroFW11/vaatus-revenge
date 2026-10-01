@@ -71,6 +71,11 @@ namespace VaatusRevenge
         [Tooltip("Pressed heal with no charges left.")]
         public Color EmptyFlaskFlashColor = new Color(0.5f, 0.5f, 0.55f);
         public float EmptyFlaskFlashTime = 0.15f;
+        [Tooltip("A fourth dodge in a row refused (DodgeProfile.ChainMax): a short breath. A dull flash and a light thud; the HUD "
+                 + "flashes the stamina bar.")]
+        public Color DodgeChainLimitedFlashColor = new Color(0.35f, 0.35f, 0.4f);
+        public float DodgeChainLimitedFlashTime = 0.12f;
+        public FeedbackPulse DodgeChainLimitedPulse = new FeedbackPulse(0f, 0f, 0.25f, 0f, 0.08f);
 
         [Header("Counter window glow (fists glow while a counter is ready after a perfect dodge)")]
         public Color CounterGlowColor = new Color(1f, 0.55f, 0.15f);

@@ -48,7 +48,7 @@ Each step shows the buttons as pictures, counts your progress, and chimes when y
 |---|---|
 | Left stick / Right stick | Move / camera. Flick the right stick to change target while locked on |
 | **X** | Attack. Tap in rhythm for the 5-hit string. **X X (wait) X X** = pause finisher (NEW). In the air: air string |
-| Hold **X** | Launcher (throws the enemy up, you follow); holding any string press: that hit plays, then the launcher follows |
+| Hold **X** | Launcher (throws the enemy up, you follow); holding any string press before the finisher: that hit plays, then the launcher follows |
 | **Y** | Zip strike to a far enemy (keeps your combo going) |
 | **B** | Tap: dodge (stick decides slip-in, evade-out or side-step; NEW). Hold: sprint. **X late in a dodge = dodge strike** (NEW) |
 | **A** | Jump |
@@ -1020,7 +1020,8 @@ playback rate in `[Min, Max]`; every `DangerWarning` followed by impact or `Dang
 |---|---|
 | Water: whips, waves, wave riding, spouts, ice darts, healing | OK, basic waterbending; ice and healing are long-established. Heal-on-hit is a game abstraction of canon healing: describe it as "Water restores you", never as draining enemies |
 | Water counter named "Return the Tide"; Tai Chi yielding | OK. Never use the word "redirect" in UI, names or code identifiers (lightning redirection is Iroh's, much later) |
-| Earth: columns, spikes, earth wave, surfing, boulders, tent / dome | OK, basic earthbending |
+| Earth: columns, spikes, earth wave, surfing, boulders, tent / dome | OK, basic earthbending. **Decision (verify round 4):** a thrown boulder (Boulder Toss, Boulder Hurl) is drawn up out of the ground under its launch point over the throw's wind-up and thrown from there; it is never conjured in the air or at chest height from nothing, and in the air Earth throws nothing but dust (§8.4 item 5) |
+| Water's source | **Open for David:** Water bends water and ice from nothing (even mid-air) and the Avatar carries no water skin. Record one: a water skin on the sash, water in every arena, or an accepted game abstraction |
 | Earth air string | Canon earthbenders can't bend airborne without rock in hand: Earth's air hits are **pure Hung Gar strikes with dust only**; Meteor Drop spikes appear on landing. FLAG for David (alternative: chunks torn off by Rising Pillar) |
 | Earth hyper armour | OK as stance / rooting, **not** earth armour (no rock on the body). Earth gloves (Dai Li), lavabending, sandbending, seismic sense: not used |
 | Air: blasts, swipes, shield, vortex, gust leaps, soft landing | OK, ancient (taught by sky bison) |
@@ -1186,3 +1187,36 @@ Still open:
   normally: B dodges)? For now How-To-Play says to let go of RB after switching. A slip-in from contact range is still a sway in place
   (now without the backwards jet): turn it into a short circle round the foe? That would cost the "dash through the attack" perfect
   dodge bonus at contact range, so it's your call. Per-element dodge poses (one shared pose today) and Fluid `BeatLate` are open too.
+
+### 8.5 Build 05 verify round 4 (1 Oct): the chord on a real pad, the dodge strike's dash, Earth's boulders
+1. **Thumb-first chords only switch** (J4-01, `PadChordReader.FaceChordLatency`, `PlayerInputReader.faceChordLatency`). On the
+   gamepad, with RB up, a Y / B / A press is held back 0.08 s (5 frames at 60 fps, 2 at 30) in case RB follows; RB in that time makes
+   it only the element pick (no jump, dodge or zip ever starts). Otherwise it is reported then, carrying its real age
+   (`ButtonState.PressDelay`) so the buffer and the dodge's tap/hold timer count from the real press. A quick tap let go sooner is
+   reported at once. X is never held back (its beat grade must not move): X up to 5 frames before RB is upgraded to the pick
+   (`ElementChordGrace` 0.08 s), and an X that already ran stays that one hit, never a second attack, also into the element in hand
+   (BH-02). A face held up to 0.15 s when RB goes down, too late for a pick, no longer lets RB's release fire the ranged skill
+   (`ChordSkillGuard`, BH-03); held longer (sprinting on B), an RB tap is still the skill. The keyboard is never held back.
+   **Jeremy:** the cost is 0.08 s on a pad jump / dodge / zip pressed on its own (a Punishing dodge, on release, is unaffected by a
+   quick tap). Set `faceChordLatency` to 0 in the input reader to trade the chord tolerance back for zero delay. CombatSim's fuzz runs
+   (30 / 144 fps, spikes) and the switch scenario's "Real pad" table now press RB and the face up to 80 ms apart through the real
+   chord reader.
+2. **The dodge strike's dash eases** (J4-02, `PlayerTuning.ArriveLungeRampIn` / `RampOut` / `EndSpeed` / `EntryCarry` /
+   `MaxAccel`; `ArriveLungeMaxExtraStartup` 0.22). An arriving lunge starts from the way you were moving (half your speed backwards
+   out of an evade, so the body plants and pushes off instead of flipping from -17.6 to +20 m/s in one frame), stays under 20 m/s,
+   and slows to about 3 m/s as the strike lands (no dead stop from full speed); the startup stretch is solved for the eased profile
+   so it still lands on contact. Sideways motion carries on and dies away (`ArrivalCarry`); Air's circling strike eases its turn in.
+   Its legs run on strides up to 21 m/s (`AnimatorSettings.DashStrideMaxSpeed`, only for the dodge strike: `FighterAnimInput.DashIn`),
+   and once the dash has stopped the feet land fast (`LeapLiftLandRate`). The element trails from the feet on the way in
+   (`PlayerFeedback.DodgeStrikeDashStarted`). The `anim` scenario now fails on a statue slide (over 12 m/s for 6+ frames with the
+   legs frozen) or a one-frame velocity change over 20 m/s in a strike. `PlayerTuning.CurrentDataVersion` 7.
+3. **Earth's boulders come out of the ground** (J4-03): over the wind-up a block the boulder's size rises out of the floor under the
+   launch point (`ElementVfx.RaiseStone`), the throw kicks grit out of the floor under it (Earth muzzle), and the boulder is drawn
+   inside its hit size (`VisualScale` 0.9: 0.92 x 0.81 x 0.97 m for the Hurl, 0.77 x 0.68 x 0.81 m for the Toss), turned only about
+   the vertical, tumbling end over end in flight. `ElementMoveSet.CurrentDataVersion` 8. The `anim` scenario fails an Earth throw
+   that didn't rise from the floor or a boulder drawn bigger than its hit.
+4. Should-fix polish: a refused fourth dodge in a row flashes the stamina bar's outline with a dull flash and a light thud
+   (`DodgeChainLimited`); another element's Momentum (Fire's, topped up by a MIX 4 finisher) shows as a thin labelled bar while
+   you're in Water, Earth or Air; How-To-Play's Punishing notes fixed (the pause route fits three elements in one string; the launcher
+   hold is on any hit before the finisher; when to press B on Punishing; three dodges then a breath).
+

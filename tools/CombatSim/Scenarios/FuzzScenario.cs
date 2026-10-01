@@ -18,7 +18,7 @@ namespace VaatusRevenge.CombatSim
         {
             int framesPer = o.Quick ? 60000 : 150000;
             Out.Heading("Fuzz: random input, " + framesPer + " frames per run");
-            var t = new Table("Preset", "Frame timing", "Game time", "Violations", "Longest i-frames", "Invulnerable share", "Oldest buffered press run",
+            var t = new Table("Preset", "Frame timing", "Input", "Game time", "Violations", "Longest i-frames", "Invulnerable share", "Oldest buffered press run",
                 "Dodges started/ended", "Player hitboxes opened/closed", "Enemy hitboxes opened/closed", "Deaths / resets", "Max token holders");
             var allViolations = new List<string>();
             foreach (Preset p in o.Presets)
@@ -28,7 +28,7 @@ namespace VaatusRevenge.CombatSim
                     var r = RunOne(o, p, timing, framesPer, o.Seed);
                     Invariants inv = r.inv;
                     string viol = inv.ViolationCounts.Count == 0 ? "none" : string.Join(", ", inv.ViolationCounts.Select(kv => kv.Key + " ×" + kv.Value));
-                    t.Row(p, timing, Out.N(r.gameSeconds / 60.0, 1) + " min", viol, Out.N(inv.LongestInvulnerable, 3) + " s",
+                    t.Row(p, timing, RealPadRun(timing) ? "pad (chords)" : "keys", Out.N(r.gameSeconds / 60.0, 1) + " min", viol, Out.N(inv.LongestInvulnerable, 3) + " s",
                         Out.Pct(r.invulnerableShare), Out.N(inv.MaxBufferedAge, 3) + " s (" + inv.MaxBufferedAgeCommand + ")",
                         inv.DodgesStarted + "/" + inv.DodgesEnded, inv.PlayerActiveOpened + "/" + inv.PlayerActiveClosed,
                         inv.EnemyActiveOpened + "/" + inv.EnemyActiveClosed, r.deaths + " / " + r.resets, inv.MaxTokenHolders);
@@ -41,6 +41,10 @@ namespace VaatusRevenge.CombatSim
             if (allViolations.Count == 0) Out.Line("None.");
             foreach (string v in allViolations) Out.Line("- " + v);
         }
+
+        // Every run but plain 60 fps plays the buttons as a real pad: the faces and RB go through PadChordReader, and RB +
+        // a face button lands up to 80 ms apart in either order (BH-04). Plain 60 fps keeps the keyboard path covered.
+        static bool RealPadRun(string timing) => timing != "60 fps";
 
         sealed class RandomPad
         {
@@ -130,6 +134,7 @@ namespace VaatusRevenge.CombatSim
             s.World.AddEnemy(EnemyTuning.CreateCrossbowman(), new Vector3(-13f, 2.5f, 12f), 135f, seed + 4);
             s.World.AddEnemy(EnemyTuning.CreateSparringDummy(), new Vector3(0f, 0f, -9f), 180f, seed + 5, dummySwings: true);
             var rp = new RandomPad(seed * 7 + timing.Length);
+            if (RealPadRun(timing)) s.Input.UseRealPad(seed * 11 + timing.Length);
             var rng = new DeterministicRandom(seed * 13 + 5);
             Session.MakePreset(Preset.Fluid, out PlayerTuning ft, out ElementLoadout fm);
             Session.MakePreset(Preset.Punishing, out PlayerTuning pt, out ElementLoadout pm);

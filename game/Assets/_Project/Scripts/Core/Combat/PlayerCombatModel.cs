@@ -105,6 +105,9 @@ namespace VaatusRevenge.Core
         bool lungeHoming;             // a stretched lunge or zip dash travels straight at its target, not along the facing
         bool lungeArrives;            // the lunge ends as the strike goes active (see PlanArrival), not when it ends
         float approachScale = 1f;     // < 1: the startup runs this much slower so a long lunge arrives at ArriveLungeMaxSpeed
+        ArrivalProfile arrival;       // an arriving lunge's speed over its startup: eased in from your motion, eased out (J4-02)
+        ArrivalProfile orbitTurnEase; // a circling arriving lunge's turn, eased in
+        ArrivalCarry arrivalCarry;    // the motion an arriving lunge carries on with and lets die away
         Vector3 lungeTargetFeet;      // where that target was when last seen: kept if the soft lock drops it mid-lunge
         float lungeTargetRadius;
         ComboBranch chainBranch;      // the chain chainIndex counts in (Main, Pause, Air; Other for non-string moves)
@@ -337,7 +340,12 @@ namespace VaatusRevenge.Core
 
             bool dodgePressed = input.Dodge.Pressed || (input.Dodge.Held && !dodgeButton.IsHeld);
             bool dodgeTap = dodgeButton.Update(dodgePressed, input.Dodge.Released, input.Dodge.Held, dt,
-                tuning.DodgeTrigger, tuning.TapHoldThreshold);
+                tuning.DodgeTrigger, tuning.TapHoldThreshold, dodgePressed ? input.Dodge.PressDelay : 0f);
+            // A Y / B / A press the pad held back for a moment (in case RB followed) counts from when it was really made.
+            double jumpClock = clock - PressDelayOnClock(input.Jump.PressDelay, dt);
+            double zipClock = clock - PressDelayOnClock(input.ZipStrike.PressDelay, dt);
+            double dodgeClock = dodgeTap && tuning.DodgeTrigger == DodgeTrigger.OnPress
+                ? clock - PressDelayOnClock(input.Dodge.PressDelay, dt) : clock;
 
             if (state == PlayerState.Dead) return;
             // RB + an element's button: a switch now, a switch strike for the string (buffered like Light), or nothing.
@@ -345,6 +353,12 @@ namespace VaatusRevenge.Core
             if (lightAlreadyRan && elementChord == PlayerCommand.SwitchStrike)
             {
                 SwitchElement(pendingSwitchElement, false, ComboBranch.Other);   // the running hit keeps its own element
+                elementChord = PlayerCommand.None;
+            }
+            else if (lightAlreadyRan && elementChord == PlayerCommand.Light)
+            {
+                // RB + X with X a frame or two early, into the element already in hand (or on cooldown): the X that
+                // already ran was this chord's one hit, so it isn't pressed a second time (BH-02).
                 elementChord = PlayerCommand.None;
             }
             if (upgradeQueuedLight)
@@ -374,14 +388,14 @@ namespace VaatusRevenge.Core
             if (healPressed) buffer.Push(PlayerCommand.Heal, clock, defensiveWins);
             if (skillPressed) buffer.Push(PlayerCommand.Skill, clock, defensiveWins);
             if (heavyPressed) buffer.Push(PlayerCommand.Heavy, clock, defensiveWins);
-            if (zipPressed) buffer.Push(PlayerCommand.ZipStrike, clock, defensiveWins);
+            if (zipPressed) buffer.Push(PlayerCommand.ZipStrike, zipClock, defensiveWins);
             if (abilityNorthPressed) buffer.Push(PlayerCommand.AbilityNorth, clock, defensiveWins);
             if (abilityEastPressed) buffer.Push(PlayerCommand.AbilityEast, clock, defensiveWins);
             if (lightPressed) buffer.Push(PlayerCommand.Light, clock, defensiveWins);
             if (elementChord != PlayerCommand.None) buffer.Push(elementChord, clock, defensiveWins);
-            if (jumpPressed) buffer.Push(PlayerCommand.Jump, clock, defensiveWins);
+            if (jumpPressed) buffer.Push(PlayerCommand.Jump, jumpClock, defensiveWins);
             if (guardPressed) buffer.Push(PlayerCommand.Guard, clock, defensiveWins);
-            if (dodgeTap) buffer.Push(PlayerCommand.Dodge, clock, defensiveWins);
+            if (dodgeTap) buffer.Push(PlayerCommand.Dodge, dodgeClock, defensiveWins);
 
             // A string press the buffer kept (a dodge or guard pressed with it wins) is judged against the beat now, at
             // the clock it was made (a press during a hitstop counts at the frozen moment).
@@ -390,6 +404,14 @@ namespace VaatusRevenge.Core
             {
                 OnStringPress(buffer.Command == PlayerCommand.SwitchStrike);
             }
+        }
+
+        // A held-back press's real age (real seconds) on the game clock, capped so it can never pre-date the buffer.
+        double PressDelayOnClock(float realDelay, float dt)
+        {
+            if (!(realDelay > 0f) || !(dt > 0f)) return 0.0;
+            float scale = frameRealDt > 0f ? dt / frameRealDt : 1f;
+            return Math.Min(realDelay * scale, tuning.InputBufferWindow * 0.5f);
         }
 
         // A press is the Pressed flag, or "held now but not last frame" (covers a skipped frame).
@@ -667,6 +689,9 @@ namespace VaatusRevenge.Core
             lungeHoming = false;
             lungeArrives = false;
             approachScale = 1f;
+            arrival = default(ArrivalProfile);
+            orbitTurnEase = default(ArrivalProfile);
+            arrivalCarry = default(ArrivalCarry);
             lightPressClock = double.NegativeInfinity;
             airAttacksUsed = 0;
             airDashesUsed = 0;

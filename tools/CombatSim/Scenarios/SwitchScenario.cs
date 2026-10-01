@@ -22,6 +22,7 @@ namespace VaatusRevenge.CombatSim
             Denials(o);
             AirCap(o);
             MixFour(o);
+            RealPadChords(o);
         }
 
         static Session WithPartner(Options o, Preset p, int seed, out SimEnemy partner)
@@ -210,6 +211,53 @@ namespace VaatusRevenge.CombatSim
                     double minutes = Math.Max(1e-6, seconds / 60.0);
                     t.Row(p, opponent, Out.Pct(withFour / (double)o.Seeds), Out.N(finishers / minutes, 1), Out.N(strikes / minutes, 1),
                         opponent.StartsWith("passive") ? "-" : Out.Pct(won / (double)o.Seeds));
+                }
+            }
+            t.Print();
+        }
+        // ---------------------------------------------------------------- real pad (J4-01 / BH-04)
+
+        // The same bots on a real pad: their element picks are played as RB + the face button up to 80 ms apart in either
+        // order, and every face press goes through the game's PadChordReader (PlayerInputReader's wiring). A chord must
+        // only switch: any jump, dodge, zip or skill the bot didn't press itself is a stray action.
+        static void RealPadChords(Options o)
+        {
+            Out.Sub("Real pad: RB + face up to 80 ms apart, through PadChordReader (target: 0 stray actions, 0 lost picks)");
+            var t = new Table("Preset", "Bot", "Chords", "Face first", "Picks seen", "Switch strikes", "Stray jump / dodge / zip / skill", "Lost picks", "Target");
+            foreach (Preset p in o.Presets)
+            {
+                foreach (string botName in new[] { "switcher", "chaosswitch" })
+                {
+                    int chords = 0, faceFirst = 0, picks = 0, strikes = 0, strayJump = 0, strayDodge = 0, strayZip = 0, straySkill = 0;
+                    for (int seed = o.Seed; seed < o.Seed + o.Seeds; seed++)
+                    {
+                        Session s = WithPartner(o, p, seed, out _);
+                        s.Input.UseRealPad(seed * 131 + 7);
+                        Bot bot = Bots.Create(botName);
+                        bot.Attach(s, seed * 977 + 13);
+                        PadInput pad = s.Input;
+                        const double Own = 0.5;   // a press of its own within this long explains the action
+                        s.World.PlayerEvent += e =>
+                        {
+                            double now = pad.Clock;
+                            if (e.Type == PlayerEventType.ElementSwitched || e.Type == PlayerEventType.ElementSwitchDenied) picks++;
+                            if (e.Type == PlayerEventType.ElementSwitched && e.IsSwitchStrike) strikes++;
+                            if (e.Type == PlayerEventType.Jumped && now - pad.LastOwnJump > Own) strayJump++;
+                            if (e.Type == PlayerEventType.DodgeStarted && now - pad.LastOwnDodge > Own) strayDodge++;
+                            if (e.Type == PlayerEventType.AttackStarted && e.AttackKind == PlayerAttackKind.ZipStrike && now - pad.LastOwnZip > Own) strayZip++;
+                            if (e.Type == PlayerEventType.AttackStarted && e.AttackKind == PlayerAttackKind.Skill && now - pad.LastOwnSkill > Own) straySkill++;
+                        };
+                        int frames = (int)(30f * o.Fps);
+                        for (int f = 0; f < frames; f++) s.Step(bot.NextPad());
+                        chords += pad.ChordsPlayed;
+                        faceFirst += pad.ChordsFaceFirst;
+                    }
+                    int stray = strayJump + strayDodge + strayZip + straySkill;
+                    // Every chord shows up as a switch, a switch strike or a denial (a pick made while the last chord is
+                    // still in flight waits, so picks can't exceed chords).
+                    int lost = Math.Max(0, chords - picks);
+                    t.Row(p, botName, chords, faceFirst, picks, strikes, strayJump + " / " + strayDodge + " / " + strayZip + " / " + straySkill,
+                        lost, Out.Target(stray == 0 && lost == 0 && chords > 0));
                 }
             }
             t.Print();

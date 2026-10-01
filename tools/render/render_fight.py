@@ -420,6 +420,10 @@ class Renderer:
                     a = k * math.pi / 3 + 0.4
                     r = max(0.6, fx["range"]) * min(1.0, 0.3 + u * 2)
                     items.append(self.streak((o[0], 0.02, o[2]), (o[0] + math.sin(a) * r, 0.02, o[2] + math.cos(a) * r), fade, hot, 0.05))
+        elif key == "raise_stone":
+            # Earth's boulder drawn up out of the floor under its launch point over the throw's wind-up (J4-03)
+            top = o[1] * min(1.0, u * 1.1)
+            items.append(self.pillar((o[0], 0.0, o[2]), max(0.05, top), max(0.1, fx["range"] * 0.45), 0.9, outer, hot))
         elif key == "pillar":
             height = 3.2 * min(1.0, u * 2.5)
             items.append(self.pillar((o[0], 0.0, o[2]), height, 0.3, fade, outer, hot))

@@ -944,6 +944,19 @@ namespace VaatusRevenge.CombatSim
             const float JointJumpMax = 0.8f, SpinBefore = 45f, SpinReverseMax = 60f;
             const float GlideHeight = 0.16f, GlideSpeed = 2f, GlideRootSpeed = 1f;
             const int GlideFrames = 3;
+            // Build 05 verify round 4 (J4-02), whatever the feet's height:
+            //   no statue slide: a grounded strike covering ground faster than SlideSpeed for SlideFrames frames or more
+            //          while neither foot moves SlideFootTravel relative to the hips (one frozen pose sliding along);
+            //   no whiplash: the body's horizontal velocity changing more than ReversalMax m/s in one frame as a strike
+            //          runs (the dodge strike flipping from -17.6 to +20 m/s, or a 20 m/s dash stopping dead).
+            const float SlideSpeed = 12f, SlideFootTravel = 0.2f, ReversalMax = 20f;
+            const int SlideFrames = 6;
+            int slideRun, slideStart;
+            string slideKey;
+            Vector3 slideLeft0, slideRight0;
+            float slideLeftMax, slideRightMax;
+            Vector3 prevVelocity;
+            bool prevVelocityValid;
             readonly List<(string scene, int frame, string key, string what, float amount)> motionIssues
                 = new List<(string, int, string, string, float)>();
             readonly Vector3[] prevJoints = new Vector3[BodyJoints.Count];
@@ -1033,6 +1046,7 @@ namespace VaatusRevenge.CombatSim
                     glideRun = 0;
                     spinCheckUntil = -1;
                 }
+                CheckSlide(rig, key, attacking, same, joints, root);
                 hipHistory.Add(hip);
                 if (hipHistory.Count > 8) hipHistory.RemoveAt(0);
                 Array.Copy(joints, prevJoints, prevJoints.Length);
@@ -1040,6 +1054,46 @@ namespace VaatusRevenge.CombatSim
                 prevAttacking = attacking;
                 prevMotionScene = scene;
                 prevMotionKey = key;
+            }
+
+            void CheckSlide(AnimRig rig, string key, bool attacking, bool same, Vector3[] joints, Vector3 root)
+            {
+                Vector3 velocity = same ? (root - prevRoot) / Dt : Vector3.Zero;
+                velocity.Y = 0f;
+                if (same && attacking && prevVelocityValid)
+                {
+                    float change = Vector3.Distance(velocity, prevVelocity);
+                    if (change > ReversalMax) motionIssues.Add((scene, FrameCount, key, "speed changed in one frame (m/s)", change));
+                }
+                prevVelocity = velocity;
+                prevVelocityValid = same;
+
+                Vector3 hips = joints[(int)BodyJoint.Hips];
+                Vector3 left = joints[(int)BodyJoint.LeftFoot] - hips, right = joints[(int)BodyJoint.RightFoot] - hips;
+                bool sliding = same && attacking && rig.LastInput.Grounded && velocity.Length() > SlideSpeed;
+                if (sliding && slideRun > 0 && key == slideKey)
+                {
+                    slideRun++;
+                    slideLeftMax = Math.Max(slideLeftMax, Vector3.Distance(left, slideLeft0));
+                    slideRightMax = Math.Max(slideRightMax, Vector3.Distance(right, slideRight0));
+                    return;
+                }
+                EndSlide();
+                if (!sliding) return;
+                slideRun = 1;
+                slideKey = key;
+                slideStart = FrameCount;
+                slideLeft0 = left;
+                slideRight0 = right;
+                slideLeftMax = slideRightMax = 0f;
+            }
+
+            void EndSlide()
+            {
+                if (slideRun >= SlideFrames && slideLeftMax < SlideFootTravel && slideRightMax < SlideFootTravel)
+                    motionIssues.Add((scene, slideStart, slideKey, "slid " + slideRun + " frames over " + Out.N(SlideSpeed, 0)
+                        + " m/s with frozen legs (feet moved, m)", Math.Max(slideLeftMax, slideRightMax)));
+                slideRun = 0;
             }
 
             // R2-03: no Earth rock effect (a burst or a spark) traced while the player is off the ground.
@@ -1201,6 +1255,19 @@ namespace VaatusRevenge.CombatSim
                     }
                     case PlayerEventType.ProjectileLaunched:
                         fx.Add(Fx("muzzle", e.Origin, e.Direction, 1f, 0f, 0.15f, (int)BodyJoint.RightHand, rig.Id, ElementName(e.Element)));
+                        if (ElementFxRules.StoneFromFloor(e.Element) && !ElementFxRules.IsAirborne(in e) && rig.LastInput.Grounded)
+                        {
+                            // J4-03: a grounded Earth throw's boulder must have risen out of the floor under it over the
+                            // wind-up (PlayerFeedback -> ElementVfx.RaiseStone), and the floor it left kicks up grit (the
+                            // Earth muzzle's FloorStone).
+                            earthThrows++;
+                            if (raiseStoneFrame >= 0 && raiseStoneFighter == rig.Id && e.Move != null
+                                && FrameCount - raiseStoneFrame <= (int)Math.Ceiling((e.Move.Startup / Math.Max(0.05f, e.PlaybackRate) + 0.25f) / Dt)
+                                && Directions.Flatten(raiseStonePoint - e.Origin).Length() < 0.6f)
+                                earthThrowsFromFloor++;
+                            BodyBurst(null, e.Element, e.Origin, e.Direction, 1f, 0f, 0.3f, (int)BodyJoint.RightHand, rig.Id);
+                            raiseStoneFrame = -1;
+                        }
                         extensions.Add((e.Move != null ? e.Move.DisplayName : "projectile", StrikeExtension(rig, e.Move != null ? e.Move.Limb : Limb.BothFists)));
                         break;
                     case PlayerEventType.PlungeImpact:
@@ -1222,6 +1289,32 @@ namespace VaatusRevenge.CombatSim
                         if (e.AttackKind == PlayerAttackKind.ZipStrike && e.Move != null)
                             fx.Add(Fx("jet", rig.Fighter.Feet, -Directions.FromYaw(rig.Fighter.Yaw), 1f, 0f, e.Move.Startup + e.Move.Active, (int)BodyJoint.RightFoot, rig.Id,
                                 ElementName(e.Element)));
+                        // As PlayerFeedback.DodgeStrikeDashStarted (J4-02): a push off the floor and the element trailing
+                        // from the feet for the dash back in (in the air: the air dash's jets).
+                        if (e.AttackKind == PlayerAttackKind.DodgeStrike && e.Move != null)
+                        {
+                            bool air = ElementFxRules.IsAirborne(in e) || !rig.LastInput.Grounded;
+                            Vector3 back = -Directions.FromYaw(rig.Fighter.Yaw);
+                            fx.Add(Fx(ElementFxRules.DustOnly(e.Element, air) ? "dust" : EffectKeys.Burst, rig.Fighter.Feet, back, 1f, 0f, 0.2f,
+                                (int)BodyJoint.RightFoot, rig.Id, ElementName(e.Element)));
+                            fx.Add(Fx(air ? "jet" : EffectKeys.Trail, rig.Fighter.Feet, back, 1f, 0f, e.Move.Startup, (int)BodyJoint.RightFoot, rig.Id,
+                                ElementName(e.Element)));
+                        }
+                        // As PlayerFeedback (J4-03): Earth's boulder rises out of the floor under its launch point over the
+                        // throw's wind-up, at the size of the flying boulder.
+                        if (e.Move != null && e.Move.LaunchesProjectile && e.Move.Projectile != null && ElementFxRules.StoneFromFloor(e.Element)
+                            && !ElementFxRules.IsAirborne(in e) && rig.LastInput.Grounded)
+                        {
+                            var player = (SimPlayer)rig.Fighter;
+                            Vector3 launch = player.Feet + new Vector3(0f, e.Move.OriginHeight, 0f) + Directions.FromYaw(player.Model.FacingYaw) * e.Move.OriginForward;
+                            float size = e.Move.Projectile.Radius * 2f * (e.Move.Projectile.VisualScale > 0f ? e.Move.Projectile.VisualScale : 1f);
+                            fx.Add(Fx("raise_stone", launch, Vector3.UnitY, size, 0f, e.Move.Startup / Math.Max(0.05f, e.PlaybackRate), (int)BodyJoint.RightHand,
+                                rig.Id, ElementName(e.Element)));
+                            raiseStoneFrame = FrameCount;
+                            raiseStoneFighter = rig.Id;
+                            raiseStonePoint = launch;
+                            boulderSizes.Add((e.Move.DisplayName, size * 0.9f, e.Move.Projectile.Radius * 2f));
+                        }
                         break;
                     case PlayerEventType.ElementSwitched:
                         fx.Add(Fx("switch", rig.Fighter.AimPoint, Vector3.UnitY, 0.6f, 0f, 0.35f, (int)BodyJoint.Chest, rig.Id, ElementName(e.Element)));
@@ -1253,6 +1346,11 @@ namespace VaatusRevenge.CombatSim
             }
 
             const float ArenaFloorY = 0f;   // every anim scene is on flat ground at y = 0
+
+            // J4-03: grounded Earth throws, and how many had their boulder rise out of the floor first.
+            int earthThrows, earthThrowsFromFloor, raiseStoneFrame = -1, raiseStoneFighter;
+            Vector3 raiseStonePoint;
+            readonly List<(string move, float drawn, float hit)> boulderSizes = new List<(string, float, float)>();
 
             // J3-07: no Earth rock effect (a burst or a spark) made on or out of a body while the player is on the ground:
             // its origin must be on the floor (within BodyRockHeight of it).
@@ -1540,7 +1638,17 @@ namespace VaatusRevenge.CombatSim
                 t3.Row("Joint jumps over " + Out.N(JointJumpMax, 1) + " m while attacking (J3-02)", motionFrames, jumps, Out.Target(jumps == 0));
                 t3.Row("Spin turned back over " + Out.N(SpinReverseMax, 0) + " deg at a clip change (J3-02)", motionFrames, spins, Out.Target(spins == 0));
                 t3.Row("Gliding strikes, both feet sliding " + GlideFrames + "+ frames (J3-03)", motionFrames, glides, Out.Target(glides == 0));
+                int slides = motionIssues.Count(x => x.what.StartsWith("slid"));
+                int whips = motionIssues.Count(x => x.what.StartsWith("speed changed"));
+                t3.Row("Statue slides: over " + Out.N(SlideSpeed, 0) + " m/s for " + SlideFrames + "+ frames, legs frozen (J4-02)", motionFrames, slides, Out.Target(slides == 0));
+                t3.Row("Speed change over " + Out.N(ReversalMax, 0) + " m/s in one frame in a strike (J4-02)", motionFrames, whips, Out.Target(whips == 0));
                 t3.Row("Grounded Earth rock from the body (J3-07)", earthGroundFx + " grounded Earth fx", earthBodyRockFx, Out.Target(earthBodyRockFx == 0));
+                int fromNowhere = earthThrows - earthThrowsFromFloor;
+                t3.Row("Earth boulders thrown without rising from the floor (J4-03)", earthThrows + " grounded Earth throws", fromNowhere,
+                    Out.Target(earthThrows > 0 && fromNowhere == 0));
+                int oversize = boulderSizes.Count(b => b.drawn > b.hit + 1e-3f);
+                t3.Row("Earth boulders drawn bigger than their hit (J4-03)", boulderSizes.Count + " throws ("
+                    + string.Join(", ", boulderSizes.Select(b => b.move).Distinct()) + ")", oversize, Out.Target(oversize == 0));
                 t3.Print();
                 foreach (var issue in footIssues.Take(20))
                     Out.Line("- frame " + issue.frame + " (" + issue.scene + ", " + issue.key + "): " + issue.what + ", " + Out.N(issue.amount, 2) + " m");

@@ -139,6 +139,11 @@ namespace VaatusRevenge
                 case PlayerEventType.ElementSwitched: ElementSwitched(in e, s); break;
                 case PlayerEventType.DangerWarning: Pulse(s.DangerTick); break;
                 case PlayerEventType.DangerNow: Pulse(s.DangerNowTick); break;
+                case PlayerEventType.DodgeChainLimited:
+                    // Three dodges in a row, then a short breath (J4-S01): the refused press is felt, not silently eaten.
+                    Flash(s.DodgeChainLimitedFlashColor, s.DodgeChainLimitedFlashTime);
+                    Pulse(s.DodgeChainLimitedPulse);
+                    break;
                 // Stagger, sprint (FOV), i-frames and charge level are drawn from the model's state in Tick.
             }
         }
@@ -257,6 +262,16 @@ namespace VaatusRevenge
             strikeLimb = move.Limb == Limb.Weapon ? Limb.RightFist : move.Limb;
             PlayerStrikePoses p = s.Poses;
             if (e.AttackKind == PlayerAttackKind.ZipStrike) ZipDashStarted(move, ElementFxRules.IsAirborne(in e), s);
+            if (e.AttackKind == PlayerAttackKind.DodgeStrike) DodgeStrikeDashStarted(move, ElementFxRules.IsAirborne(in e), s);
+            if (move.LaunchesProjectile && move.Projectile != null && ElementFxRules.StoneFromFloor(attackElement)
+                && !ElementFxRules.IsAirborne(in e) && (model == null || model.IsGrounded))
+            {
+                // Earth's boulder (Boulder Toss, Boulder Hurl) is drawn up out of the ground over the wind-up and is thrown
+                // from where it rose (J4-03): the same launch point and size as the flying boulder (GetStrikeOrigin).
+                Vector3 launch = body.position + Vector3.up * move.OriginHeight + body.forward * move.OriginForward;
+                float size = move.Projectile.Radius * 2f * (move.Projectile.VisualScale > 0f ? move.Projectile.VisualScale : 1f);
+                ElementVfx.RaiseStone(attackElement, launch, size, move.Startup / Mathf.Max(0.05f, e.PlaybackRate));
+            }
             if (rig == null || p == null || !p.LimbFlames || e.AttackKind == PlayerAttackKind.Plunge) return;
             // The striking fist or foot takes on the element as it winds up and keeps it until the strike is over. Moves with
             // a big effect of their own keep it shorter.
@@ -460,6 +475,26 @@ namespace VaatusRevenge
             ElementVfx.BurstOrDust(attackElement, FootPosition(s), -body.forward, s.DodgeBurstScale, inAir);
             StopDodgeTrails();
             StartJets(-body.forward, move.Startup + move.Active, attackElement, s);
+        }
+
+        // The dodge strike's dash back in (J4-02): a push off the floor and the element trailing from both feet for the run
+        // in (Water a surf trail, Earth a scuff of dust, Air a gust, Fire its Flame Step flames), so the approach reads as
+        // bending carrying the body in, not a crouched pose sliding along. In the air it's the air dash's jets.
+        void DodgeStrikeDashStarted(MoveData move, bool inAir, PlayerFeedbackSettings s)
+        {
+            float duration = Mathf.Max(0f, move.Startup);
+            if (!(duration > 0f)) return;
+            ElementVfx.BurstOrDust(attackElement, FootPosition(s), -body.forward, s.DodgeBurstScale, inAir);
+            StopDodgeTrails();
+            if (rig == null) return;
+            if (inAir)
+            {
+                StartJets(-body.forward, duration, attackElement, s);
+                return;
+            }
+            if (!s.DodgeTrails) return;
+            leftFootTrail = ElementVfx.Trail(attackElement, rig.GetAnchor(Limb.LeftFoot), duration);
+            rightFootTrail = ElementVfx.Trail(attackElement, rig.GetAnchor(Limb.RightFoot), duration);
         }
 
         void StartJets(Vector3 direction, float duration, ElementId element, PlayerFeedbackSettings s)

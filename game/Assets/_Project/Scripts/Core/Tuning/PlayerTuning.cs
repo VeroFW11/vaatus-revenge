@@ -83,8 +83,17 @@ namespace VaatusRevenge.Core
                                                      // this much further than its own LungeDistance to close the gap (0 = off)
         public float ArriveLungeMaxSpeed = 20f;      // a stretched lunge (and an own lunge longer than ArriveLungeMinDistance, e.g. a
                                                      // sprint attack) arrives as its strike goes active, never faster than this (m/s)...
-        public float ArriveLungeMaxExtraStartup = 0.15f; // ...stretching the startup by up to this many seconds to make room (0 = never)
+        public float ArriveLungeMaxExtraStartup = 0.22f; // ...stretching the startup by up to this many seconds to make room (0 = never;
+                                                     // 0.22: room for the eased ramps of J4-02 at 20 m/s)
         public float ArriveLungeMinDistance = 1.5f;  // own lunges longer than this arrive as they strike (0 = only stretched lunges)
+        public float ArriveLungeRampIn = 0.05f;      // an arriving lunge eases in from the way you were moving (a dodge's exit) over
+                                                     // this long (s), instead of flipping to full speed in one frame (0 = no ease)...
+        public float ArriveLungeRampOut = 0.08f;     // ...and slows over its last this-long before the strike (0 = no ease)...
+        public float ArriveLungeEndSpeed = 3f;       // ...to arrive at no more than this (m/s), not a dead stop from full speed
+        public float ArriveLungeMaxAccel = 300f;     // m/s per second: the ramps are only as long as the speed change needs at this
+                                                     // (a short gap-closer from standing barely eases; 0 = always the full ramps)
+        public float ArriveLungeEntryCarry = 0.5f;   // 0..1: share of your speed along the dash (backwards out of an evade
+                                                     // included) the ease-in starts from
 
         // --- Combos (Build 05) ---
         public RhythmTuning Rhythm = new RhythmTuning();             // the beat: on-beat presses speed the string up
@@ -99,7 +108,7 @@ namespace VaatusRevenge.Core
         // Bumped when the defaults change in a way old assets must not keep (the sandbox builder offers to reset an
         // asset whose DataVersion is behind). New fields read 0 in an asset saved before they existed.
         public int DataVersion = 0;
-        public const int CurrentDataVersion = 6;   // 6: Build 05 verify (switch cooldown, arriving lunges)
+        public const int CurrentDataVersion = 7;   // 6: Build 05 verify (switch cooldown, arriving lunges); 7: eased arrivals (J4-02)
 
         public static PlayerTuning CreateFluid()
         {

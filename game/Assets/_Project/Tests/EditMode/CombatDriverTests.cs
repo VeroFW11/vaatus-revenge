@@ -131,6 +131,13 @@ namespace VaatusRevenge.Tests
         {
             PlayerInputFrame input = MakeInput(now, move);
             held = now;
+            return StepFrame(input, dt);
+        }
+
+        // One frame with a ready-made input (a test that builds its frames from raw pad buttons, e.g. through
+        // PadChordReader, the way PlayerInputReader does).
+        public PlayerTickResult StepFrame(PlayerInputFrame input, float? dt = null)
+        {
             Select = ElementId.None;
             Retract = PlayerCommand.None;
             float stepDt = dt ?? Dt;

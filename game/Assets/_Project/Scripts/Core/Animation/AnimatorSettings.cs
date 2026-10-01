@@ -77,6 +77,10 @@ namespace VaatusRevenge.Core
         public bool LungeStrides = true;
         public float StrideMinSpeed = 2.5f;
         public float StrideMaxSpeed = 12f;
+        // The dodge strike's dash back in (FighterAnimInput.DashIn) strides up to this instead: it covers
+        // PlayerTuning.ArriveLungeMaxSpeed (20 m/s), so it runs in on its legs rather than sliding one crouched pose
+        // across the floor (J4-02). Other rushes over StrideMaxSpeed still leap.
+        public float DashStrideMaxSpeed = 21f;
         public float StrideBlendSpeed = 1.5f;        // m/s over which the strides fade in above the min (and out above the max)
         public float StrideBlendRate = 30f;          // how quickly the strides take over and hand back (1/s)
         public float StrideRearFootStance = 0.6f;    // 0..1 through its stance the rear foot is when a lunge starts (pushing off)
@@ -85,6 +89,9 @@ namespace VaatusRevenge.Core
         public float JumpKeyMinRise = 0.5f;          // airborne: the "jump" key while rising faster than this (m/s), else "fall"
         public float LeapLiftRiseRate = 25f;         // the leap eases in this fast (1/s)...
         public float LeapLiftFallRate = 15f;         // ...and back down this fast, across the hand-back to locomotion (0 = instant)
+        public float LeapLiftLandRate = 45f;         // a strike whose rush has all but stopped (under LeapLandSpeed) lands its feet this
+        public float LeapLandSpeed = 1.5f;           // fast (1/s), so the support foot plants as the blow lands instead of hovering
+                                                     // (J4-02); still moving faster, the slower fall keeps a planted foot from dragging
 
         // ---- Props: a weapon never goes through the floor
         public float PropFloorClearance = 0.03f;

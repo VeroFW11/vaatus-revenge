@@ -480,6 +480,54 @@ namespace VaatusRevenge.Tests
             Assert.That(worstDrop, Is.LessThan(0.05f), "the hips settle, they don't drop " + worstDrop + " m in one frame");
         }
 
+        // Build 05 verify round 4 (J4-02): the dodge strike's dash back in (up to ArriveLungeMaxSpeed, 20 m/s) runs on
+        // strides, so the legs move under the body instead of one crouched pose sliding along with both feet up; and once the
+        // dash has slowed, still in the strike, the feet land within a few frames instead of hovering.
+        [Test]
+        public void DodgeStrikeDashRunsOnStridesAndLands([Values(ElementId.Fire, ElementId.Water, ElementId.Earth)] ElementId element)
+        {
+            ElementMoveSet set = ElementLoadout.CreateFluid().Get(element);
+            MoveData move = set.DodgeStrike;
+            HumanoidSkeleton skeleton = HumanoidSkeleton.Create();
+            var animator = new FighterAnimator(PoseLibrary.Default, skeleton, set.AnimationStyle);
+            var fk = new ForwardKinematics(skeleton);
+            for (int i = 0; i < 20; i++) animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "" });
+            Vector3 left0 = Vector3.Zero, right0 = Vector3.Zero;
+            float leftMoved = 0f, rightMoved = 0f, lowest = float.MaxValue;
+            const int DashFrames = 12;
+            for (int i = 0; i < DashFrames; i++)
+            {
+                FighterAnimInput input = ActionInput(move.AnimationKey, i * Dt * 0.4f, move, 9);   // a stretched startup
+                input.LocalVelocity = new Vector3(0f, 0f, 19f);
+                input.DashIn = true;
+                animator.Update(input);
+                fk.Compute(animator.Pose, Vector3.Zero, 0f);
+                Vector3 hips = fk[BodyJoint.Hips];
+                Vector3 left = fk[BodyJoint.LeftFoot] - hips, right = fk[BodyJoint.RightFoot] - hips;
+                if (i == 3) { left0 = left; right0 = right; }
+                if (i > 3)
+                {
+                    leftMoved = Math.Max(leftMoved, Vector3.Distance(left, left0));
+                    rightMoved = Math.Max(rightMoved, Vector3.Distance(right, right0));
+                    lowest = Math.Min(lowest, Math.Min(fk[BodyJoint.LeftFoot].Y, fk[BodyJoint.RightFoot].Y));
+                }
+            }
+            Assert.Greater(Math.Max(leftMoved, rightMoved), 0.2f, element + ": the legs stride under the body during the dash");
+            // (Fire's is a leaping spin kick, Northern Shaolin: the kicking leg is up and the body leaps, so no stride.)
+            if (element != ElementId.Fire) Assert.Less(lowest, 0.12f, element + ": a foot comes down to the floor during the dash");
+            int landedAfter = -1;
+            for (int i = 0; i < 10; i++)
+            {
+                FighterAnimInput input = ActionInput(move.AnimationKey, move.ActiveStart + i * Dt, move, 9);   // struck, stopped
+                input.DashIn = true;
+                animator.Update(input);
+                fk.Compute(animator.Pose, Vector3.Zero, 0f);
+                float low = Math.Min(fk[BodyJoint.LeftFoot].Y, fk[BodyJoint.RightFoot].Y);
+                if (landedAfter < 0 && low < 0.11f) landedAfter = i;
+            }
+            Assert.That(landedAfter, Is.InRange(0, 4), element + ": a foot plants within a few frames of the dash stopping");
+        }
+
         // Verify round 2 (R2-S02): the legs stop at once when the fighter stops (J-09), but the arms ease from the run's
         // swing back to guard instead of snapping there in two or three frames.
         [Test]

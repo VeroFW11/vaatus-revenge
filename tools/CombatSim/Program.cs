@@ -263,12 +263,12 @@ namespace VaatusRevenge.CombatSim
 
         public void Step(in Pad pad)
         {
-            World.Step(Input.Build(pad), Dt);
+            World.Step(Input.Build(pad, Dt), Dt);
         }
 
         public void Step(in Pad pad, float dt)
         {
-            World.Step(Input.Build(pad), dt);
+            World.Step(Input.Build(pad, dt), dt);
         }
 
         public void Idle(int frames)

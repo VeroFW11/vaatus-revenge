@@ -169,7 +169,14 @@ namespace VaatusRevenge
             feetBeatPulse.OnEvent(in e, now);
             elementWheel.OnEvent(in e, now);
             if (e.Type == PlayerEventType.HealedOnHit) healTickStart = now;
+            if (e.Type == PlayerEventType.DodgeChainLimited)
+            {
+                dodgeLimitedStart = now;
+                dodgeLimitedTime = Mathf.Max(0.2f, e.Duration);
+            }
         }
+
+        float dodgeLimitedStart = -10f, dodgeLimitedTime = 0.3f;
 
         float healTickStart = -10f;
         const float HealTickTime = 0.35f;
@@ -295,6 +302,10 @@ namespace VaatusRevenge
             var stamina = new Rect(x, y, painter.U(320f), painter.U(12f));
             painter.Bar(stamina, player.Stamina01, staminaColor, BarBackground);
             painter.Outline(stamina, 1f, BarOutline);
+            // A refused fourth dodge in a row (J4-S01): the stamina bar's outline flashes for the short breath.
+            float sinceLimited = Time.unscaledTime - dodgeLimitedStart;
+            if (sinceLimited >= 0f && sinceLimited < dodgeLimitedTime)
+                painter.Outline(stamina, painter.U(3f), new Color(1f, 0.45f, 0.35f, 1f - sinceLimited / dodgeLimitedTime));
             y = stamina.yMax + painter.U(7f);
 
             // Momentum (Fire's identity mechanic): landing hits fills it, and it boosts damage by the multiplier. Shown only
@@ -309,6 +320,17 @@ namespace VaatusRevenge
                     multiplierText.Get(player.MomentumMultiplier), painter.Small, momentumColor);
                 y = momentum.yMax + painter.U(12f);
             }
+            else if (model != null && TryHeldMeter(model, out ElementId meterElement, out float meter01))
+            {
+                // Another element's meter still holds something (a MIX 4 finisher tops up Fire's Momentum, J4-S05): shown,
+                // thinner and labelled, until it decays, so the reward is visible while you're in another element.
+                var momentum = new Rect(x, y, painter.U(320f), painter.U(6f));
+                painter.Bar(momentum, meter01, momentumColor, BarBackground);
+                painter.Outline(momentum, 1f, BarOutline);
+                painter.Text(new Rect(momentum.xMax + painter.U(10f), momentum.center.y - painter.Small.fontSize * 0.65f, painter.U(120f), painter.U(22f)),
+                    MeterLabel(meterElement), painter.Small, momentumColor);
+                y = momentum.yMax + painter.U(12f);
+            }
             else
             {
                 y += painter.U(5f);
@@ -320,6 +342,35 @@ namespace VaatusRevenge
             // The element's name is shown once, under the element wheel (verify R2-S10), not here as well.
             string message = player.ElementMessage;
             if (!string.IsNullOrEmpty(message)) painter.Text(new Rect(x, y, painter.U(600f), painter.U(22f)), message, painter.Small, Color.white);
+        }
+
+        // The first element (not in hand) whose identity meter holds anything.
+        static bool TryHeldMeter(PlayerCombatModel model, out ElementId element, out float fraction)
+        {
+            for (ElementId e = ElementId.Fire; e <= ElementId.Air; e++)
+            {
+                if (e == model.ActiveElement) continue;
+                float f = model.MeterFraction(e);
+                if (f > 0.001f)
+                {
+                    element = e;
+                    fraction = f;
+                    return true;
+                }
+            }
+            element = ElementId.None;
+            fraction = 0f;
+            return false;
+        }
+
+        // Cached (per HUD) so OnGUI doesn't build a string every frame.
+        readonly string[] meterLabels = new string[(int)ElementId.Air + 1];
+
+        string MeterLabel(ElementId element)
+        {
+            int i = (int)element;
+            if (i < 0 || i >= meterLabels.Length) return "";
+            return meterLabels[i] ?? (meterLabels[i] = element + " Momentum");
         }
 
         void DrawHealCharges(float x, float y, int charges, int maxCharges)

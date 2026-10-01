@@ -58,9 +58,30 @@ namespace VaatusRevenge.Tests
         }
 
         [Test]
-        public void BOneFrameBeforeRbIsUpgradedToThePick()
+        public void BOneFrameBeforeRbIsHeldBackAndOnlyPicks()
         {
             var rig = new Rig();
+            rig.Step(east: true);                                              // B first: held back, not a dodge yet
+            Assert.AreEqual(0, rig.DodgePresses, "B waits in case RB follows");
+            Assert.IsTrue(rig.Reader.IsHoldingBack(PadChordReader.FaceEast));
+            rig.Step(east: true, rbNow: true);                                 // RB one frame later
+            Assert.AreEqual(1, rig.Picks);
+            Assert.AreEqual(ElementId.Fire, rig.LastPick);
+            Assert.AreEqual(PlayerCommand.None, rig.LastRetract, "nothing to take back: B never acted");
+            Assert.IsFalse(rig.East.Held, "B is swallowed from RB's frame on");
+            for (int i = 0; i < 4; i++) rig.Step(east: true, rbNow: true);
+            rig.Step();
+            rig.Step();
+            Assert.AreEqual(0, rig.Skills, "no skill on the RB release");
+            Assert.AreEqual(0, rig.DodgePresses, "B never reads as a dodge");
+            Assert.AreEqual(1, rig.Picks);
+        }
+
+        [Test]
+        public void WithTheHoldBackOffBOneFrameBeforeRbIsUpgradedToThePick()
+        {
+            var rig = new Rig();
+            rig.Reader.FaceChordLatency = 0f;
             rig.Step(east: true);                                              // B first: its dodge press goes out
             Assert.AreEqual(1, rig.DodgePresses);
             rig.Step(east: true, rbNow: true);                                 // RB one frame later
@@ -73,6 +94,64 @@ namespace VaatusRevenge.Tests
             rig.Step();
             Assert.AreEqual(0, rig.Skills, "no skill on the RB release");
             Assert.AreEqual(1, rig.Picks);
+        }
+
+        [Test]
+        public void HeldBackFaceIsReportedAfterTheLatencyWithItsTrueAge()
+        {
+            var rig = new Rig();
+            int reportedOn = -1;
+            float delay = 0f;
+            for (int f = 0; f < 12; f++)
+            {
+                rig.Step(south: true);
+                if (rig.South.Pressed && reportedOn < 0)
+                {
+                    reportedOn = f;
+                    delay = rig.South.PressDelay;
+                }
+            }
+            Assert.AreEqual(5, reportedOn, "A is reported 5 frames (0.083 s) after it went down");
+            Assert.AreEqual(5f / 60f, delay, 1e-3f, "carrying its real age");
+            Assert.AreEqual(0, rig.Picks);
+        }
+
+        [Test]
+        public void QuickTapIsReportedAsSoonAsItsLetGo()
+        {
+            var rig = new Rig();
+            rig.Step(east: true);
+            rig.Step(east: true);
+            rig.Step();                                                        // let go after 2 frames, no RB
+            Assert.IsTrue(rig.East.Pressed && rig.East.Released && !rig.East.Held, "press and release together");
+            Assert.AreEqual(2f / 60f, rig.East.PressDelay, 1e-3f);
+            Assert.AreEqual(1, rig.DodgePresses);
+            rig.Step(rbNow: true);
+            rig.Step();
+            Assert.AreEqual(0, rig.Picks, "RB after the face was let go is not a chord");
+        }
+
+        [Test]
+        public void FaceJustTooEarlyForAPickStillFiresNoSkill()
+        {
+            var rig = new Rig();
+            for (int i = 0; i < 6; i++) rig.Step(east: true);                // B 6 frames before RB: its own dodge
+            Assert.AreEqual(1, rig.DodgePresses);
+            rig.Step(east: true, rbNow: true);
+            rig.Step(east: true, rbNow: true);
+            rig.Step();
+            Assert.AreEqual(0, rig.Picks, "too slow to pick");
+            Assert.AreEqual(0, rig.Skills, "but RB's release is no stray skill (BH-03)");
+        }
+
+        [Test]
+        public void LbChordIsNotHeldBack()
+        {
+            var rig = new Rig();
+            rig.Step(lbNow: true);
+            rig.Step(lbNow: true, north: true);
+            Assert.IsTrue(rig.Last.AbilityNorth.Pressed, "LB + Y is the ability at once");
+            Assert.IsFalse(rig.Reader.IsHoldingBack(PadChordReader.FaceNorth));
         }
 
         [Test]
@@ -134,7 +213,9 @@ namespace VaatusRevenge.Tests
             Assert.AreEqual(0, rig.Skills);
             rig.Step();
             rig.Step(north: true);                                             // a fresh Y press is a zip again
-            Assert.IsTrue(rig.North.Pressed);
+            Assert.IsTrue(rig.Reader.IsHoldingBack(PadChordReader.FaceNorth), "held back in case RB follows");
+            for (int i = 0; i < 5; i++) rig.Step(north: true);
+            Assert.IsTrue(rig.North.Pressed, "then reported as a zip");
         }
 
         [Test]

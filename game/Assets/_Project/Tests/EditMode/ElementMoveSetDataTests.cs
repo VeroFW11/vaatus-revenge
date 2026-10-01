@@ -69,6 +69,23 @@ namespace VaatusRevenge.Tests
 
         static float SoldierPoise => EnemyTuning.CreateDaoSoldier().MaxPoise;
 
+        // Build 05 verify round 4 (J4-03): Earth's thrown boulders (Boulder Toss, Boulder Hurl) are drawn inside their hit size
+        // (the rock's longest side, 0.9 of Radius x 2 x VisualScale, no bigger than the hit diameter), in both presets.
+        [Test]
+        public void EarthBouldersAreDrawnInsideTheirHitSize([Values(false, true)] bool punishing)
+        {
+            ElementMoveSet earth = (punishing ? ElementLoadout.CreatePunishing() : ElementLoadout.CreateFluid()).Get(ElementId.Earth);
+            int boulders = 0;
+            foreach (MoveData move in AllMoves(earth))
+            {
+                if (move == null || !move.LaunchesProjectile || move.Projectile == null) continue;
+                boulders++;
+                float drawn = move.Projectile.Radius * 2f * move.Projectile.VisualScale * 0.9f;
+                Assert.LessOrEqual(drawn, move.Projectile.Radius * 2f + 1e-4f, move.DisplayName + " is drawn bigger than it hits");
+            }
+            Assert.GreaterOrEqual(boulders, 2, "Boulder Toss and Boulder Hurl");
+        }
+
         [Test]
         public void TheSoldierPoiseBudgetIsTheSpecs()
         {

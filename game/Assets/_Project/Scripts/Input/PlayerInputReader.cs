@@ -59,9 +59,17 @@ namespace VaatusRevenge
         [Tooltip("A face button counts as an LB (Q) ability chord only this long after LB went down. Held longer (a parry "
                  + "you're still holding), B and Y dodge and zip as normal again, so a panic parry-then-dodge isn't eaten.")]
         [SerializeField] private float abilityChordWindow = 0.5f;
-        [Tooltip("A face button pressed at most this long before RB (and still held) becomes the element pick instead of its "
-                 + "normal action: a chord pressed a frame or two out of order still switches (PadChordReader).")]
-        [SerializeField] private float elementChordGrace = 0.05f;
+        [Tooltip("X pressed at most this long before RB (and still held) becomes the element pick: a chord pressed a few "
+                 + "frames out of order still switches, and the X that already ran stays its one hit (PadChordReader). With "
+                 + "the face hold-back below at 0, this covers Y / B / A too.")]
+        [SerializeField] private float elementChordGrace = 0.08f;
+        [Tooltip("On the gamepad, a Y / B / A press with RB up is held back this long in case RB follows (a chord pressed "
+                 + "thumb first): RB in time = only the element pick, never a zip, dodge or jump as well. The press keeps its "
+                 + "real time for the buffer. 0 = no added delay, but a face pressed before RB then also does its own action.")]
+        [SerializeField] private float faceChordLatency = 0.08f;
+        [Tooltip("A face pressed at most this long before RB, too late to be a pick, still stops RB's release firing the "
+                 + "ranged skill (held longer, e.g. sprinting on B, an RB tap is a deliberate skill).")]
+        [SerializeField] private float chordSkillGuard = 0.15f;
 
         InputActionMap map;
         InputAction move, lookStick, lookMouse;
@@ -235,6 +243,9 @@ namespace VaatusRevenge
             chords.SkillTapMaxTime = skillTapMaxTime;
             chords.AbilityChordWindow = abilityChordWindow;
             chords.ElementChordGrace = elementChordGrace;
+            // The keyboard has no RB chord, so its Space / Shift / F are never held back.
+            chords.FaceChordLatency = usingGamepad ? faceChordLatency : 0f;
+            chords.ChordSkillGuard = chordSkillGuard;
             PadChordReader.Result chord = chords.Read(ref zipButton, ref dodgeButton, ref jumpButton, ref attackButton,
                 skillPadButton, guardButton, Time.unscaledDeltaTime, elementLayout);
             ElementId elementPick = chord.ElementSelect;
