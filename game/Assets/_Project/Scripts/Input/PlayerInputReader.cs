@@ -19,9 +19,11 @@ namespace VaatusRevenge
     //   LB + A is an empty slot and still jumps.
     //   hold RB + Y / B / A / X        = pick an element (ElementButtonLayout, colour-matched: Y Air, B Fire, A Earth,
     //                                  X Water; 1-4 on the keyboard are Fire, Water, Earth, Air). RB then fires nothing:
-    //                                  the Fire Blast comes from a quick RB tap on its own, on release. The mouse only counts while the cursor is captured: click the Game view to
-    // capture it (that click is not an attack), Esc or switching windows releases it. The gamepad and keyboard
-    // work either way.
+    //                                  the Fire Blast comes from a quick RB tap on its own, on release.
+    // View (the small left button) and F7 / F8 drive the sandbox's combat tutorial (TutorialButton, TutorialKey,
+    // TutorialSkipKey). They are not gameplay actions, so they live outside the PlayerInputFrame.
+    // The mouse only counts while the cursor is captured: click the Game view to capture it (that click is not an
+    // attack), Esc or switching windows releases it. The gamepad and keyboard work either way.
     //
     // Needs no references: just add it to any GameObject in the scene.
     [DefaultExecutionOrder(-100)]
@@ -33,7 +35,8 @@ namespace VaatusRevenge
         // Slots for remembering each button's held state from last frame.
         const int AttackSlot = 0, ZipSlot = 1, DodgeSlot = 2, JumpSlot = 3, GuardSlot = 4, SkillPadSlot = 5, HealSlot = 6;
         const int LockOnSlot = 7, SwapShoulderSlot = 8, SkillMouseSlot = 9;
-        const int SlotCount = 10;
+        const int TutorialPadSlot = 10, TutorialKeySlot = 11, TutorialSkipSlot = 12;
+        const int SlotCount = 13;
         // Face buttons, in element-slot order (Up, Right, Down, Left): Y/Triangle, B/Circle, A/Cross, X/Square.
         const int FaceNorth = 0, FaceEast = 1, FaceSouth = 2, FaceWest = 3;
         // Mouse movement is ignored for this many frames after the cursor is captured: some platforms report the
@@ -60,11 +63,13 @@ namespace VaatusRevenge
         InputAction move, lookStick, lookMouse;
         InputAction attack, attackMouse, zip, dodge, jump, guard, skillPad, skillMouse, heal, lockOn, lockOnMouse, swapShoulder;
         InputAction switchLeft, switchRight, switchScroll, releaseCursor;
+        InputAction tutorialPad, tutorialKey, tutorialSkip;
         readonly InputAction[] elementActions = new InputAction[4];
         InputAction[] sharedActions;
         readonly bool[] heldLastFrame = new bool[SlotCount];
 
         PlayerInputFrame frame;
+        ButtonState tutorialButton, tutorialKeyButton, tutorialSkipButton;
         bool heavyChord;                                   // X was pressed while LB was held: X is the Heavy until let go
         bool abilityNorthChord;                            // same for Y (AbilityNorth) ...
         bool abilityEastChord;                             // ... and B (AbilityEast)
@@ -95,6 +100,11 @@ namespace VaatusRevenge
         // RB (R1) is held: a face button now picks an element (the wheel grows and shows "RB +").
         public bool ElementModifierHeld => gameplayEnabled && skillPad != null && skillPad.IsPressed();
         public ElementButtonLayout ElementLayout => elementLayout;
+        // The tutorial's buttons, read every frame even while gameplay input is off (the tutorial decides what a press
+        // means when paused). View on the gamepad: tap = start / skip a step, hold = quit. F7 starts or quits, F8 skips.
+        public ButtonState TutorialButton => tutorialButton;
+        public ButtonState TutorialKey => tutorialKeyButton;
+        public ButtonState TutorialSkipKey => tutorialSkipButton;
         public bool GameplayEnabled => gameplayEnabled;
         public bool CursorLocked => Cursor.lockState == CursorLockMode.Locked;
 
@@ -130,6 +140,14 @@ namespace VaatusRevenge
             Cursor.visible = true;
         }
 
+        // With domain reload off (this project's Enter Play Mode settings), statics survive between Play sessions, so
+        // they are cleared by hand when play starts.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics()
+        {
+            Instance = null;
+        }
+
         void OnEnable()
         {
             if (Instance != null && Instance != this)
@@ -148,6 +166,9 @@ namespace VaatusRevenge
         {
             if (map != null) map.Disable();
             frame = default(PlayerInputFrame);
+            tutorialButton = default(ButtonState);
+            tutorialKeyButton = default(ButtonState);
+            tutorialSkipButton = default(ButtonState);
             System.Array.Clear(heldLastFrame, 0, heldLastFrame.Length);
             ResetChords();
             if (Instance != this) return;
@@ -190,6 +211,9 @@ namespace VaatusRevenge
             ButtonState healButton = ReadButton(HealSlot, heal, null);
             ButtonState lockOnButton = ReadButton(LockOnSlot, lockOn, mouseButtonsLive ? lockOnMouse : null);
             ButtonState swapShoulderButton = ReadButton(SwapShoulderSlot, swapShoulder, null);
+            tutorialButton = ReadButton(TutorialPadSlot, tutorialPad, null);
+            tutorialKeyButton = ReadButton(TutorialKeySlot, tutorialKey, null);
+            tutorialSkipButton = ReadButton(TutorialSkipSlot, tutorialSkip, null);
 
             Vector2 moveValue = Vector2.ClampMagnitude(move.ReadValue<Vector2>(), 1f);
             Vector2 stickLook = lookStick.ReadValue<Vector2>();
@@ -460,10 +484,15 @@ namespace VaatusRevenge
 
             releaseCursor = AddButton("ReleaseCursor", "<Keyboard>/escape", null);
 
+            // The sandbox tutorial: View (Back / Share / Select) on the gamepad, F7 and F8 on the keyboard.
+            tutorialPad = AddButton("Tutorial", "<Gamepad>/select", null);
+            tutorialKey = AddButton("TutorialKey", "<Keyboard>/f7", null);
+            tutorialSkip = AddButton("TutorialSkip", "<Keyboard>/f8", null);
+
             sharedActions = new[]
             {
                 move, attack, zip, dodge, jump, guard, skillPad, heal, lockOn, swapShoulder, switchLeft, switchRight,
-                elementActions[0], elementActions[1], elementActions[2], elementActions[3],
+                elementActions[0], elementActions[1], elementActions[2], elementActions[3], tutorialPad, tutorialKey, tutorialSkip,
             };
         }
 

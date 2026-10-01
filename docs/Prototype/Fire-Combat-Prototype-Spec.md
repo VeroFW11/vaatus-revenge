@@ -4,7 +4,9 @@
 
 The goal is a grey-box sandbox where you can **fight with firebending and judge whether it's fun**: Marvel's Spider-Man 2 controls and free-flow targeting (David's call, 29 Sep: attacks aim where you point, a zip strike to far enemies, tap to parry, no lock-on needed), with the Elden Ring-style move set, jump and sprint attacks, one element-flavoured dodge, an optional lock-on, and a few enemies built to test dodging, parrying and pressure. Everything is capsules and cubes; the point is timing and feel.
 
-**How David and Jeremy will use it:** pull the branch, open Unity, click **Vaatu's Revenge ▸ Build Fire Combat Sandbox**, press Play.
+**How David and Jeremy will use it:** pull the branch, open Unity, click **Vaatu's Revenge ▸ Build Combat Sandbox**, press Play (or **Play Combat Tutorial** to start in the tutorial).
+
+> **Build 05 (1 Oct 2026)** turned this into a four-element prototype: Water, Earth and Air join Fire, with rhythm combos, the pause finisher, switching element mid-string and MIX, the Spider-Man 2 dodge (the combo survives it; dodge strike), danger sense and an 11-step in-game tutorial. Its rules, numbers and move tables are in the **[Build 05 spec](Build-05-Spec.md)**; the controls below are updated to match. The rest of this document describes the Fire build and still holds where Build 05 doesn't say otherwise. Plain-words guide: [How to play](How-To-Play.md).
 
 ---
 
@@ -12,36 +14,30 @@ The goal is a grey-box sandbox where you can **fight with firebending and judge 
 
 ### Controls
 
-Spider-Man 2's layout (David, 29 Sep). The shoulder buttons double as modifiers, the way Spider-Man 2 does abilities (hold L1 + a face button) and gadgets (hold R1 + a face button).
+Spider-Man 2's layout (David, 29 Sep), with the colour-matched elements (Build 05, 1 Oct). The shoulder buttons double as modifiers, the way Spider-Man 2 does abilities (hold LB + a face button) and gadgets (hold RB + a face button). In-game, **F1** shows these (page 2) after a page of combos (page 1).
 
-| Action | Gamepad (Xbox / PlayStation) | Keyboard + mouse |
+| Button | Action | Keyboard + mouse |
 |---|---|---|
-| Move | Left stick | WASD |
-| Camera | Right stick | Mouse |
-| Swap camera shoulder (hold) | Hold L3 (left-stick click) | Hold V |
-| Attack (5-hit string; aims at the enemy your stick points at and lunges to close the gap) | X / Square | Left mouse |
-| Launcher (hold attack: the string's move becomes Rising Dragon Kick, throws the enemy up and you follow) | Hold X / Square | Hold left mouse |
-| Air string (attack in the air: 3 strikes that keep you both up, the last slams it down) | X / Square in the air | Left mouse in the air |
-| Air dash (once per jump) | B / Circle in the air | Left Shift in the air |
-| Plunge (Falling Axe Kick) | Hold LB + X in the air | Hold Q + left mouse in the air |
-| Fire Whip (mid range, 6.5 m arc) | Hold LB / L1, then Y / Triangle | Hold Q, then F |
-| Flame Wheel (close, all round) | Hold LB / L1, then B / Circle | Hold Q, then Left Shift |
-| Zip strike (Flame Step Strike: dash across to a far enemy and kick it) | Y / Triangle | F |
-| Fa Jin Palm (ability slot: hold to charge, release on the flash) | Hold LB / L1, then hold X / Square | Hold Q, then hold left mouse |
-| Dodge (tap) / Sprint (hold) | B / Circle | Left Shift |
-| Jump | A / Cross | Space |
-| Parry (tap just before a hit lands) | Tap LB / L1 | Q |
-| Fire Blast (ranged skill) | Tap RB / R1 (fires on release) | Right mouse |
-| Drink spirit water (heal) | D-pad down | R |
-| Element select | Hold RB / R1 + Y / B / A / X (Y = Fire; others "not learned yet") | 1-4 |
-| Lock on / off (optional; off by default) | R3 | Middle mouse or Tab |
-| Switch target | Flick right stick while locked | Mouse wheel, or Z / C |
+| Left stick / right stick | Move / camera. Flick the right stick to change target while locked on | WASD / mouse; change target: mouse wheel or Z / C |
+| **X** | Attack. Tap in rhythm for the 5-hit string: press as each hit lands for faster, harder hits. **X X (wait) X** = pause finisher. In the air: the air string | Left mouse |
+| Hold **X** | Launcher (throws the enemy up, you follow) | Hold left mouse |
+| **Y** | Zip strike to a far enemy (keeps your combo going) | F |
+| **B** | Tap: dodge (the stick decides: toward the enemy = slip in, away = evade out, sideways = side-step, none = a safe side-step when something is about to hit you). Hold: sprint. In the air: air dash. **X late in a dodge = dodge strike** | Left Shift |
+| **A** | Jump | Space |
+| Tap **LB** | Parry. Earth only: hold LB to block | Q |
+| Tap **RB** | Ranged skill of the current element (fires on release) | Right mouse |
+| Hold **LB** + X / Y / B | Charged fa jin heavy (in the air: plunge) / mid-range ability / close all-round ability | Hold Q + left mouse / F / Left Shift |
+| Hold **RB** + B / X / A / Y | Switch to **Fire (B, red) / Water (X, blue) / Earth (A, green) / Air (Y, yellow)**: the button's colour is the element. Mid-string it is a **switch strike**: the next hit comes out in the new element, a little harder | 1 Fire, 2 Water, 3 Earth, 4 Air |
+| D-pad down | Heal (spirit water) | R |
+| R3 / L3 | Lock-on (optional) / swap camera shoulder (hold) | Tab or middle mouse / hold V |
+| **View** | Sandbox: start the tutorial; while it runs, tap to skip a step, hold 1 s to quit | F7 starts or quits, F8 skips a step |
 
-- **Ability slots:** LB + X = Fa Jin Palm, LB + Y = Fire Whip, LB + B = Flame Wheel. LB + A is empty and still jumps.
-- **Fire Blast fires on release** so RB can also be the element modifier. A tap longer than 0.35 s (`PlayerInputReader.skillTapMaxTime`) counts as a cancelled element pick and fires nothing.
-- **Defence style is per element** (`GuardSettings.Style`): Fire is **parry only** (Spider-Man 2). A later element can switch to `BlockAndParry` (hold to block, press on time to deflect) in its move set, with no code change.
+- **Ability slots:** LB + X = the element's charged heavy (Fire: Fa Jin Palm), LB + Y = its mid-range ability (Fire Whip), LB + B = its close all-round ability (Flame Wheel). LB + A is empty and still jumps.
+- **The ranged skill fires on release** so RB can also be the element modifier. A tap longer than 0.35 s (`PlayerInputReader.skillTapMaxTime`) counts as a cancelled element pick and fires nothing.
+- **Element buttons** live in `PlayerInputReader`'s `ElementButtonLayout` (Inspector on `Systems`), so the layout can be changed without code. Before Build 05 it was Y Fire, B Water, A Earth, X Air; David chose the colour-matched layout on 1 Oct so the button tells you the element.
+- **Defence style is per element** (`GuardSettings.Style`): Fire, Water and Air are **parry only** (Spider-Man 2); Earth is `BlockAndParry` (hold to block, press on time to deflect).
 
-Sandbox keys (keyboard): **F1** controls overlay, **F3** debug panel (state, frame data, buffered input, i-frames), **F2** slow motion (0.25x) for studying moves, **F5** Fluid preset, **F6** Punishing preset, **F4** respawn player, **T** reset enemies, **Esc** release the mouse / pause (R is Heal).
+Sandbox keys (keyboard): **F1** combos and controls overlay (press again for page 2, a third time to close), **F3** debug panel (state, frame data, buffered input, i-frames), **F2** slow motion (0.25x) for studying moves, **F5** Fluid preset, **F6** Punishing preset (the whole four-element loadout swaps), **F7** tutorial start / quit, **F8** skip a tutorial step, **F4** respawn player, **T** reset enemies, **Esc** release the mouse / pause (R is Heal).
 
 ### Moves (Fire, based on Northern Shaolin)
 
@@ -245,7 +241,7 @@ Names and signatures below are requirements so phase-2 and phase-3 agents can bu
 
 Builds against the factory and HUD APIs above while they're being written, then does the final integration pass once they land.
 
-- Menu **Vaatu's Revenge ▸ Build Fire Combat Sandbox**: creates missing tuning assets in `Assets/_Project/Tuning/` (Fluid and Punishing player + fire move sets, camera, three enemies) without overwriting edited ones, materials, the arena, player, camera rig, input reader, lock-on, enemies at the spawn points, HUD and director; saves `Assets/_Project/Scenes/FireCombatSandbox.unity`, adds it to Build Settings, opens it. Asks before replacing an existing scene. Also **Open Fire Combat Sandbox**.
+- Menu **Vaatu's Revenge ▸ Build Fire Combat Sandbox** (renamed **Build Combat Sandbox** in Build 05): creates missing tuning assets in `Assets/_Project/Tuning/` (Fluid and Punishing player + fire move sets, camera, three enemies) without overwriting edited ones, materials, the arena, player, camera rig, input reader, lock-on, enemies at the spawn points, HUD and director; saves `Assets/_Project/Scenes/FireCombatSandbox.unity`, adds it to Build Settings, opens it. Asks before replacing an existing scene. Also **Open Fire Combat Sandbox** (now **Open Combat Sandbox**).
 - `CombatHud` (OnGUI): health, stamina, Momentum, heal charges, element, charge meter with the sweet-spot mark, target health, preset name, F1 controls overlay, F3 debug panel.
 - `SandboxDirector`: the sandbox keys from section 1, death screen and auto-respawn.
 

@@ -5,14 +5,19 @@ using UnityEngine.InputSystem;
 
 namespace VaatusRevenge
 {
-    // Runs the Fire combat sandbox around the fight itself: the sandbox keys, the death loop and the short
-    // on-screen messages ("toasts") that CombatHud draws.
+    // Runs the combat sandbox around the fight itself: the sandbox keys, the death loop and the short on-screen
+    // messages ("toasts") that CombatHud draws.
     //   F2       debug slow motion, for studying moves
     //   F4       respawn the player at the spawn point (while dead: skip the wait)
-    //   F5 / F6  switch the player to the Fluid / Punishing tuning preset, live, to compare the two feels
+    //   F5 / F6  switch the player to the Fluid / Punishing preset, live, to compare the two feels (with loadouts
+    //            assigned, the whole loadout swaps: all four elements' moves)
     //   T        reset every enemy and sparring dummy (projectiles in flight are cleared too)
     //   Esc      pause / resume (PlayerInputReader also releases the mouse on Esc)
-    // F1 (controls) and F3 (debug panel) belong to CombatHud. None of these keys is bound to a gameplay action.
+    // F1 (controls) and F3 (debug panel) belong to CombatHud; View, F7 and F8 (the tutorial) to TutorialDirector. None
+    // of these keys is bound to a gameplay action.
+    //
+    // The tutorial borrows the arena through this director: it hides the enemies (SetEnemiesActive), forces the Fluid
+    // preset and locks F5 / F6 (PresetsLocked), and moves the respawn point (SpawnOverride) while it runs.
     //
     // The death loop is souls-like: when the player dies, wait a moment, then respawn them and reset every
     // enemy, so each attempt starts from the same situation. That repetition is what makes a hard fight feel
@@ -81,6 +86,8 @@ namespace VaatusRevenge
         string toastText = "";
         float toastRemaining;
         bool warnedNoPlayer;
+        bool punishingActive;          // the preset last applied (the player is built with Fluid)
+        readonly List<EnemyController> hiddenEnemies = new List<EnemyController>(8);
 
         public bool IsPaused => paused;
         // True between the player dying and the automatic respawn.
@@ -115,6 +122,21 @@ namespace VaatusRevenge
             set { autoResetEnemiesWhenAllDead = value; }
         }
 
+        // True after F6 (or ApplyPunishingPreset) until F5.
+        public bool IsPunishing => punishingActive;
+
+        // While true, F5 / F6 only say why they can't be used (the tutorial runs on Fluid).
+        public bool PresetsLocked { get; set; }
+
+        // When set, deaths and respawns put the player here instead of at PlayerSpawn (the tutorial's start).
+        public Transform SpawnOverride { get; set; }
+
+        // An enemy SetEnemiesActive leaves alone (the tutorial's sparring partner).
+        public EnemyController TutorialPartner { get; set; }
+
+        // False while SetEnemiesActive(false) has them hidden.
+        public bool EnemiesActive => hiddenEnemies.Count == 0;
+
         // One-call setup that works at edit time (the builder calls it before saving the scene) and in play mode.
         public void Configure(PlayerTuningAsset fluidTuning, MoveSetAsset fluidMoves,
                               PlayerTuningAsset punishingTuning, MoveSetAsset punishingMoves, Transform playerSpawn)
@@ -138,10 +160,52 @@ namespace VaatusRevenge
         }
 
         // Shows or hides every enemy the director resets (the tutorial clears the arena for the sparring partner).
-        // STUB: package D implements it.
+        // Sparring dummies stay. Hiding clears projectiles in flight; showing brings the hidden ones back fresh at their
+        // spawn points, so nobody resumes a swing from before.
         public void SetEnemiesActive(bool active)
         {
-            Debug.Log("SandboxDirector.SetEnemiesActive(" + active + ") is not implemented yet.", this);
+            if (!active)
+            {
+                if (hiddenEnemies.Count > 0) return;
+                FireProjectile.ClearAll();
+                GatherEnemies();
+                for (int i = 0; i < enemyBuffer.Count; i++)
+                {
+                    EnemyController enemy = enemyBuffer[i];
+                    if (ReferenceEquals(enemy, TutorialPartner)) continue;
+                    hiddenEnemies.Add(enemy);
+                    enemy.gameObject.SetActive(false);
+                }
+                allDeadRemaining = -1f;
+                return;
+            }
+            for (int i = 0; i < hiddenEnemies.Count; i++)
+            {
+                EnemyController enemy = hiddenEnemies[i];
+                if (enemy == null) continue;
+                enemy.gameObject.SetActive(true);
+                enemy.ResetEnemy();
+            }
+            hiddenEnemies.Clear();
+        }
+
+        // The two presets by call (the tutorial forces Fluid, then puts back what was there). False when the preset
+        // can't be applied (no player or no assets: the reason is shown).
+        public bool ApplyFluidPreset(bool announce)
+        {
+            return ApplyPreset(fluidTuning, fluidLoadout, fluidMoves, "F5", false, announce);
+        }
+
+        public bool ApplyPunishingPreset(bool announce)
+        {
+            return ApplyPreset(punishingTuning, punishingLoadout, punishingMoves, "F6", true, announce);
+        }
+
+        // Puts the player at the spawn point (SpawnOverride while it's set) without a message: a fresh start there.
+        public bool PlacePlayerAtSpawn()
+        {
+            respawnPending = false;
+            return RespawnPlayerAtSpawn();
         }
 
         public void RegisterEnemy(EnemyController enemy)
@@ -157,8 +221,14 @@ namespace VaatusRevenge
         // Shows a short message in the middle of the screen (drawn by CombatHud).
         public void ShowToast(string message)
         {
+            ShowToast(message, toastDuration);
+        }
+
+        // The same, for this many real seconds (longer for something the player should read, like the tutorial hint).
+        public void ShowToast(string message, float seconds)
+        {
             toastText = message ?? "";
-            toastRemaining = string.IsNullOrEmpty(toastText) ? 0f : Mathf.Max(ToastFadeTime, toastDuration);
+            toastRemaining = string.IsNullOrEmpty(toastText) ? 0f : Mathf.Max(ToastFadeTime, seconds);
         }
 
         // Pause stops time (TimeScaleController) and gameplay input (PlayerInputReader); resuming restores both.
@@ -245,8 +315,8 @@ namespace VaatusRevenge
             if (keyboard.escapeKey.wasPressedThisFrame) SetPaused(!paused);
             if (keyboard.f2Key.wasPressedThisFrame) ToggleDebugSlowMotion();
             if (keyboard.f4Key.wasPressedThisFrame) RespawnPlayer();
-            if (keyboard.f5Key.wasPressedThisFrame) ApplyPreset(fluidTuning, fluidLoadout, fluidMoves, "F5");
-            if (keyboard.f6Key.wasPressedThisFrame) ApplyPreset(punishingTuning, punishingLoadout, punishingMoves, "F6");
+            if (keyboard.f5Key.wasPressedThisFrame) PresetKey(false);
+            if (keyboard.f6Key.wasPressedThisFrame) PresetKey(true);
             if (keyboard.tKey.wasPressedThisFrame) ResetEnemies();
         }
 
@@ -259,24 +329,38 @@ namespace VaatusRevenge
                 : "Slow motion off");
         }
 
-        void ApplyPreset(PlayerTuningAsset tuning, ElementLoadoutAsset loadout, MoveSetAsset moves, string key)
+        void PresetKey(bool punishing)
+        {
+            if (PresetsLocked)
+            {
+                ShowToast("The tutorial runs on Fluid (hold View or press F7 to quit it)");
+                return;
+            }
+            if (punishing) ApplyPunishingPreset(true);
+            else ApplyFluidPreset(true);
+        }
+
+        bool ApplyPreset(PlayerTuningAsset tuning, ElementLoadoutAsset loadout, MoveSetAsset moves, string key, bool punishing,
+                         bool announce)
         {
             PlayerController current = ResolvePlayer();
             if (current == null)
             {
                 ShowToast("No player to apply the preset to");
-                return;
+                return false;
             }
             if (tuning == null || (loadout == null && moves == null))
             {
                 Debug.LogWarning("SandboxDirector: the " + key + " preset has no tuning or move set asset assigned. Select 'Systems' "
-                                 + "and fill in the Presets fields, or rebuild with Vaatu's Revenge > Build Fire Combat Sandbox.", this);
+                                 + "and fill in the Presets fields, or rebuild with Vaatu's Revenge > Build Combat Sandbox.", this);
                 ShowToast(key + " preset is missing (see Console)");
-                return;
+                return false;
             }
             if (loadout != null) current.ApplyTuning(tuning, loadout);
             else current.ApplyTuning(tuning, moves);
-            ShowToast("Preset: " + (string.IsNullOrEmpty(tuning.PresetName) ? tuning.name : tuning.PresetName));
+            punishingActive = punishing;
+            if (announce) ShowToast("Preset: " + (string.IsNullOrEmpty(tuning.PresetName) ? tuning.name : tuning.PresetName));
+            return true;
         }
 
         // The Died event is the main trigger; watching IsDead as well catches a death that happened before
@@ -345,7 +429,12 @@ namespace VaatusRevenge
 
         void GetSpawn(PlayerController current, out Vector3 position, out float yaw)
         {
-            if (playerSpawn != null)
+            if (SpawnOverride != null)
+            {
+                position = SpawnOverride.position;
+                yaw = SpawnOverride.eulerAngles.y;
+            }
+            else if (playerSpawn != null)
             {
                 position = playerSpawn.position;
                 yaw = playerSpawn.eulerAngles.y;
@@ -421,7 +510,7 @@ namespace VaatusRevenge
 
         void AddEnemy(EnemyController enemy)
         {
-            if (enemy == null || (!enemy.isActiveAndEnabled && !enemy.IsDead)) return;
+            if (enemy == null || (!enemy.isActiveAndEnabled && !enemy.IsDead) || hiddenEnemies.Contains(enemy)) return;
             if (!enemyBuffer.Contains(enemy)) enemyBuffer.Add(enemy);
         }
 
@@ -450,7 +539,7 @@ namespace VaatusRevenge
             {
                 warnedNoPlayer = true;
                 Debug.LogWarning("SandboxDirector can't find the player, so respawn and presets do nothing. Rebuild the scene with "
-                                 + "Vaatu's Revenge > Build Fire Combat Sandbox, or assign the Player field on 'Systems'.", this);
+                                 + "Vaatu's Revenge > Build Combat Sandbox, or assign the Player field on 'Systems'.", this);
             }
             return null;
         }
