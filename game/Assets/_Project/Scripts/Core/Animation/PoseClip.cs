@@ -38,10 +38,17 @@ namespace VaatusRevenge.Core
         public float LastActiveEnd => Startup + Math.Max(0, HitCount - 1) * Math.Max(0f, HitInterval) + Active;
         public float Total => LastActiveEnd + Recovery;
 
+        // A player move's frame data. A multi-hit move (MoveData.HitCount > 1) spreads its sub-hits over its Active time,
+        // sub-hit k landing at Startup + k x HitInterval and the last one live until the move's ActiveEnd. As clip timing
+        // that is HitCount strikes HitInterval apart with Active = the last sub-hit's live time, so Interval keys land on
+        // each sub-hit and LastActiveEnd is the move's own ActiveEnd.
         public static ClipTiming FromMove(MoveData move)
         {
             if (move == null) return default;
-            return new ClipTiming { Startup = move.Startup, Active = move.Active, Recovery = move.Recovery, HitCount = 1 };
+            int hits = Math.Max(1, move.HitCount);
+            float interval = hits > 1 ? Math.Max(0f, move.HitInterval) : 0f;
+            float lastActive = Math.Max(0f, move.Active - (hits - 1) * interval);
+            return new ClipTiming { Startup = move.Startup, Active = lastActive, Recovery = move.Recovery, HitCount = hits, HitInterval = interval };
         }
 
         public static ClipTiming FromShares(float duration, float startupShare, float activeShare)

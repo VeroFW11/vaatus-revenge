@@ -51,7 +51,16 @@ namespace VaatusRevenge.Core
         public Dictionary<string, PoseClip> StyleOverrides(string style)
         {
             var overrides = new Dictionary<string, PoseClip>(StringComparer.Ordinal);
-            if (string.IsNullOrEmpty(style) || Clips == null) return overrides;
+            FillStyleOverrides(style, overrides);
+            return overrides;
+        }
+
+        // The same, refilling a table the caller keeps (an animator changing style: the player switching element).
+        public void FillStyleOverrides(string style, Dictionary<string, PoseClip> overrides)
+        {
+            if (overrides == null) return;
+            overrides.Clear();
+            if (string.IsNullOrEmpty(style) || Clips == null) return;
             string prefix = style + StyleSeparator;
             for (int i = 0; i < Clips.Length; i++)
             {
@@ -59,7 +68,6 @@ namespace VaatusRevenge.Core
                 if (clip == null || !clip.IsValid || !clip.Key.StartsWith(prefix, StringComparison.Ordinal)) continue;
                 overrides[clip.Key.Substring(prefix.Length)] = clip;
             }
-            return overrides;
         }
 
         // Call after editing Clips (the Inspector does it through the asset's OnValidate).

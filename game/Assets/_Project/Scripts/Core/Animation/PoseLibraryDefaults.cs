@@ -24,9 +24,14 @@ namespace VaatusRevenge.Core
 
         public static PoseClip[] CreateClips()
         {
-            var clips = new List<PoseClip>(64);
+            var clips = new List<PoseClip>(160);
             AddStates(clips);
             AddPlayerMoves(clips);
+            AddFireBranches(clips);
+            AddDodges(clips);              // PoseLibraryDefaults.Dodge.cs
+            AddWater(clips);               // PoseLibraryDefaults.Water.cs
+            AddEarth(clips);               // PoseLibraryDefaults.Earth.cs
+            AddAir(clips);                 // PoseLibraryDefaults.Air.cs
             AddEnemyMoves(clips);
             AddPlaceholders(clips);
             return clips.ToArray();
@@ -796,6 +801,109 @@ namespace VaatusRevenge.Core
                 .Build());
         }
 
+        // Fire's pause branch (X X, wait, X) and its dodge strike (Build 05).
+        static void AddFireBranches(List<PoseClip> clips)
+        {
+            PoseSpec guard = Guard();
+
+            // Sweeping Flame Kick: drop low onto the bent left leg and spin, the straight right leg sweeping the floor
+            //    through the arc at ankle height, then carry the spin round and rise back into guard. RootYaw 0 -> -360.
+            clips.Add(Strike(AnimationKeys.SweepKick, guard)
+                .K(KeyPhase.Startup, 0.6f, PoseEase.InOut, s =>
+                {
+                    s.Set(PoseChannel.RootYaw, 30f).Set(PoseChannel.LookFront, 0.5f).Set(PoseChannel.ArmFollow, 0.3f);
+                    s.Hips(0f, -0.4f, 0.02f).Pelvis(10f, 5f).Torso(18f, 0f, 8f);
+                    s.Foot(L, 0.06f, Ground, 0.14f, 20f, 0f, 20f);
+                    s.Kick(R, 70f, -40f, 0.6f, 20f, 10f);
+                    s.Arm(L, 30f, -60f, 0.9f, 10f).Arm(R, 50f, 10f, 0.7f, 10f);
+                })
+                .K(KeyPhase.Active, 0f, PoseEase.Snap, s =>
+                {
+                    s.Set(PoseChannel.RootYaw, 0f).Hips(0f, -0.48f, 0.02f).Torso(22f, 0f, 12f);
+                    s.Kick(R, 90f, -25f, 1f, 30f, 8f);   // the shin skims the floor
+                    s.Arm(L, 25f, -70f, 1f, 10f).Arm(R, 70f, 0f, 0.8f, 10f);
+                })
+                .K(KeyPhase.Active, 1f, PoseEase.Linear, s => s.Set(PoseChannel.RootYaw, -160f))
+                .K(KeyPhase.Recovery, 0.45f, PoseEase.Out, s =>
+                {
+                    s.Set(PoseChannel.RootYaw, -300f).Set(PoseChannel.LookFront, 0.9f);
+                    s.Hips(0f, -0.28f, 0f).Torso(10f, 0f, 4f).Pelvis(4f, 10f);
+                    s.Kick(R, 60f, -55f, 0.7f, 20f, 20f);
+                    s.Arm(L, 10f, 0f, 0.6f, 10f).Arm(R, 20f, 10f, 0.6f, 10f);
+                })
+                .K(KeyPhase.Recovery, 1f, PoseEase.InOut, s => { s.CopyFrom(guard); s.Set(PoseChannel.RootYaw, -360f); })
+                .Build());
+
+            // Rising Phoenix Kick: out of the sweep, the right leg swings straight up through the foe's chin as the body
+            //    hops and leans back, both arms flung up with it: the kick that throws the foe into the air.
+            clips.Add(Strike(AnimationKeys.RisingPhoenixKick, guard)
+                .K(KeyPhase.Startup, 0.35f, PoseEase.InOut, s =>
+                {
+                    s.Hips(0f, -0.24f, 0f).Pelvis(4f, 10f).Torso(16f, 4f);
+                    s.Arm(L, 30f, -50f, 0.85f, 10f).Arm(R, 25f, -55f, 0.85f, 10f).Set(PoseChannel.ArmFollow, 0.2f);
+                    s.Kick(R, 6f, -96f, 0.88f, 0f, 30f);   // the rear foot pushing off
+                })
+                .K(KeyPhase.Startup, 0.65f, PoseEase.Linear, s =>
+                {
+                    s.Hips(0f, -0.14f, 0f).Pelvis(0f, 6f).Torso(6f, 3f);
+                    s.Kick(R, 2f, -42f, 0.72f, 0f, 0f);
+                    s.Arm(L, 30f, -10f, 0.88f, 10f).Arm(R, 30f, -18f, 0.88f, 10f);
+                })
+                .K(KeyPhase.Startup, 0.85f, PoseEase.Linear, s =>
+                {
+                    s.Hips(0f, -0.04f, 0f).Pelvis(-5f, 3f).Torso(-8f, 2f);
+                    s.Kick(R, -2f, 32f, 0.92f, 0f, -14f);
+                    s.Arm(L, 30f, 30f, 0.9f, 10f).Arm(R, 30f, 20f, 0.9f, 10f);
+                })
+                .K(KeyPhase.Active, 0f, PoseEase.Snap, s =>
+                {
+                    s.Hips(0f, 0.03f, 0f).Pelvis(-10f, 0f).Torso(-16f, 0f).Set(PoseChannel.LookFront, 0.5f);
+                    s.Kick(R, -4f, 58f, 1f, 0f, -20f).Foot(L, 0.1f, 0.12f, 0.02f, 5f, 35f);
+                    s.Arm(L, 30f, 66f, 0.95f, 10f).Arm(R, 30f, 58f, 0.95f, 10f);
+                })
+                .K(KeyPhase.Active, 1f, PoseEase.Linear, s => s.Kick(R, -4f, 70f, 1f, 0f, -15f))
+                .K(KeyPhase.Recovery, 0.4f, PoseEase.Out, s =>
+                {
+                    s.Hips(0f, -0.2f, 0.04f).Pelvis(0f, 15f).Torso(10f, 4f).Set(PoseChannel.LookFront, 1f);
+                    s.Foot(R, 0.14f, Ground, 0.3f, 10f).Foot(L, 0.12f, Ground, -0.2f, 30f);
+                    s.Arm(L, -8f, 12f, 0.6f, 5f, 20f).Arm(R, -40f, 28f, 0.4f, 10f, 30f).Set(PoseChannel.ArmFollow, 0.5f);
+                })
+                .K(KeyPhase.Recovery, 1f, PoseEase.InOut, guard)
+                .Build());
+
+            // Turning Heel Counter (dodge strike): spin to the right until the back faces the foe, then the right heel
+            //    thrusts straight back into it, the head turned to watch over the shoulder; finish the turn into guard.
+            clips.Add(Strike(AnimationKeys.SpinBackKick, guard)
+                .K(KeyPhase.Startup, 0.4f, PoseEase.In, s =>
+                {
+                    s.Set(PoseChannel.RootYaw, 70f).Set(PoseChannel.LookFront, 0.7f).Set(PoseChannel.ArmFollow, 0.6f);
+                    s.Hips(0f, -0.14f, 0f).Pelvis(0f, 8f).Torso(10f, 0f);
+                    s.Foot(L, 0.06f, Ground, 0.04f, 0f, 0f, 0f, 1f, 1f);
+                    s.Kick(R, 120f, -60f, 0.6f, 0f, 10f);
+                    s.Arm(L, -30f, 30f, 0.45f, 15f, 30f).Arm(R, -30f, 25f, 0.45f, 15f, 30f);
+                })
+                .K(KeyPhase.Startup, 0.82f, PoseEase.Linear, s =>
+                {
+                    s.Set(PoseChannel.RootYaw, 160f).Torso(24f, 0f).Pelvis(6f, 0f);
+                    s.Kick(R, 174f, -8f, 0.78f, 0f, -20f);   // the knee chambered, heel aimed back at the foe
+                })
+                .K(KeyPhase.Active, 0f, PoseEase.Snap, s =>
+                {
+                    s.Set(PoseChannel.RootYaw, 180f).Torso(32f, 0f).Pelvis(10f, 0f);
+                    s.Kick(R, 180f, 6f, 1f, 0f, -30f);
+                    s.Arm(L, 30f, -20f, 0.8f, 10f).Arm(R, 20f, -30f, 0.8f, 10f);
+                })
+                .K(KeyPhase.Active, 1f, PoseEase.Linear, s => s.Kick(R, 180f, 8f, 1f, 0f, -30f))
+                .K(KeyPhase.Recovery, 0.4f, PoseEase.Out, s =>
+                {
+                    s.Set(PoseChannel.RootYaw, 260f).Torso(10f, 0f).Pelvis(0f, 10f);
+                    s.Kick(R, 120f, -50f, 0.55f, 0f, 10f);
+                    s.Arm(L, -10f, 15f, 0.6f, 10f, 20f).Arm(R, -30f, 25f, 0.45f, 10f, 30f);
+                })
+                .K(KeyPhase.Recovery, 1f, PoseEase.InOut, s => { s.CopyFrom(guard); s.Set(PoseChannel.RootYaw, 360f); })
+                .Build());
+        }
+
         // ------------------------------------------------------------------ enemies
 
         static void AddEnemyMoves(List<PoseClip> clips)
@@ -998,6 +1106,29 @@ namespace VaatusRevenge.Core
             {
                 return Add(phase, at, ease, pose.Clone());
             }
+
+            // The sub-hits of a multi-hit strike (MoveData.HitCount > 1), on Interval keys. The first snaps to full extension
+            // on the move's first active frame (Interval 0 = Active 0) and holds there for HoldShare of the interval, so the
+            // hit shows on the frame it lands at any frame rate. The rest flow: the body moves at an even speed through the
+            // in-between pose (between(pose, k)) and on into each following strike (strike(pose, k)) as it lands. Flurries
+            // are a few frames per hit, so a stop-and-snap per hit would read as popping rather than speed.
+            public ClipBuilder Hits(int hits, Action<PoseSpec, int> strike, Action<PoseSpec, int> between)
+            {
+                int n = Math.Max(1, hits);
+                float step = n > 1 ? 1f / (n - 1) : 0f;
+                for (int k = 0; k < n; k++)
+                {
+                    int hit = k;
+                    float at = hit * step;
+                    if (hit > 0 && between != null) K(KeyPhase.Interval, at - step * BetweenShare, PoseEase.Linear, s => between(s, hit));
+                    K(KeyPhase.Interval, at, hit == 0 ? PoseEase.Snap : PoseEase.Linear, s => strike(s, hit));
+                    if (hit == 0 && n > 1) K(KeyPhase.Interval, at + step * HoldShare, PoseEase.Linear, (Action<PoseSpec>)null);
+                }
+                return this;
+            }
+
+            const float HoldShare = 0.2f;        // of the interval: the first strike holds full extension this long...
+            const float BetweenShare = 0.45f;    // ...and each in-between pose comes this long before the next sub-hit
 
             ClipBuilder Add(KeyPhase phase, float at, PoseEase ease, PoseSpec pose)
             {

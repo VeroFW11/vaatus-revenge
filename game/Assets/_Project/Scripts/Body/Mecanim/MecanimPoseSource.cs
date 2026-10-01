@@ -328,9 +328,23 @@ namespace VaatusRevenge
 
         int UsableEntry(string key)
         {
+            if (StyledProcedurally(key)) return -1;
             int index = animationSet.IndexOf(key);
             return index >= 0 && index < inputOfEntry.Length && inputOfEntry[index] >= 0 ? index : -1;
         }
+
+        // The player's element styles (Water's Tai Chi stance, Earth's charge...) are procedural clips ("water:idle"). The
+        // pack set is one set of clips for every element, so for a key the current style overrides, the procedural pose
+        // wins: otherwise every element would stand in the same pack idle.
+        bool StyledProcedurally(string key)
+        {
+            if (procedural == null) procedural = GetComponent<BodyAnimatorDriver>();
+            FighterAnimator body = procedural != null ? procedural.Animator : null;
+            if (body == null || string.IsNullOrEmpty(body.Style)) return false;
+            return !ReferenceEquals(body.Clip(key), body.Library.Get(key));
+        }
+
+        BodyAnimatorDriver procedural;
 
         string ClipName(int entryIndex)
         {

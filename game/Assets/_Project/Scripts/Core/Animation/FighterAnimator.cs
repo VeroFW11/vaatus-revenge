@@ -31,6 +31,9 @@ namespace VaatusRevenge.Core
         public bool HitReaction;            // took a hit this frame: flinch away from it
         public Vector3 HitDirectionLocal;   // direction the blow travelled (attacker -> us), fighter frame
         public float HitStrength;           // 0..1 (a light jab ~0.4, a heavy ~1)
+
+        public string Style;                // the clip style to use from now on (the player's element: "", "water", "earth",
+                                            // "air"); null = keep the animator's current style (enemies never change theirs)
     }
 
     // The procedural martial-arts animator: turns "what the fighter is doing" into a full-body pose every frame.
@@ -51,7 +54,8 @@ namespace VaatusRevenge.Core
         const float MaxDelta = 0.25f;       // a frame longer than this (a hitch) is treated as this long
 
         readonly PoseLibrary library;
-        readonly System.Collections.Generic.Dictionary<string, PoseClip> styleClips;
+        readonly System.Collections.Generic.Dictionary<string, PoseClip> styleClips =
+            new System.Collections.Generic.Dictionary<string, PoseClip>(StringComparer.Ordinal);
         readonly PoseSolver solver;
         readonly BodyPose pose = new BodyPose();
 
@@ -77,6 +81,7 @@ namespace VaatusRevenge.Core
         string showingKey = "";
         int showingSerial = int.MinValue;
         bool showingAction;
+        bool showingFrameData;
         float fadeTime;
         float fadeDuration;
         float travel;
@@ -106,12 +111,35 @@ namespace VaatusRevenge.Core
         {
             this.library = library ?? PoseLibrary.Default;
             Style = style ?? "";
-            styleClips = this.library.StyleOverrides(Style);
+            this.library.FillStyleOverrides(Style, styleClips);
             solver = new PoseSolver(skeleton ?? HumanoidSkeleton.Create());
             Reset();
         }
 
-        public string Style { get; }
+        public string Style { get; private set; }
+
+        // Changes the clip style while running (the player switching element: Water's stance, Earth's charge...). Nothing
+        // pops: the whole body blends from what was on screen into the new style over AnimatorSettings.StyleFade, and the
+        // legs of an upper-body action (a parry, the switch flourish) blend into the new stance with the locomotion layer.
+        // A strike already playing keeps its own timing (strike clips are the move's own, never styled). Builds the
+        // override table, so call it on a change only (Update does, from FighterAnimInput.Style).
+        public void SetStyle(string style)
+        {
+            style = style ?? "";
+            if (style == Style) return;
+            Style = style;
+            library.FillStyleOverrides(Style, styleClips);
+            AnimatorSettings settings = library.Settings ?? fallbackSettings;
+            locoFrom.CopyFrom(locoSpec);
+            locoFadeTime = 0f;
+            fadeFromAir = false;
+            if (!showingAction || !showingFrameData)
+            {
+                fadeFrom.CopyFrom(lastShown);
+                fadeTime = 0f;
+                fadeDuration = AnimMath.Clamp(settings.StyleFade, settings.MinFade, Math.Max(settings.MaxFade, settings.StyleFade));
+            }
+        }
 
         // The clip this fighter plays for a key: its style's version if there is one. No allocation.
         public PoseClip Clip(string key)
@@ -146,6 +174,7 @@ namespace VaatusRevenge.Core
             showingKey = "";
             showingSerial = int.MinValue;
             showingAction = false;
+            showingFrameData = false;
             fadeTime = 0f;
             fadeDuration = 0f;
             travel = 0f;
@@ -185,6 +214,7 @@ namespace VaatusRevenge.Core
             clock += dt;
             AnimatorSettings settings = library.Settings ?? fallbackSettings;
             Vector3 velocity = AnimMath.IsFinite(input.LocalVelocity) ? input.LocalVelocity : Vector3.Zero;
+            if (input.Style != null && input.Style != Style) SetStyle(input.Style);
 
             // ---- 1. locomotion layer (always evaluated, so it's ready the moment an action ends)
             UpdateLocomotion(in input, velocity, dt, settings);
@@ -452,6 +482,7 @@ namespace VaatusRevenge.Core
             showingKey = key;
             showingSerial = input.ActionSerial;
             showingAction = action;
+            showingFrameData = action && input.HasFrameData;
             travel = 0f;
         }
 

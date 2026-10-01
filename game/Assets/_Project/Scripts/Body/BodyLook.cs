@@ -8,6 +8,12 @@ namespace VaatusRevenge
     public enum BodyWeapon { None, Dao, PracticeStick, Crossbow }
     public enum BodyHeadgear { Topknot, Helmet, Hood, None }
 
+    // How the clothes are cut. Plain: a tunic with sleeves, trousers, wraps and a sash in Trim (every enemy). CrossCollar:
+    // the Avatar's outfit from the chosen character sheet (docs/Art/Character-Sheets/Player-Avatar-Style-B-chosen.webp): a
+    // sleeveless cross-collar tunic over an undershirt, bare arms with leather bracers, a wide sash with trimmed edges and
+    // a hanging tail, baggy trousers gathered at the calves, shin wraps, cloth shoes, a tied topknot and a pendant.
+    public enum BodyOutfit { Plain, CrossCollar }
+
     [Serializable]
     public class BodyLook
     {
@@ -36,15 +42,45 @@ namespace VaatusRevenge
         [Tooltip("Animation style: which clip variants the body uses ('' = unarmed, 'sword', 'crossbow', 'dummy').")]
         public string AnimationStyle = "";
 
+        [Header("Outfit (CrossCollar only)")]
+        public BodyOutfit Outfit = BodyOutfit.Plain;
+        [Tooltip("The undershirt showing in the tunic's V (charcoal).")]
+        public Color Undershirt = new Color(0.16f, 0.15f, 0.16f);
+        [Tooltip("The tunic's collar and hem edging (a darker shade of the tunic).")]
+        public Color TunicEdge = new Color(0.3f, 0.06f, 0.09f);
+        [Tooltip("The wide sash and its hanging tail.")]
+        public Color Sash = new Color(0.08f, 0.075f, 0.075f);
+        [Tooltip("The sash's and the hem's trim (gold).")]
+        public Color SashTrim = new Color(0.78f, 0.58f, 0.22f);
+        [Tooltip("Leather bracers on the forearms.")]
+        public Color Bracers = new Color(0.1f, 0.085f, 0.085f);
+        [Tooltip("The bracers' straps.")]
+        public Color BracerStraps = new Color(0.3f, 0.17f, 0.12f);
+        [Tooltip("Cloth wraps on the shins.")]
+        public Color Wraps = new Color(0.22f, 0.16f, 0.15f);
+        public Color Shoes = new Color(0.07f, 0.065f, 0.065f);
+        [Tooltip("The tie round the topknot (and its ribbon).")]
+        public Color HairTie = new Color(0.4f, 0.07f, 0.11f);
+        [Tooltip("The small pendant on a cord at the throat.")]
+        public Color Pendant = new Color(0.72f, 0.42f, 0.2f);
+
         public BodyLook Clone()
         {
             return (BodyLook)MemberwiseClone();
         }
 
-        // The Avatar: Fire Nation red with gold sash and wraps, a topknot.
+        // The Avatar, as on the chosen character sheet: a deep crimson sleeveless cross-collar tunic over a charcoal
+        // undershirt, bare warm-tan arms with black leather bracers, a wide black sash trimmed in gold with its tail at the
+        // left hip, baggy dark maroon trousers gathered at the calves, dark shin wraps, black cloth shoes, black hair in a
+        // high topknot tied in dark red, and a small bronze pendant. (PlayerBodySettings.BodyColor tints the tunic.)
         public static BodyLook Player()
         {
-            return new BodyLook { Name = "Avatar" };
+            return new BodyLook
+            {
+                Name = "Avatar", Outfit = BodyOutfit.CrossCollar,
+                Cloth = new Color(0.5f, 0.1f, 0.15f), Pants = new Color(0.27f, 0.07f, 0.1f), Trim = new Color(0.78f, 0.58f, 0.22f),
+                Skin = new Color(0.78f, 0.53f, 0.36f), Dark = new Color(0.06f, 0.05f, 0.05f)
+            };
         }
 
         // Dao soldier: dark red lacquered armour, helmet, a dao in the right hand.
