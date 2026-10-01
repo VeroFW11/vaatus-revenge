@@ -12,7 +12,7 @@ namespace VaatusRevenge.EditorTools
     // Puts the painted player model (the GLB David chose) on the player, in place of the grey-box body.
     //
     //   Vaatu's Revenge > Use Player Avatar Model   adds it to the player in the open scene (and remembers the choice,
-    //                                               so Build Fire Combat Sandbox adds it every time it rebuilds).
+    //                                               so Build Combat Sandbox adds it every time it rebuilds).
     //   Vaatu's Revenge > Use Procedural Body       takes it off again (and remembers that too).
     //
     // What gets added: an "AvatarModel" child of the player holding the imported model, and a SkinnedAvatarMirror on
@@ -80,7 +80,7 @@ namespace VaatusRevenge.EditorTools
                     + "Unzip the art bundle into the repository folder (so the file lands at that path), wait for Unity to "
                     + "import it, then run this again. If the file is there but this still appears, check the Console: "
                     + "glTFast (Window > Package Manager) must be installed to import .glb files.\n\n"
-                    + "From now on, Build Fire Combat Sandbox will add the model by itself once the file is there.",
+                    + "From now on, Build Combat Sandbox will add the model by itself once the file is there.",
                     "OK");
                 return;
             }
@@ -88,7 +88,7 @@ namespace VaatusRevenge.EditorTools
             if (player == null)
             {
                 EditorUtility.DisplayDialog(DialogTitle,
-                    "There's no player in the open scene.\n\nRun Vaatu's Revenge > Build Fire Combat Sandbox: it adds the model "
+                    "There's no player in the open scene.\n\nRun Vaatu's Revenge > Build Combat Sandbox: it adds the model "
                     + "to the player by itself. Or open a scene that has the player and run this again.",
                     "OK");
                 return;

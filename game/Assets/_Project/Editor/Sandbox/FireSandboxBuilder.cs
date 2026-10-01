@@ -142,11 +142,8 @@ namespace VaatusRevenge.EditorTools
             var created = new List<string>();
             ElementVfxLibraryAsset library = SandboxVfxAssets.LoadOrCreate(created);
             int found = SandboxVfxAssets.RelinkTextures(library);
-            if (found < 0)
-                Debug.LogWarning("Effect pictures: the picture importer (VfxTextureImporter) isn't in this project yet, so nothing was linked.", library);
-            else
-                Debug.Log("Effect pictures linked: " + found + " slot(s) have a picture in " + SandboxVfxAssets.Folder
-                          + ". Empty slots use the built-in stand-ins.", library);
+            Debug.Log("Effect pictures linked: " + found + " slot(s) have a picture in " + SandboxVfxAssets.Folder
+                      + ". Empty slots use the built-in stand-ins.", library);
             EditorGUIUtility.PingObject(library);
         }
 
@@ -249,6 +246,9 @@ namespace VaatusRevenge.EditorTools
                 // Martial-arts pack clips (if imported and mapped with Build Animation Set From ThirdParty) replace the
                 // procedural moves they match; without them this does nothing.
                 MecanimPoseSource.AttachIfAvailable(player.gameObject, AnimationSetBuilder.LoadFireSet());
+                // The player's skinned model (Art/Characters, see its README) wears the procedural body's pose when it's in
+                // the project and chosen with Use Player Avatar Model; without it this does nothing and the grey body shows.
+                PlayerAvatarSetup.AttachIfAvailable(player.gameObject);
                 Undo.RegisterCreatedObjectUndo(player.gameObject, UndoName);
                 Combatant playerFighter = player.GetComponent<Combatant>();
 

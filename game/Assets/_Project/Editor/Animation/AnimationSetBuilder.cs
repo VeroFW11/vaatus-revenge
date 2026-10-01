@@ -71,7 +71,7 @@ namespace VaatusRevenge.EditorTools
             BuildSet(EnemySetPath, "Enemies", EnemyKeys, candidates, limbs, log);
             AssetDatabase.SaveAssets();
 
-            log.Append("\nRebuild the sandbox (Vaatu's Revenge > Build Fire Combat Sandbox) so the fighters pick the sets up. "
+            log.Append("\nRebuild the sandbox (Vaatu's Revenge > Build Combat Sandbox) so the fighters pick the sets up. "
                 + "Impact times are a guess (peak reach of the striking hand/foot): check each strike in the Animation "
                 + "preview and fix any by hand in the asset; hand edits are kept.");
             Debug.Log(log.ToString());

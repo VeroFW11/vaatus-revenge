@@ -13,7 +13,7 @@ Imported, rigged character models. Today there is one: the player Avatar David p
 2. **Open the project in Unity.** The first time after this change Unity downloads *glTFast*, the package that reads
    `.glb` files (it's listed in `game/Packages/manifest.json`). That needs the internet and takes a minute. When it
    has finished, `player_avatar` shows in the Project window with a small arrow (click it to see the mesh inside).
-3. **Run Vaatu's Revenge > Build Fire Combat Sandbox.** It finds the model and puts it on the player by itself.
+3. **Run Vaatu's Revenge > Build Combat Sandbox.** It finds the model and puts it on the player by itself.
    (Already have a sandbox open and don't want to rebuild? Use **Vaatu's Revenge > Use Player Avatar Model** instead,
    then save the scene with Ctrl+S.)
 4. **Press Play.**

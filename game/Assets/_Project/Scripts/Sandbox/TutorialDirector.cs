@@ -1,4 +1,3 @@
-using System.Reflection;
 using UnityEngine;
 using VaatusRevenge.Core;
 
@@ -383,14 +382,11 @@ namespace VaatusRevenge
             return clip;
         }
 
-        // The beat ring drawn on the floor round the player's feet is the HUD's (CombatHud.ShowFeetBeatRing). It's looked up
-        // by name, so the tutorial runs the same with a HUD that has no such ring: there is simply nothing to turn on.
+        // The beat ring drawn on the floor round the player's feet is the HUD's.
         void SetFeetBeatRing(bool on)
         {
             CombatHud hud = GetComponent<CombatHud>();
-            if (hud == null) return;
-            PropertyInfo property = typeof(CombatHud).GetProperty("ShowFeetBeatRing", BindingFlags.Public | BindingFlags.Instance);
-            if (property != null && property.CanWrite && property.PropertyType == typeof(bool)) property.SetValue(hud, on);
+            if (hud != null) hud.ShowFeetBeatRing = on;
         }
 
         void Toast(string message, float seconds)

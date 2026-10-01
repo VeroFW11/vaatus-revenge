@@ -368,7 +368,13 @@ namespace VaatusRevenge.CombatSim
                     stage = 1;
                     // Any time from the strike until the string would lapse (its combo window, if that reaches past the end).
                     float live = Math.Max(e.Move.TotalDuration, e.Move.ComboWindowEnd) / rate;
-                    viaAt = now() + rng.Range(e.Move.ActiveStart / rate + 0.02f, live - 0.02f);
+                    float earliest = e.Move.ActiveStart / rate + 0.02f;
+                    // A dodge press only keeps for the input buffer, so it must come within that of the move's dodge cancel
+                    // (late in Punishing, e.g. Earth's Tiger Claw Rake at 0.53 s): earlier, no dodge happens at all and the
+                    // trial would measure a dropped press instead of the string across a dodge.
+                    if (via == "dodge")
+                        earliest = Math.Max(earliest, e.Move.DodgeCancelAt / rate - s.Model.Tuning.InputBufferWindow + 0.02f);
+                    viaAt = now() + rng.Range(earliest, live - 0.02f);
                 }
                 else if (stage == 1 && via == "dodge" && e.Type == PlayerEventType.DodgeStarted)
                 {

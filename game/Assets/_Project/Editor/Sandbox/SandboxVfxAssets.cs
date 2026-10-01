@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
@@ -20,11 +19,6 @@ namespace VaatusRevenge.EditorTools
         public const string LibraryPath = Folder + "/ElementVfxLibrary.asset";
         public const string AdditiveMaterialName = "VfxAdditive";
         public const string AlphaBlendMaterialName = "VfxAlphaBlend";
-
-        // The picture importer that does the linking (it also sets the import rules for Art/VFX). Called by name, so the
-        // builder works the same whether or not that importer is in this project yet; without it nothing is linked.
-        const string ImporterTypeName = "VaatusRevenge.EditorTools.VfxTextureImporter";
-        const string RelinkMethodName = "RelinkLibrary";
 
         // Loads the library (creating it if missing: created receives its path) with its two materials, and links the
         // pictures that are there.
@@ -64,24 +58,11 @@ namespace VaatusRevenge.EditorTools
             return library;
         }
 
-        // Points every slot of the library at its picture by file name. Returns how many slots have one, or -1 when the
-        // picture importer isn't in the project (nothing linked).
+        // Points every slot of the library at its picture by file name and returns how many slots have one. The linking is
+        // the picture importer's (VfxTextureImporter, which also sets the import rules for Art/VFX).
         public static int RelinkTextures(ElementVfxLibraryAsset library)
         {
-            if (library == null) return 0;
-            MethodInfo relink = FindRelink();
-            if (relink == null) return -1;
-            object found = relink.Invoke(null, new object[] { library });
-            return found is int count ? count : 0;
-        }
-
-        static MethodInfo FindRelink()
-        {
-            Type importer = typeof(SandboxVfxAssets).Assembly.GetType(ImporterTypeName);
-            if (importer == null) return null;
-            MethodInfo method = importer.GetMethod(RelinkMethodName, BindingFlags.Public | BindingFlags.Static, null,
-                new[] { typeof(ElementVfxLibraryAsset) }, null);
-            return method != null && method.ReturnType == typeof(int) ? method : null;
+            return library != null ? VfxTextureImporter.RelinkLibrary(library) : 0;
         }
     }
 }
