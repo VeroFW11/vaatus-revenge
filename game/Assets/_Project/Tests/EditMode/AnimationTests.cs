@@ -480,6 +480,36 @@ namespace VaatusRevenge.Tests
             Assert.That(worstDrop, Is.LessThan(0.05f), "the hips settle, they don't drop " + worstDrop + " m in one frame");
         }
 
+        // Verify round 2 (R2-S02): the legs stop at once when the fighter stops (J-09), but the arms ease from the run's
+        // swing back to guard instead of snapping there in two or three frames.
+        [Test]
+        public void ArmsEaseBackToGuardWhenARunStops()
+        {
+            HumanoidSkeleton skeleton = HumanoidSkeleton.Create();
+            var animator = new FighterAnimator(PoseLibrary.Default, skeleton);
+            var fk = new ForwardKinematics(skeleton);
+            for (int i = 0; i < 20; i++) animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "" });
+            Vector3 left = Vector3.Zero, right = Vector3.Zero;
+            for (int i = 0; i < 61; i++)
+            {
+                animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "", LocalVelocity = new Vector3(0f, 0f, 5.5f) });
+                fk.Compute(animator.Pose, Vector3.Zero, 0f);
+                left = fk[BodyJoint.LeftHand];
+                right = fk[BodyJoint.RightHand];
+            }
+            float worst = 0f;
+            for (int i = 0; i < 20; i++)
+            {
+                animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "" });
+                fk.Compute(animator.Pose, Vector3.Zero, 0f);
+                worst = Math.Max(worst, Math.Max(Vector3.Distance(left, fk[BodyJoint.LeftHand]), Vector3.Distance(right, fk[BodyJoint.RightHand])));
+                left = fk[BodyJoint.LeftHand];
+                right = fk[BodyJoint.RightHand];
+            }
+            // Before the fix a hand jumped 0.32 m in one frame; easing at SpeedSmoothing (10/s) moves it at most ~0.08 m.
+            Assert.That(worst, Is.LessThan(0.12f), "worst hand jump per frame on the stop: " + worst + " m");
+        }
+
         // W-03: touching down from a jump plants the feet; they don't float back up for a few frames.
         [Test]
         public void LandingKeepsAFootOnTheFloor()

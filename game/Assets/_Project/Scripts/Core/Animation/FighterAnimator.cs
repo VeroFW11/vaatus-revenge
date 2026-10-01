@@ -90,6 +90,10 @@ namespace VaatusRevenge.Core
         // locomotion
         float gaitPhase;
         float smoothSpeed;
+        // The arms' own copy of the locomotion pose (verify R2-S02): the legs stop fast (StopSmoothing), the arms ease from
+        // the run's swing back to guard at the ordinary SpeedSmoothing rate.
+        readonly float[] armPose = new float[PoseSpec.ArmChannels * 2];
+        bool armPoseValid;
         Vector2 smoothDir = new Vector2(0f, 1f);
         float idleTime;
         bool wasGrounded = true;
@@ -180,6 +184,7 @@ namespace VaatusRevenge.Core
             travel = 0f;
             gaitPhase = 0f;
             smoothSpeed = 0f;
+            armPoseValid = false;
             smoothDir = new Vector2(0f, 1f);
             idleTime = 0f;
             wasGrounded = true;
@@ -294,6 +299,23 @@ namespace VaatusRevenge.Core
 
         // ------------------------------------------------------------------ locomotion
 
+        // Once the body has stopped (below MoveThreshold) the legs are already in the stance, but the arms follow the
+        // locomotion pose only at SpeedSmoothing, so a run's arm swing settles to guard over ~0.15 s instead of 2-3 frames.
+        // While moving (or in the air) the arms take the pose as it is, so the swing itself never lags.
+        void EaseArmsOnStop(float speed, bool airborne, float dt, GaitSettings gait)
+        {
+            int first = (int)PoseChannel.LArmYaw;
+            float[] v = locoSpec.Values;
+            bool settling = armPoseValid && !airborne && speed < gait.MoveThreshold && gait.StopSmoothing > gait.SpeedSmoothing && dt > 0f;
+            if (settling)
+            {
+                float k = AnimMath.ExpBlend(gait.SpeedSmoothing, dt);
+                for (int i = 0; i < armPose.Length; i++) v[first + i] = armPose[i] + (v[first + i] - armPose[i]) * k;
+            }
+            for (int i = 0; i < armPose.Length; i++) armPose[i] = v[first + i];
+            armPoseValid = true;
+        }
+
         void UpdateLocomotion(in FighterAnimInput input, Vector3 velocity, float dt, AnimatorSettings settings)
         {
             GaitSettings gait = library.Gait ?? fallbackGait;
@@ -379,6 +401,7 @@ namespace VaatusRevenge.Core
                     landTime += dt;
                 }
             }
+            EaseArmsOnStop(speed, airborne, dt, gait);
             if (locoFadeTime < settings.LocomotionFade)
             {
                 locoFadeTime += dt;
@@ -654,6 +677,7 @@ namespace VaatusRevenge.Core
             public float YawOffset;       // after a release: how far the foot's angle still is from the pose (decays)
             public Vector2 Shown;         // where the ankle was drawn last frame (fighter frame)
             public bool Airborne;         // the foot was in the air: it plants where it touches down, not where the pose says
+            public bool Anchored;         // last frame the lunge anchor held this (unlocked) foot behind the pose's spot
         }
 
         readonly FootLock[] footLocks = new FootLock[2];
@@ -663,6 +687,8 @@ namespace VaatusRevenge.Core
         // a leap: both feet leave the floor for the rush and land as it slows (a dodge or backstep hops the same way).
         // The lift eases in and out (LeapLiftRiseRate / LeapLiftFallRate), so it settles over the hand-back to locomotion
         // instead of dropping the body to the floor in one frame when a dash ends.
+        const float LeapAnchorFadeShare = 0.25f;   // the lunge anchor is gone once the leap is this share of its full lift
+
         void ApplyLeap(in FighterAnimInput input, Vector3 velocity, bool action, float dt, AnimatorSettings s)
         {
             float speed = new Vector2(velocity.X, velocity.Z).Length();
@@ -676,9 +702,13 @@ namespace VaatusRevenge.Core
             if (!(lift > 0f)) return;
             float k = 1f / Math.Max(0.1f, solver.Skeleton.Scale);
             output[PoseChannel.HipsY] += lift * 0.6f * k;
+            // Both feet are off the floor for the rush, so neither is anchored to a spot behind (the anchor would drag the
+            // rear leg out flat): the anchor fades out as the leap rises (verify R2-02).
+            float anchorKeep = 1f - AnimMath.Clamp01(lift / Math.Max(1e-3f, LeapAnchorFadeShare * s.MaxLeapLift));
             for (int i = 0; i < 2; i++)
             {
                 BodySide side = i == 0 ? BodySide.Left : BodySide.Right;
+                output[PoseSpec.Leg(side, 11)] *= anchorKeep;
                 // A foot up on its toes is already raised by its tip (see PoseSolver.FootTipRise): lift from there, or
                 // the leap would vanish into that rise and the toes would drag along the floor.
                 float y = output[PoseSpec.Leg(side, 1)];
@@ -756,7 +786,9 @@ namespace VaatusRevenge.Core
                     f.Locked = true;
                     // Landing from the air: the foot plants where it came down (the pose then steps it into place if it
                     // wants it far from there), so touchdown never slides the feet across the floor.
-                    f.Position = f.Airborne ? f.Shown : key + f.Offset;
+                    // A foot the lunge anchor was holding behind plants where it was drawn too, and the step logic
+                    // brings it in: jumping it to the pose's spot in one frame snapped it forward and down (R2-02).
+                    f.Position = f.Airborne || f.Anchored ? f.Shown : key + f.Offset;
                     f.Airborne = false;
                     f.Yaw = keyYaw + f.YawOffset;
                     f.Offset = Vector2.Zero;
@@ -826,6 +858,7 @@ namespace VaatusRevenge.Core
                     }
                     shownYaw = f.Yaw;
                 }
+                f.Anchored = !f.Locked && output[PoseSpec.Leg(side, 11)] > 0.01f;
                 if (!f.Locked && f.Offset.LengthSquared() < 1e-8f && Math.Abs(f.YawOffset) < 0.01f) continue;
                 Vector2 local = RotateXZ(shown, -rootYaw) / k;
                 output[PoseSpec.Leg(side, 0)] = sign * local.X;

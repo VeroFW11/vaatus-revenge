@@ -95,6 +95,12 @@ namespace VaatusRevenge
 
         internal void ElementHitSpark(ElementId element, Vector3 position, Color color)
         {
+            ElementHitSpark(element, position, color, false);
+        }
+
+        // dustOnly: Earth hitting from the air: the pop and a puff of dust, no gravel (canon, ElementFxRules.DustOnly).
+        internal void ElementHitSpark(ElementId element, Vector3 position, Color color, bool dustOnly)
+        {
             ElementVfxStyle s = ElementVfx.StyleOf(element);
             FireVfxStyle fire = FireVfx.Style;
             Color bright = color * fire.SparkIntensity;
@@ -110,6 +116,11 @@ namespace VaatusRevenge
             FireVfxPiece pop = SpawnPiece(pictured ? VfxShape.Quad : VfxShape.Sphere, pictured && hasAlpha ? VfxMaterialKind.AlphaBlend : VfxMaterialKind.Additive,
                 picture, position, Vector3.zero, 0f, Uniform(s.SparkSize * 0.15f), Uniform(s.SparkSize), Vector3.zero, 0.3f, life, bright, faded);
             if (pop != null) pop.Billboard = pictured;
+            if (dustOnly)
+            {
+                Cloud(s, position, Vector3.up * 0.3f, 4f, s.SparkSize * 0.8f, life * 1.5f);
+                return;
+            }
             float floor = FloorBelow(position);
             int count = Mathf.Clamp(s.SparkCount, 0, 12);
             for (int i = 0; i < count; i++)
@@ -584,6 +595,13 @@ namespace VaatusRevenge
         // Changing element: the old element blows off the body, the new one washes up it from a ring at the feet.
         internal void SwitchFlourish(ElementId from, ElementId to, Vector3 chest, Vector3 feet)
         {
+            SwitchFlourish(from, to, chest, feet, false);
+        }
+
+        // airborne: Earth washes up as dust only. On the ground Earth's rock rises from the floor ring at the feet, never
+        // out of the chest (stone comes from the ground: spec 7 / 8.1).
+        internal void SwitchFlourish(ElementId from, ElementId to, Vector3 chest, Vector3 feet, bool airborne)
+        {
             ElementVfxStyle next = ElementVfx.StyleOf(to);
             VfxMaterialKind kind = to == ElementId.Earth ? VfxMaterialKind.AlphaBlend : next.RingKind;
             Color ring = to == ElementId.Earth ? next.CloudColor : next.CoreColor;
@@ -600,7 +618,9 @@ namespace VaatusRevenge
                 SpawnPiece(VfxShape.Sphere, oldKind, null, chest, Vector3.zero, 0f, Uniform(0.5f), Uniform(1.3f), Uniform(1.6f), 0.25f, life * 0.8f,
                     Faded(from == ElementId.Earth ? previous.CloudColor : previous.MainColor, 0.35f), previous.FadeColor);
             }
-            ElementVfx.Burst(to, chest, Vector3.up, 0.6f);
+            if (to != ElementId.Earth) ElementVfx.Burst(to, chest, Vector3.up, 0.6f);
+            else if (airborne) ElementVfx.Dust(to, chest, Vector3.up, 0.6f);
+            else ElementVfx.Burst(to, feet + Vector3.up * GroundOffset, Vector3.up, 0.6f);
         }
 
         // A thin ring flashing outwards round position, facing the camera.
@@ -665,10 +685,11 @@ namespace VaatusRevenge
                         break;
                     default:
                     {
-                        // The element on the striking limb: water coiling off it, grit falling from a stone fist, wisps.
+                        // The element on the striking limb: water coiling off it, dust off an earthbender's fist (no rock on
+                        // the body: stone is drawn from the ground, spec 7; FLAG for David), wisps of air.
                         Vector3 v = Vector3.up * 0.5f + Random.insideUnitSphere * 0.5f;
                         if (e.Element == ElementId.Air) Streak(s, at, v, 3f, s.LimbSize * 0.5f, 3f, s.LimbLifetime, s.AccentColor);
-                        else if (e.Element == ElementId.Earth) Bit(s, at, v * 0.5f, s.LimbSize, s.LimbLifetime * 2f, at.y - 2f);
+                        else if (e.Element == ElementId.Earth) Cloud(s, at, Vector3.up * 0.4f + Random.insideUnitSphere * 0.4f, 3f, s.LimbSize, s.LimbLifetime);
                         else Cloud(s, at, v, 3f, s.LimbSize, s.LimbLifetime);
                         break;
                     }

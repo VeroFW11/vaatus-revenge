@@ -5,7 +5,7 @@ namespace VaatusRevenge
 {
     // The beat ring: when to press X for the next hit of the string. A ring closes from 2.2x onto a fixed circle and
     // touches it exactly on the beat (the moment the running hit lands); a gold disc fills the circle while a press would
-    // count as on the beat. An on-beat press bursts the ring gold; an early or mashed press flashes a grey tick. After X X
+    // count as on the beat. An on-beat press bursts the ring gold; an early or mashed press flashes a grey tick, a late one an amber LATE. After X X
     // with no press, the circle glows blue while the pause band is open (RhythmView.PauseReady): X now starts the pause
     // finisher. The wait is taught by that cue, not by seconds (the band opens at a different time in each element).
     //
@@ -25,11 +25,13 @@ namespace VaatusRevenge
         static readonly Color WindowGold = new Color(1f, 0.82f, 0.3f, 0.55f);
         static readonly Color BurstGold = new Color(1f, 0.86f, 0.4f, 1f);
         static readonly Color TickGrey = new Color(0.62f, 0.62f, 0.66f, 1f);
+        static readonly Color TickAmber = new Color(1f, 0.6f, 0.22f, 1f);    // a late press: warm, to tell it from EARLY's grey
         static readonly Color PauseBlue = new Color(0.45f, 0.78f, 1f, 1f);
 
         float burstStart = -10f;
         float tickStart = -10f;
         string tickLabel = "";
+        Color tickColor = TickGrey;
 
         public void OnEvent(in PlayerEvent e, float now)
         {
@@ -43,12 +45,20 @@ namespace VaatusRevenge
                 case BeatGrade.Early:
                     tickStart = now;
                     tickLabel = "EARLY";
+                    tickColor = TickGrey;
+                    break;
+                case BeatGrade.Late:
+                    // Pressed after the beat (usually on seeing the hit land): the streak breaks, so say why (R2-05).
+                    tickStart = now;
+                    tickLabel = "LATE";
+                    tickColor = TickAmber;
                     break;
                 case BeatGrade.Mashed:
                     // A downgrade from on-beat: the burst that was showing is taken back.
                     burstStart = -10f;
                     tickStart = now;
                     tickLabel = "MASH";
+                    tickColor = TickGrey;
                     break;
             }
         }
@@ -100,11 +110,11 @@ namespace VaatusRevenge
             if (sinceTick >= 0f && sinceTick < TickTime)
             {
                 float fade = 1f - sinceTick / TickTime;
-                p.Ring(center, radius, line * 1.4f, WithAlpha(TickGrey, fade), squash);
+                p.Ring(center, radius, line * 1.4f, WithAlpha(tickColor, fade), squash);
                 if (label)
                 {
                     p.Text(new Rect(center.x - radius * 4f, center.y + radius * squash + p.U(4f), radius * 8f, p.U(22f)), tickLabel, p.SmallCenter,
-                        WithAlpha(TickGrey, fade));
+                        WithAlpha(tickColor, fade));
                 }
             }
         }

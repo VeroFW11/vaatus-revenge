@@ -82,6 +82,8 @@ namespace VaatusRevenge
         readonly HudNumberText timeScaleText = new HudNumberText("time scale ", "0.00", 0.01f);
 
         bool showControls;
+        bool overlayOpenedFromPad;          // the overlay was opened (or paged) with Y while paused
+        bool wasPausedForOverlay;
         bool showDebug;
 
         float healthTrail01 = 1f;
@@ -106,8 +108,6 @@ namespace VaatusRevenge
 
         string lastPresetName;
         string presetLabel = "";
-        ElementId lastElement = ElementId.None;
-        string elementName = "";
         string healLabelFor;
         float healLabelScale;
         float healLabelWidth;
@@ -182,7 +182,11 @@ namespace VaatusRevenge
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null)
             {
-                if (keyboard.f1Key.wasPressedThisFrame) showControls = controlsOverlay.NextPage(); // closed, combos, controls, closed
+                if (keyboard.f1Key.wasPressedThisFrame)
+                {
+                    showControls = controlsOverlay.NextPage(); // closed, combos, controls, closed
+                    overlayOpenedFromPad = false;
+                }
                 if (keyboard.f3Key.wasPressedThisFrame)
                 {
                     showDebug = !showDebug;
@@ -194,7 +198,20 @@ namespace VaatusRevenge
             PlayerInputReader reader = PlayerInputReader.Instance;
             SandboxDirector pauseOwner = SandboxDirector.Instance;
             bool pausedNow = pauseOwner != null ? pauseOwner.IsPaused : TimeScaleController.IsPaused;
-            if (pausedNow && reader != null && reader.OverlayPageButton.Pressed) showControls = controlsOverlay.NextPage();
+            if (pausedNow && reader != null && reader.OverlayPageButton.Pressed)
+            {
+                showControls = controlsOverlay.NextPage();
+                overlayOpenedFromPad = showControls;
+            }
+            // Opened with Y while paused: it closes on resume, so it never sits over the fight (verify R2-S15). (F1 is a
+            // toggle on the keyboard and stays as the player left it.)
+            if (!pausedNow && wasPausedForOverlay && overlayOpenedFromPad && showControls)
+            {
+                controlsOverlay.Close();
+                showControls = false;
+            }
+            if (!showControls) overlayOpenedFromPad = false;
+            wasPausedForOverlay = pausedNow;
 
             // Real time throughout: the HUD must keep animating during hitstop, slow motion and pause.
             float realDt = Time.unscaledDeltaTime;
@@ -228,8 +245,10 @@ namespace VaatusRevenge
             }
             DrawTargetPanel();
             DrawTopRight(player);
+            PlayerInputReader hintReader = PlayerInputReader.Instance;
+            bool padHint = hintReader != null && hintReader.UsingGamepad;
             painter.Text(new Rect(Margin, Screen.height - Margin - painter.U(22f), painter.U(400f), painter.U(22f)),
-                "F1 controls  ·  F3 debug", painter.Small, DimText);
+                padHint ? "Menu, then Y: combos & controls" : "F1 controls  ·  F3 debug", painter.Small, DimText);
             DrawToast(director);
             if (player != null && player.IsDead) DrawDeathScreen(director);
             if (director != null ? director.IsPaused : TimeScaleController.IsPaused) DrawPauseScreen();
@@ -278,19 +297,27 @@ namespace VaatusRevenge
             painter.Outline(stamina, 1f, BarOutline);
             y = stamina.yMax + painter.U(7f);
 
-            // Momentum (Fire's identity mechanic): landing hits fills it, and it boosts damage by the multiplier.
-            var momentum = new Rect(x, y, painter.U(320f), painter.U(10f));
-            painter.Bar(momentum, player.Momentum01, momentumColor, BarBackground);
-            painter.Outline(momentum, 1f, BarOutline);
-            painter.Text(new Rect(momentum.xMax + painter.U(10f), momentum.center.y - painter.Small.fontSize * 0.65f, painter.U(90f), painter.U(22f)),
-                multiplierText.Get(player.MomentumMultiplier), painter.Small, momentumColor);
-            y = momentum.yMax + painter.U(12f);
+            // Momentum (Fire's identity mechanic): landing hits fills it, and it boosts damage by the multiplier. Shown only
+            // for an element that has Momentum (verify R2-S10: an empty bar for Water, Earth and Air meant nothing).
+            bool hasMomentum = model == null || model.MoveSet == null || model.MoveSet.Momentum == null || model.MoveSet.Momentum.Enabled;
+            if (hasMomentum)
+            {
+                var momentum = new Rect(x, y, painter.U(320f), painter.U(10f));
+                painter.Bar(momentum, player.Momentum01, momentumColor, BarBackground);
+                painter.Outline(momentum, 1f, BarOutline);
+                painter.Text(new Rect(momentum.xMax + painter.U(10f), momentum.center.y - painter.Small.fontSize * 0.65f, painter.U(90f), painter.U(22f)),
+                    multiplierText.Get(player.MomentumMultiplier), painter.Small, momentumColor);
+                y = momentum.yMax + painter.U(12f);
+            }
+            else
+            {
+                y += painter.U(5f);
+            }
 
             DrawHealCharges(x, y, player.HealCharges, player.MaxHealCharges);
             y += painter.U(26f);
 
-            painter.Text(new Rect(x, y, painter.U(400f), painter.U(26f)), ElementName(player), painter.Body, ElementVfx.HudColor(player.CurrentElement));
-            y += painter.U(28f);
+            // The element's name is shown once, under the element wheel (verify R2-S10), not here as well.
             string message = player.ElementMessage;
             if (!string.IsNullOrEmpty(message)) painter.Text(new Rect(x, y, painter.U(600f), painter.U(22f)), message, painter.Small, Color.white);
         }
@@ -311,20 +338,6 @@ namespace VaatusRevenge
             {
                 painter.Dot(new Rect(dotX + i * (size + painter.U(5f)), dotY, size, size), i < charges ? healChargeColor : EmptyChargeColor);
             }
-        }
-
-        // The element's display name comes from its move set (data); the enum name is only a fallback.
-        string ElementName(PlayerController player)
-        {
-            ElementId element = player.CurrentElement;
-            string fromData = player.ElementName;
-            if (!string.IsNullOrEmpty(fromData)) return fromData;
-            if (element != lastElement || elementName.Length == 0)
-            {
-                lastElement = element;
-                elementName = element == ElementId.None ? "" : element.ToString();
-            }
-            return elementName;
         }
 
         void UpdateHealthTrail(PlayerController player, float realDt)

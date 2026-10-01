@@ -28,7 +28,8 @@ namespace VaatusRevenge
         const float Pad = 18f;
         const float HeaderHeight = 38f;
         const float PromptHeight = 36f;
-        const float HintHeight = 30f;
+        const float HintLineHeight = 24f;     // one line of hint text; long hints wrap onto more lines (verify R2-04)
+        const float HintPad = 3f;
         const float PipSize = 14f;
         const float PipGap = 8f;
         const float BarWidth = 160f;
@@ -103,8 +104,11 @@ namespace VaatusRevenge
             bool hasHint = hint.Source.Length > 0;
 
             float width = Mathf.Min(p.U(Width), Screen.width - p.U(TopMargin) * 2f);
+            float inner = width - p.U(Pad) * 2f;
+            float hintLine = p.U(HintLineHeight);
+            float hintHeight = hasHint ? hint.WrappedHeight(p, hintLine, gamepad, inner) + p.U(HintPad) * 2f : 0f;
             float height = p.U(Pad * 2f + HeaderHeight + PromptHeight + RowGap + PipSize + RowGap + FooterHeight)
-                           + (hasHint ? p.U(HintHeight + RowGap) : 0f);
+                           + (hasHint ? hintHeight + p.U(RowGap) : 0f);
             var panel = new Rect((Screen.width - width) * 0.5f, p.U(TopMargin), width, height);
             Bottom = panel.yMax;
             p.Fill(panel, PanelColor);
@@ -114,7 +118,6 @@ namespace VaatusRevenge
             if (flash > 0f) p.Fill(panel, WithAlpha(SuccessColor, FlashAlpha * flash));
 
             float x = panel.x + p.U(Pad);
-            float inner = width - p.U(Pad) * 2f;
             float y = panel.y + p.U(Pad);
 
             // Header: the step number on the left, the title in the middle.
@@ -133,11 +136,9 @@ namespace VaatusRevenge
 
             if (hasHint)
             {
-                float hintHeight = p.U(HintHeight);
-                float lineHeight = hintHeight * 0.8f;
-                float hintWidth = Mathf.Min(inner, hint.Measure(p, lineHeight, gamepad));
-                hint.Draw(p, new Rect(panel.center.x - hintWidth * 0.5f, y + (hintHeight - lineHeight) * 0.5f, hintWidth, lineHeight),
-                    gamepad, tracker.AlreadyInTargetElement ? accent : DimText);
+                // Wrapped at the panel's inner width, each line centred, so a long hint never runs off the panel.
+                hint.DrawWrapped(p, new Rect(x, y + p.U(HintPad), inner, hintHeight), hintLine, gamepad,
+                    tracker.AlreadyInTargetElement ? accent : DimText);
                 y += hintHeight + p.U(RowGap);
             }
 

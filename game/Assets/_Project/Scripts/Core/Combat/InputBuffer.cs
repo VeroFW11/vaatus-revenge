@@ -35,11 +35,23 @@ namespace VaatusRevenge.Core
             if (command == PlayerCommand.None) return;
             // Mashing light after the chain follow-up (or a switch strike) is already queued must not un-queue it.
             if (command == PlayerCommand.Light && (Command == PlayerCommand.Light || Command == PlayerCommand.SwitchStrike) && Locked) return;
+            // A queued switch strike is the string's next hit in a new element: no other attack press (a Skill from a
+            // stray RB release, a zip, a heavy) may replace it. Only another switch strike (a change of mind) or a
+            // defensive press can.
+            if (Command == PlayerCommand.SwitchStrike && Locked && IsAttack(command) && command != PlayerCommand.SwitchStrike) return;
             if (defensivePressesWin && IsDefensive(Command) && IsAttack(command)) return;
             Command = command;
             PressTime = time;
             Locked = false;
             RunnableAt = double.NegativeInfinity;
+        }
+
+        // Swaps the waiting command for another, keeping its press time and lock (a press the player upgraded into a
+        // chord a frame later: it keeps its place in the string and its beat grade).
+        public void Replace(PlayerCommand command)
+        {
+            if (Command == PlayerCommand.None || command == PlayerCommand.None) return;
+            Command = command;
         }
 
         public static bool IsDefensive(PlayerCommand command)

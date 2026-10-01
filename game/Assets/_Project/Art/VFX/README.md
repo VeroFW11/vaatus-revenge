@@ -29,8 +29,9 @@ A missing slot is reported once, in one log line when play starts, never every f
 
 ## Generated art waiting to be added
 
-The 24 images generated for Build 05 could not be downloaded into the repository. When you have them, rename them
-into the slots above:
+The 24 images generated for Build 05 could not be downloaded into the repository (nor could the player model, see
+`Art/Characters/README.md`). When you have them they arrive with their generated names: rename each one to its slot below
+and put it in its element's folder, then commit (Git LFS stores `.png`):
 
 | Generated file | Slot |
 |---|---|

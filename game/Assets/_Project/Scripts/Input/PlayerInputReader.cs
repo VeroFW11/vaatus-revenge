@@ -40,8 +40,6 @@ namespace VaatusRevenge
         const int TutorialPadSlot = 10, TutorialKeySlot = 11, TutorialSkipSlot = 12;
         const int MenuPadSlot = 13, OverlayPagePadSlot = 14;
         const int SlotCount = 15;
-        // Face buttons, in element-slot order (Up, Right, Down, Left): Y/Triangle, B/Circle, A/Cross, X/Square.
-        const int FaceNorth = 0, FaceEast = 1, FaceSouth = 2, FaceWest = 3;
         // Mouse movement is ignored for this many frames after the cursor is captured: some platforms report the
         // cursor's jump to the window centre as one huge movement, which would whip the camera round.
         const int MouseSettleFrames = 2;
@@ -61,6 +59,9 @@ namespace VaatusRevenge
         [Tooltip("A face button counts as an LB (Q) ability chord only this long after LB went down. Held longer (a parry "
                  + "you're still holding), B and Y dodge and zip as normal again, so a panic parry-then-dodge isn't eaten.")]
         [SerializeField] private float abilityChordWindow = 0.5f;
+        [Tooltip("A face button pressed at most this long before RB (and still held) becomes the element pick instead of its "
+                 + "normal action: a chord pressed a frame or two out of order still switches (PadChordReader).")]
+        [SerializeField] private float elementChordGrace = 0.05f;
 
         InputActionMap map;
         InputAction move, lookStick, lookMouse;
@@ -75,14 +76,9 @@ namespace VaatusRevenge
         PlayerInputFrame frame;
         ButtonState tutorialButton, tutorialKeyButton, tutorialSkipButton;
         ButtonState menuButton, overlayPageButton;
-        bool heavyChord;                                   // X was pressed while LB was held: X is the Heavy until let go
-        bool abilityNorthChord;                            // same for Y (AbilityNorth) ...
-        bool abilityEastChord;                             // ... and B (AbilityEast)
-        float guardHeldTime;                               // real seconds LB (Q) has been held (chords only start early in a hold)
-        bool skillPadDown;                                 // RB is down (tap = skill, held with a face button = element pick)
-        float skillPadHeldTime;
-        bool skillPadChordUsed;
-        readonly bool[] faceSwallowed = new bool[4];       // a face button used for an element pick: ignored until let go
+        // The shoulder chords (RB + face = element, RB tap = skill, LB + face = ability) are pure C# so tests can cover
+        // exact frame orders (PadChordReader).
+        readonly PadChordReader chords = new PadChordReader();
         readonly ElementId[] padSlots = new ElementId[ElementButtonLayout.SlotCount];   // ElementSlots, refreshed each frame
         bool gameplayEnabled = true;
         bool usingGamepad;
@@ -236,14 +232,17 @@ namespace VaatusRevenge
 
             // Shoulder chords (see the top of the file). Worked out even while gameplay is off, so a chord that
             // began before a pause can't leak out as a stray press after it.
-            ElementId elementPick = ReadElementChord(ref zipButton, ref dodgeButton, ref jumpButton, ref attackButton);
-            ButtonState skillButton = ReadSkillTap(skillPadButton, Time.unscaledDeltaTime);
+            chords.SkillTapMaxTime = skillTapMaxTime;
+            chords.AbilityChordWindow = abilityChordWindow;
+            chords.ElementChordGrace = elementChordGrace;
+            PadChordReader.Result chord = chords.Read(ref zipButton, ref dodgeButton, ref jumpButton, ref attackButton,
+                skillPadButton, guardButton, Time.unscaledDeltaTime, elementLayout);
+            ElementId elementPick = chord.ElementSelect;
+            ButtonState skillButton = chord.Skill;
             if (skillMouseButton.Pressed) skillButton.Pressed = true;
-            guardHeldTime = guardButton.Held ? (guardButton.Pressed ? 0f : guardHeldTime + Time.unscaledDeltaTime) : 0f;
-            bool chordModifier = guardButton.Held && guardHeldTime <= abilityChordWindow;
-            ButtonState heavyButton = ReadAbilityChord(ref attackButton, chordModifier, ref heavyChord);
-            ButtonState abilityNorthButton = ReadAbilityChord(ref zipButton, chordModifier, ref abilityNorthChord);
-            ButtonState abilityEastButton = ReadAbilityChord(ref dodgeButton, chordModifier, ref abilityEastChord);
+            ButtonState heavyButton = chord.Heavy;
+            ButtonState abilityNorthButton = chord.AbilityNorth;
+            ButtonState abilityEastButton = chord.AbilityEast;
 
             if (!gameplayEnabled)
             {
@@ -274,75 +273,13 @@ namespace VaatusRevenge
                 SwapShoulder = swapShoulderButton,
                 SwitchTargetDelta = ReadSwitchDelta(scroll),
                 ElementSelect = elementPick != ElementId.None ? elementPick : ReadElementSelect(),
+                RetractPress = elementPick != ElementId.None ? chord.RetractPress : PlayerCommand.None,
             };
         }
 
         void ResetChords()
         {
-            heavyChord = false;
-            abilityNorthChord = false;
-            abilityEastChord = false;
-            guardHeldTime = 0f;
-            skillPadDown = false;
-            skillPadHeldTime = 0f;
-            skillPadChordUsed = false;
-            System.Array.Clear(faceSwallowed, 0, faceSwallowed.Length);
-        }
-
-        // Hold LB (Q) and press a face button: that press, and everything until it's let go, is the ability in that
-        // slot, not the button's normal action. Returns the ability button; the face button reads as untouched meanwhile.
-        static ButtonState ReadAbilityChord(ref ButtonState faceButton, bool modifierActive, ref bool latched)
-        {
-            if (faceButton.Pressed && modifierActive) latched = true;
-            if (!latched) return default(ButtonState);
-            ButtonState abilityButton = faceButton;
-            faceButton = default(ButtonState);
-            if (!abilityButton.Held) latched = false;   // let go (or a sub-frame tap): the chord is over
-            return abilityButton;
-        }
-
-        // While RB is held, a face button picks the element in that slot instead of doing its usual action.
-        ElementId ReadElementChord(ref ButtonState north, ref ButtonState east, ref ButtonState south, ref ButtonState west)
-        {
-            ElementId picked = ElementId.None;
-            bool rbHeld = skillPad.IsPressed();
-            Swallow(FaceNorth, ref north, rbHeld, ref picked);
-            Swallow(FaceEast, ref east, rbHeld, ref picked);
-            Swallow(FaceSouth, ref south, rbHeld, ref picked);
-            Swallow(FaceWest, ref west, rbHeld, ref picked);
-            return picked;
-        }
-
-        void Swallow(int face, ref ButtonState button, bool rbHeld, ref ElementId picked)
-        {
-            if (rbHeld && button.Pressed)
-            {
-                faceSwallowed[face] = true;
-                skillPadChordUsed = true;
-                if (picked == ElementId.None && elementLayout != null) picked = elementLayout.PadSlot(face);
-            }
-            if (!faceSwallowed[face]) return;
-            if (!button.Held) faceSwallowed[face] = false;
-            button = default(ButtonState);
-        }
-
-        // A quick RB tap on its own fires the skill as it's let go. (On release, because until then it might
-        // become an element pick.)
-        ButtonState ReadSkillTap(ButtonState pad, float realDt)
-        {
-            var skillButton = default(ButtonState);
-            if (pad.Pressed)
-            {
-                skillPadDown = true;
-                skillPadHeldTime = 0f;
-                skillPadChordUsed = false;
-            }
-            if (!skillPadDown) return skillButton;
-            skillPadHeldTime += realDt;
-            if (pad.Held) return skillButton;
-            if (!skillPadChordUsed && skillPadHeldTime <= skillTapMaxTime) skillButton.Pressed = true;
-            skillPadDown = false;
-            return skillButton;
+            chords.Reset();
         }
 
         void UpdateCursor()

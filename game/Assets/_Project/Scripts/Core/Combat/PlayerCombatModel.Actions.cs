@@ -572,7 +572,16 @@ namespace VaatusRevenge.Core
             if (!lungeHoming && !longOwn) return;
             lungeArrives = true;
             float distance = lungeDistance;
-            if (orbiting) distance = Math.Max(0f, orbitStartRadius - orbitEndRadius);
+            if (orbiting)
+            {
+                // The path to the strike, not just how far in: the arc travelled round the target by ActiveStart (the turn
+                // runs over the whole startup + active window) at the mean radius, plus the radial change. Counting only
+                // the radial part let Air's Circle Step Palm dash at 25 m/s (verify R2-S03).
+                float turnShare = move.ActiveEnd > 0f ? Angles.Clamp(move.ActiveStart / move.ActiveEnd, 0f, 1f) : 1f;
+                float meanRadius = 0.5f * (orbitStartRadius + orbitEndRadius);
+                float arc = meanRadius * move.OrbitDegrees * Directions.Deg2Rad * turnShare;
+                distance = Math.Max(0f, orbitStartRadius - orbitEndRadius) + arc;
+            }
             else if (TryGetLungeTarget(world, out Vector3 target, out float targetRadius)) distance = Math.Min(distance, GapTo(target, targetRadius, world));
             float rate = Math.Max(attackPlaybackRate, Epsilon);
             float startup = move.ActiveStart / rate;

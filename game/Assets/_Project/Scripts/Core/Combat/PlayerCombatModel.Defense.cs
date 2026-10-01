@@ -632,7 +632,7 @@ namespace VaatusRevenge.Core
             Emit(new PlayerEvent
             {
                 Type = PlayerEventType.PerfectDodge, TimeScale = dodge.PerfectSlowMoScale, Duration = dodge.PerfectSlowMoDuration,
-                Amount = gain, Element = actionSet.Element
+                Amount = gain, Element = actionSet.Element, InAir = !grounded
             });
         }
 

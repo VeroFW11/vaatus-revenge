@@ -697,13 +697,15 @@ namespace VaatusRevenge
         void ResolveHits(MoveData move, int attackId, float hitstop, ElementId element, bool faJin, PlayerFeedbackSettings settings)
         {
             if (hits.Count == 0) return;
+            // Earth's spark from the air string is dust, never rock (canon: ElementFxRules).
+            bool airborneAttack = ElementFxRules.IsAirborneAttacker(model.IsGrounded, model.CurrentAttackKind);
             bool clean = false;
             bool parried = false;
             for (int i = 0; i < hits.Count; i++)
             {
                 HitReport report = hits[i];
                 model.OnAttackLanded(in report.Result, attackId, IsAirborne(report.Target)); // counter, Momentum: once per attack
-                feel.OnHitReport(in report, element, settings);
+                feel.OnHitReport(in report, element, airborneAttack, settings);
                 if (report.Result.Outcome == HitOutcome.Hit) clean = true;
                 else if (report.Result.Outcome == HitOutcome.Parried) parried = true;
             }

@@ -1,26 +1,26 @@
 # Character models
 
-Imported, rigged character models. Today there is one: the player Avatar David picked (painted style B, see
-`docs/Art/Character-Sheets/Player-Avatar-Style-B-chosen.webp`), at `Art/Characters/Player/player_avatar.glb`.
+Imported, rigged character models. One is planned: the player Avatar David picked (painted style B, see
+`docs/Art/Character-Sheets/Player-Avatar-Style-B-chosen.webp`), to live at `Art/Characters/Player/player_avatar.glb`.
 
 **The game works without it.** Without the file the player is the grey-box body, exactly as before.
 
 ## Where the model comes from
 
-The model is **not in Git yet**: it arrives in the **art bundle**, the one zip download Claude hands over at the end of
-a build session (Build 05 spec §8.1 item 6). The bundle holds this model (`Art/Characters/Player/player_avatar.glb`)
-and the effect pictures (`Art/VFX/...`), already in their project folders. Lost it? Ask Claude in the session to send
-the art bundle again.
+**There is no model in the repository yet.** The painted Avatar was generated during Build 05 but the `.glb` could not be
+downloaded into the repository (the same happened to the effect pictures, see `Art/VFX/README.md`). Until someone has the
+file, the player is the grey-box body and everything below waits.
 
-When it is committed, it goes through Git LFS like every binary (`*.glb` is LFS and lockable in `.gitattributes`).
-**Before replacing or editing the model, lock it** so the other person doesn't change it at the same time:
+When a `.glb` arrives (whatever it's called), it goes through Git LFS like every binary (`*.glb` is LFS and lockable in
+`.gitattributes`): put it in place, commit it, and only **after** that lock it whenever you edit or replace it, so the
+other person doesn't change it at the same time:
 `git lfs lock game/Assets/_Project/Art/Characters/Player/player_avatar.glb` (and `git lfs unlock ...` when done).
+(A file Git doesn't track yet can't be locked.)
 
 ## Putting the painted Avatar in the game
 
-1. **Unzip the art bundle into the repository folder** (the folder that has `game`, `docs` and `tools` in it). Say yes
-   if it asks to merge folders. Check the model landed at
-   `game/Assets/_Project/Art/Characters/Player/player_avatar.glb`.
+1. **Rename the file to `player_avatar.glb` and put it at** `game/Assets/_Project/Art/Characters/Player/player_avatar.glb`
+   (make the `Player` folder if it isn't there). Commit it (Git LFS stores it).
 2. **Open the project in Unity.** The first time after this change Unity downloads *glTFast*, the package that reads
    `.glb` files (it's listed in `game/Packages/manifest.json`). That needs the internet and takes a minute. When it
    has finished, `player_avatar` shows in the Project window with a small arrow (click it to see the mesh inside).

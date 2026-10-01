@@ -43,6 +43,7 @@ namespace VaatusRevenge.CombatSim
                 ElementAerial(rec, element);
                 ElementAbilities(rec, element);
             }
+            SwitchesAndDodgeChains(rec);
             BehindYou(rec);
             Aerial(rec);
             AirDashAndZip(rec);
@@ -233,6 +234,62 @@ namespace VaatusRevenge.CombatSim
             s.Pad.Dodge = false;
             s.Pad.Move = Vector2.Zero;
             foreach (int f in s.WaitUntil(() => s.Model.CurrentMove == null, 90)) yield return f;
+            foreach (int f in s.Idle(40)) yield return f;
+        }
+
+        // R2-S20: the headline Build 05 moves the other scenes don't play: a string switching element mid-combo (X X, RB+X
+        // Water, X, RB+A Earth), a chain of dodges (side-slip, side-slip, evade out), and a switch to Earth in the air string.
+        static void SwitchesAndDodgeChains(AnimRecorder rec)
+        {
+            var s = new Scene(rec, "Mid-string switches, chained dodges, air switch to Earth");
+            s.AddSoldier(new Vector3(0f, 0f, 2.1f), 180f, passive: true);
+            s.Run(SwitchesScript(s));
+        }
+
+        static IEnumerable<int> SwitchesScript(Scene s)
+        {
+            foreach (int f in s.Idle(20)) yield return f;
+            // A three-element string: each press goes in once the running move's combo window is open.
+            ElementId[] presses = { ElementId.None, ElementId.None, ElementId.Water, ElementId.None, ElementId.Earth };
+            foreach (ElementId pick in presses)
+            {
+                MoveData before = s.Model.CurrentMove;
+                if (pick == ElementId.None) foreach (int f in s.Tap(Btn.Light, 3)) yield return f;
+                else foreach (int f in s.Switch(pick)) yield return f;
+                foreach (int f in s.WaitUntil(() => s.Model.CurrentMove != null && s.Model.CurrentMove != before
+                                                    && s.Model.ActionTime >= s.Model.CurrentMove.ComboWindowStart + 0.02f, 90)) yield return f;
+            }
+            foreach (int f in s.WaitUntil(() => s.Model.CurrentMove == null, 90)) yield return f;
+            foreach (int f in s.Idle(30)) yield return f;
+
+            // Chained dodges in Air (Earth allows two in a row, Air four): side-slip right, side-slip left, evade out, each
+            // pressed as the last one allows another.
+            foreach (int f in s.Switch(ElementId.Air)) yield return f;
+            foreach (int f in s.Idle(20)) yield return f;
+            foreach (float angle in new[] { 90f, -90f, 180f })
+            {
+                s.Pad.Move = s.StickTowardFoe(angle);
+                foreach (int f in s.Tap(Btn.Dodge, 3)) yield return f;
+                foreach (int f in s.WaitUntil(() => s.Model.State != PlayerState.Dodging || s.Model.ActionTime >= 0.2f, 40)) yield return f;
+            }
+            s.Pad.Move = Vector2.Zero;
+            foreach (int f in s.Idle(40)) yield return f;
+            foreach (int f in s.WalkToFoe(2.1f)) yield return f;
+            foreach (int f in s.Switch(ElementId.Earth)) yield return f;
+            foreach (int f in s.Idle(20)) yield return f;
+
+            // Launch in Earth, one air hit, switch to Water in the air and back to Earth: dust only.
+            foreach (int f in s.Hold(Btn.Light, 22)) yield return f;
+            foreach (int f in s.WaitUntil(() => s.Model.CurrentAttackKind == PlayerAttackKind.Launcher && s.Model.ActionTime > 0.3f, 60)) yield return f;
+            foreach (ElementId pick in new[] { ElementId.None, ElementId.Water, ElementId.Earth })
+            {
+                MoveData before = s.Model.CurrentMove;
+                if (pick == ElementId.None) foreach (int f in s.Tap(Btn.Light, 3)) yield return f;
+                else foreach (int f in s.Switch(pick)) yield return f;
+                foreach (int f in s.WaitUntil(() => s.Model.IsGrounded || (s.Model.CurrentMove != null && s.Model.CurrentMove != before
+                                                    && s.Model.ActionTime >= s.Model.CurrentMove.ComboWindowStart + 0.04f), 60)) yield return f;
+            }
+            foreach (int f in s.WaitUntil(() => s.Model.IsGrounded && s.Model.CurrentMove == null, 120)) yield return f;
             foreach (int f in s.Idle(40)) yield return f;
         }
 
@@ -814,6 +871,91 @@ namespace VaatusRevenge.CombatSim
                 scene = title;
             }
 
+            // Build 05 verify round 2 (R2-02): a lunge must not drag a planted rear foot out behind at hip height and then
+            // snap it to the floor. Player only, root on the floor, kicks (a leg in reach mode) left out.
+            const float DragHeight = 0.35f, DragBehind = 0.35f, SnapDrop = 0.30f;
+            const int DragFramesAllowed = 3;
+            static readonly HashSet<string> LandingKeys = new HashSet<string>
+            {
+                AnimationKeys.Land, AnimationKeys.AirLanding, AnimationKeys.Launched, AnimationKeys.Knockdown,
+                AnimationKeys.Death, AnimationKeys.GetUp,
+            };
+            readonly List<(string scene, int frame, string key, string what, float amount)> footIssues
+                = new List<(string, int, string, string, float)>();
+            readonly float[] prevFootY = new float[2];
+            readonly int[] dragRun = new int[2];
+            readonly float[] dragMax = new float[2];
+            readonly string[] dragKey = new string[2];
+            readonly int[] dragStart = new int[2];
+            bool prevFootValid;
+            string prevFootScene;
+            int footFrames;
+
+            void CheckFeet(AnimRig rig, string key)
+            {
+                bool grounded = rig.LastInput.Grounded && !rig.LastInput.Dead;
+                // A plunge (the axe kick's heel chop, the earthquake drop) is a landing: its foot comes down on purpose.
+                bool landing = LandingKeys.Contains(key) || (rig.Fighter is SimPlayer pl && pl.Model.State == PlayerState.Plunging);
+                bool sameScene = prevFootValid && prevFootScene == scene;
+                Vector3 hips = rig.Fk.Positions[(int)BodyJoint.Hips];
+                Vector3 fwd = Directions.FromYaw(rig.Fighter.Yaw);
+                PoseSpec spec = rig.Animator.CurrentSpec;
+                for (int i = 0; i < 2; i++)
+                {
+                    BodySide side = i == 0 ? BodySide.Left : BodySide.Right;
+                    Vector3 foot = rig.Fk.Positions[(int)(i == 0 ? BodyJoint.LeftFoot : BodyJoint.RightFoot)];
+                    float height = foot.Y - rig.Fighter.Feet.Y;
+                    Vector3 rel = foot - hips;
+                    float behind = -(rel.X * fwd.X + rel.Z * fwd.Z);
+                    bool kick = spec[PoseSpec.Leg(side, 7)] > 0.5f;
+                    bool drag = grounded && !kick && height > DragHeight && behind > DragBehind;
+                    if (drag)
+                    {
+                        if (dragRun[i] == 0)
+                        {
+                            dragKey[i] = key;
+                            dragStart[i] = FrameCount;
+                            dragMax[i] = 0f;
+                        }
+                        dragRun[i]++;
+                        dragMax[i] = Math.Max(dragMax[i], behind);
+                    }
+                    else
+                    {
+                        if (dragRun[i] > DragFramesAllowed)
+                            footIssues.Add((scene, dragStart[i], dragKey[i], "rear foot dragged " + dragRun[i] + " frames", dragMax[i]));
+                        dragRun[i] = 0;
+                    }
+                    if (sameScene && grounded && prevFootY[i] - height > SnapDrop && !landing)
+                        footIssues.Add((scene, FrameCount, key, "foot dropped in one frame", prevFootY[i] - height));
+                    prevFootY[i] = grounded ? height : -10f;   // a frame in the air never counts as the "before" of a drop
+                }
+                prevFootValid = true;
+                prevFootScene = scene;
+                footFrames++;
+            }
+
+            // R2-03: no Earth rock effect (a burst or a spark) traced while the player is off the ground.
+            int earthAirFx, earthAirRockFx;
+
+            void CheckEarthInAir(Scene s)
+            {
+                foreach (AnimRig rig in s.Rigs)
+                {
+                    if (!(rig.Fighter is SimPlayer) || rig.LastInput.Grounded) continue;
+                    string tag = "\"fighter\":" + rig.Id + ",";
+                    string earth = "\"el\":\"earth\"";
+                    foreach (string f in fx)
+                    {
+                        // The player's own effects, and the hit sparks it makes on enemies.
+                        bool hitSpark = f.Contains("\"key\":\"spark\"") || f.Contains("\"key\":\"dust\"");
+                        if (!(f.Contains(tag) || hitSpark) || !f.Contains(earth)) continue;
+                        earthAirFx++;
+                        if (f.Contains("\"key\":\"burst\"") || f.Contains("\"key\":\"spark\"")) earthAirRockFx++;
+                    }
+                }
+            }
+
             public void Capture(Scene s)
             {
                 fx.Clear();
@@ -826,9 +968,10 @@ namespace VaatusRevenge.CombatSim
                     }
                     else if (rig.Fighter is SimEnemy en)
                     {
-                        foreach (EnemyEvent e in en.FrameEvents) EnemyEffect(rig, en, e);
+                        foreach (EnemyEvent e in en.FrameEvents) EnemyEffect(rig, en, e, s.World.Player);
                     }
                 }
+                CheckEarthInAir(s);
                 var sb = frames;
                 if (FrameCount > 0) sb.Append(",\n");
                 sb.Append("{\"t\":").Append(F(time)).Append(",\"scene\":").Append(Q(scene)).Append(",\"caption\":").Append(Q(caption));
@@ -859,6 +1002,7 @@ namespace VaatusRevenge.CombatSim
                 string key = action.IsValid ? action.Key : loco.Key;
                 Covered.Add(key);
                 if (loco.IsValid) Covered.Add(loco.Key);
+                if (rig.Fighter is SimPlayer) CheckFeet(rig, key);
                 string state = rig.Fighter is SimPlayer p ? p.Model.State.ToString() : ((SimEnemy)rig.Fighter).Brain.State.ToString();
                 sb.Append("{\"id\":").Append(rig.Id).Append(",\"kind\":").Append(Q(rig.Kind)).Append(",\"state\":").Append(Q(state));
                 sb.Append(",\"key\":").Append(Q(key)).Append(",\"alive\":").Append(rig.Fighter.IsAlive ? "true" : "false");
@@ -921,10 +1065,12 @@ namespace VaatusRevenge.CombatSim
                         // As PlayerFeedback: the launcher's column rises under the launched enemy (EnemyEffect), the slam's
                         // ring appears where the enemy lands; at the strike itself they're a burst from the limb.
                         string el = ElementName(e.Element);
+                        // As ElementMoveEffects: Earth in the air pushes dust from the limb, no rock (ElementFxRules).
+                        if (ElementFxRules.DustOnly(e.Element, ElementFxRules.IsAirborne(in e))) key = "dust";
                         if (key == EffectKeys.Pillar || key == EffectKeys.Slam)
                             fx.Add(Fx(EffectKeys.Burst, e.Origin, key == EffectKeys.Slam ? -Vector3.UnitY : dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id, el));
                         else fx.Add(Fx(key, e.Origin, dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id, el));
-                        if (key != EffectKeys.Burst && key != EffectKeys.Trail)
+                        if (key != EffectKeys.Burst && key != EffectKeys.Trail && key != "dust")
                             fx.Add(Fx(EffectKeys.Trail, e.Origin, dir, m.Range, m.ArcDegrees, m.Active + 0.05f, LimbJoint(m.Limb), rig.Id, el));
                         // A flurry's later sub-hits change hands (Air's palm changes): the striking hand is whichever is out.
                         bool laterSubHit = e.MoveInstanceId != 0 && e.AttackId != e.MoveInstanceId;
@@ -947,6 +1093,9 @@ namespace VaatusRevenge.CombatSim
                         break;
                     }
                     case PlayerEventType.DodgeStarted:
+                        // As PlayerFeedback.DodgeStarted: a push from the feet (BurstOrDust), then jets.
+                        fx.Add(Fx(ElementFxRules.DustOnly(e.Element, e.InAir) ? "dust" : EffectKeys.Burst, rig.Fighter.Feet, -e.Direction, 1f, 0f, 0.2f,
+                            (int)BodyJoint.RightFoot, rig.Id, ElementName(e.Element)));
                         fx.Add(Fx("jet", rig.Fighter.Feet, -e.Direction, 1f, 0f, 0.3f, (int)BodyJoint.RightFoot, rig.Id, ElementName(e.Element)));
                         break;
                     case PlayerEventType.AttackStarted:
@@ -956,6 +1105,10 @@ namespace VaatusRevenge.CombatSim
                         break;
                     case PlayerEventType.ElementSwitched:
                         fx.Add(Fx("switch", rig.Fighter.AimPoint, Vector3.UnitY, 0.6f, 0f, 0.35f, (int)BodyJoint.Chest, rig.Id, ElementName(e.Element)));
+                        // As SwitchFlourish: the new element's burst (Earth: rock from the floor, or dust in the air).
+                        fx.Add(Fx(ElementFxRules.DustOnly(e.Element, e.InAir) ? "dust" : EffectKeys.Burst,
+                            e.Element == ElementId.Earth && !e.InAir ? rig.Fighter.Feet : rig.Fighter.AimPoint, Vector3.UnitY, 0.6f, 0f, 0.3f,
+                            e.Element == ElementId.Earth && !e.InAir ? (int)BodyJoint.RightFoot : (int)BodyJoint.Chest, rig.Id, ElementName(e.Element)));
                         break;
                     case PlayerEventType.Deflected:
                         fx.Add(Fx("spark", rig.Fighter.AimPoint, Vector3.UnitZ, 0.5f, 0f, 0.2f, (int)BodyJoint.RightHand, rig.Id));
@@ -963,20 +1116,29 @@ namespace VaatusRevenge.CombatSim
                 }
             }
 
-            void EnemyEffect(AnimRig rig, SimEnemy enemy, in EnemyEvent e)
+            // The element an enemy's launch, landing and hit spark are drawn in: as EnemyFighter.EffectElement, the player's
+            // element (the sim's only attacker), so a render shows Earth launches in Earth's colour (R2-S16).
+            void EnemyEffect(AnimRig rig, SimEnemy enemy, in EnemyEvent e, SimPlayer player)
             {
+                ElementId element = player != null ? player.Model.ActiveElement : ElementId.Fire;
+                string el = ElementName(element);
                 switch (e.Type)
                 {
                     case EnemyEventType.Launched:
-                        fx.Add(Fx(EffectKeys.Pillar, enemy.Feet, Vector3.UnitY, 3f, 0f, 0.6f, (int)BodyJoint.Hips, rig.Id));
-                        fx.Add(Fx("embers", enemy.Feet, Vector3.UnitY, 1f, 0f, 1.2f, (int)BodyJoint.Chest, rig.Id));
+                        fx.Add(Fx(EffectKeys.Pillar, enemy.Feet, Vector3.UnitY, 3f, 0f, 0.6f, (int)BodyJoint.Hips, rig.Id, el));
+                        fx.Add(Fx("embers", enemy.Feet, Vector3.UnitY, 1f, 0f, 1.2f, (int)BodyJoint.Chest, rig.Id, el));
                         break;
                     case EnemyEventType.KnockedDown:
-                        fx.Add(Fx(EffectKeys.Slam, enemy.Feet, -Vector3.UnitY, SlamRingRadius, 360f, 0.45f, (int)BodyJoint.Hips, rig.Id));
+                        fx.Add(Fx(EffectKeys.Slam, enemy.Feet, -Vector3.UnitY, SlamRingRadius, 360f, 0.45f, (int)BodyJoint.Hips, rig.Id, el));
                         break;
                     case EnemyEventType.Damaged:
-                        fx.Add(Fx("spark", enemy.AimPoint, Vector3.UnitZ, 0.4f, 0f, 0.16f, (int)BodyJoint.Chest, rig.Id));
+                    {
+                        // As PlayerFeedback.OnHitReport: Earth hitting from the air sparks dust, never rock (R2-03).
+                        bool airborne = player != null && ElementFxRules.IsAirborneAttacker(player.Model.IsGrounded, player.Model.CurrentAttackKind);
+                        fx.Add(Fx(ElementFxRules.DustOnly(element, airborne) ? "dust" : "spark", enemy.AimPoint, Vector3.UnitZ, 0.4f, 0f, 0.16f,
+                            (int)BodyJoint.Chest, rig.Id, el));
                         break;
+                    }
                     case EnemyEventType.AttackActiveStart:
                         if (e.Move != null && !e.Move.LaunchesProjectile)
                         {
@@ -1202,6 +1364,18 @@ namespace VaatusRevenge.CombatSim
                 foreach (var g in swordReach.GroupBy(x => x.move))
                     t2.Row(g.Key, g.Count(), Out.N(g.Average(x => x.tip), 2), Out.N(g.First().reach, 2));
                 t2.Print();
+                Out.Sub("Planted feet on lunges (R2-02): no grounded foot above " + Out.N(DragHeight, 2) + " m and more than "
+                        + Out.N(DragBehind, 2) + " m behind the hips for more than " + DragFramesAllowed
+                        + " frames outside kicks, and no drop over " + Out.N(SnapDrop, 2) + " m in one frame outside landings and plunges");
+                var t3 = new Table("Check", "Frames checked", "Problems", "Result");
+                int drags = footIssues.Count(x => x.what.StartsWith("rear"));
+                int drops = footIssues.Count - drags;
+                t3.Row("Rear foot dragged", footFrames, drags, Out.Target(drags == 0));
+                t3.Row("Foot snapped down", footFrames, drops, Out.Target(drops == 0));
+                t3.Row("Earth rock effects in the air (R2-03)", earthAirFx + " Earth fx in the air", earthAirRockFx, Out.Target(earthAirRockFx == 0));
+                t3.Print();
+                foreach (var issue in footIssues.Take(20))
+                    Out.Line("- frame " + issue.frame + " (" + issue.scene + ", " + issue.key + "): " + issue.what + ", " + Out.N(issue.amount, 2) + " m");
                 var keys = typeof(AnimationKeys).GetFields().Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()).ToList();
                 Out.Line("Animation keys shown: " + keys.Count(k => Covered.Contains(k)) + " / " + keys.Count
                          + (keys.All(k => Covered.Contains(k)) ? "" : " (missing: " + string.Join(", ", keys.Where(k => !Covered.Contains(k))) + ")"));

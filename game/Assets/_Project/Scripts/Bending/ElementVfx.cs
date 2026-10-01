@@ -169,9 +169,22 @@ namespace VaatusRevenge
         // A small pop where a hit connects, in the given colour, with a little of the element thrown off.
         public static void HitSpark(ElementId element, Vector3 position, Color color)
         {
+            HitSpark(element, position, color, false);
+        }
+
+        // airborne: the attacker is off the ground. Earth then throws dust, never rock (ElementFxRules.DustOnly).
+        public static void HitSpark(ElementId element, Vector3 position, Color color, bool airborne)
+        {
             if (IsFire(element)) { FireVfx.HitSpark(position, color); return; }
             FireVfxRunner r = FireVfx.Runner;
-            if (r != null) r.ElementHitSpark(element, position, color);
+            if (r != null) r.ElementHitSpark(element, position, color, ElementFxRules.DustOnly(element, airborne));
+        }
+
+        // A burst, or Earth's dust when it's made off the ground (ElementFxRules.DustOnly): a dash, a switch, a dodge.
+        public static void BurstOrDust(ElementId element, Vector3 position, Vector3 direction, float scale, bool airborne)
+        {
+            if (ElementFxRules.DustOnly(element, airborne)) Dust(element, position, direction, scale);
+            else Burst(element, position, direction, scale);
         }
 
         // A launch flash pointing along direction (a projectile leaving the hand).
@@ -322,8 +335,14 @@ namespace VaatusRevenge
         // Switching element: a ring of the new element at the feet, its burst at the chest, the old one blown away.
         public static void Switch(ElementId from, ElementId to, Vector3 chest, Vector3 feet)
         {
+            Switch(from, to, chest, feet, false);
+        }
+
+        // airborne: switching mid air string. Earth then washes up as dust, with no rock (ElementFxRules.DustOnly).
+        public static void Switch(ElementId from, ElementId to, Vector3 chest, Vector3 feet, bool airborne)
+        {
             FireVfxRunner r = FireVfx.Runner;
-            if (r != null) r.SwitchFlourish(from, to, chest, feet);
+            if (r != null) r.SwitchFlourish(from, to, chest, feet, airborne);
         }
 
         // A thin ring flashing outwards round position, facing the camera (an on-beat hit; a MIX hit in the element's

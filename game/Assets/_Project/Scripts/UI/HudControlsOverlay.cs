@@ -124,7 +124,7 @@ namespace VaatusRevenge
             float inner = width - padding * 2f;
             float y = panel.y + padding;
             p.Text(new Rect(x, y, inner, titleHeight * 0.7f), "Rhythm & Mixing", p.Heading, Color.white);
-            p.Text(new Rect(x, y, inner, titleHeight * 0.7f), "1 / 2   F1: controls", p.SmallRight, DimTextColor);
+            p.Text(new Rect(x, y, inner, titleHeight * 0.7f), pad ? "1 / 2   Y: controls" : "1 / 2   F1: controls", p.SmallRight, DimTextColor);
             y += titleHeight;
 
             float patternWidth = inner * 0.38f;
@@ -216,15 +216,15 @@ namespace VaatusRevenge
 
             int r = 0;
             Pattern(ref r, "{X} · {X} · {X} · {X} · {X}",
-                "The string: press as the gold ring touches the circle, so X lands WITH the hit, for faster, harder hits. Mashing is slow and tiring");
+                "Press as the gold ring touches the circle: faster, harder hits. Mashing burns stamina");
             Pattern(ref r, "{X} · {X} · (wait) · {X} · {X}", "Pause finisher: two hits, wait for your guard (the circle glows blue), two more. A different ending");
             Pattern(ref r, "hold {X}, then {X} · {X} · {X}", "Launcher throws them up and you follow; then the air string");
             Pattern(ref r, "{B} toward  /  {B} away", "Dodge: slip in close / evade out of reach. Your combo keeps going");
             Pattern(ref r, "{B}, then {X} late", "Dodge strike: a counter that dashes back in and counts as the next hit");
             Pattern(ref r, chords.ToString(), keys.ToString(),
                 "Switch element. Mid-string it's a switch strike: the next hit is in that element, and harder");
-            Pattern(ref r, "MIX", "More elements landing in one combo: 2 hit harder, 3 launch on the finisher, 4 also refills your meters (and breaks a heavy foe's guard)");
-            Pattern(ref r, "gold: {LB}   red: {B}", sense + ": the mark above you. Gold = parry, red = dodge. Press when it turns white");
+            Pattern(ref r, "MIX", "Elements landed in a combo: 2 hit harder, 3 launch, 4 also top up Fire's Momentum");
+            Pattern(ref r, "gold: {LB}   red: {B}", sense + ": the mark above you. Gold = parry, red = dodge, white (Fluid) = now");
         }
 
         bool RhythmRowsChanged(ElementLoadout loadout, ElementButtonLayout layout, string dangerName)
@@ -330,7 +330,8 @@ namespace VaatusRevenge
             float innerWidth = width - padding * 2f;
             float y = panel.y + padding;
             p.Text(new Rect(x, y, innerWidth, titleHeight * 0.7f), "Controls", p.Heading, Color.white);
-            p.Text(new Rect(x, y, innerWidth, titleHeight * 0.7f), "2 / 2   F1: close", p.SmallRight, DimTextColor);
+            bool padPage = reader == null || reader.UsingGamepad;
+            p.Text(new Rect(x, y, innerWidth, titleHeight * 0.7f), padPage ? "2 / 2   Y: close" : "2 / 2   F1: close", p.SmallRight, DimTextColor);
             y += titleHeight;
 
             // Gameplay: action | gamepad | keyboard + mouse.

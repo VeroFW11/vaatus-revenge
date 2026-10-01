@@ -8,7 +8,7 @@ namespace VaatusRevenge
     //   every hit
     //   a bar draining towards the combo's timeout (ComboTimeRemaining01): land a hit before it empties
     //   "ON BEAT" and up to five gold pips for the on-beat presses in a row
-    //   "MIX x2" (x3, x4) with an icon per element that has landed in the combo, when two or more have
+    //   "MIX 2" (3, 4: elements landed) with an icon per element that has landed in the combo, when two or more have
     // When the combo ends it holds its last count and fades out over half a second.
     //
     // Real time throughout (the pop and the fade keep moving in hitstop). Draws allocate nothing: every number shown is
@@ -28,7 +28,7 @@ namespace VaatusRevenge
         static readonly Color LabelColor = new Color(1f, 1f, 1f, 0.75f);
 
         readonly string[] counts = new string[MaxCachedCount + 1];
-        readonly string[] mixLabels = { "", "", "MIX ×2", "MIX ×3", "MIX ×4" };
+        readonly string[] mixLabels = { "", "", "MIX 2", "MIX 3", "MIX 4" };   // elements landed, not a damage multiplier
 
         float popStart = -10f;
         float mixPopStart = -10f;

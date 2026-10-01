@@ -186,7 +186,10 @@ namespace VaatusRevenge.Core
 
             // Planted target (ankle position in the body's frame), pulled back by the lunge when anchored so the
             // back foot stays on its spot while the body drives forward (no skating), but never past full stretch.
-            float anchorBack = anchor * Math.Max(0f, travel);
+            // The pull-back is capped at about one stride (MaxAnchorPull): Build 05's arriving lunges cover 1-4.7 m, and
+            // dragging the foot back by all of it stretched the leg out flat behind at hip height (verify R2-02). Past a
+            // stride the foot lock takes over and steps the foot in.
+            float anchorBack = anchor * Math.Min(Math.Max(0f, travel), MaxAnchorPull * k);
             // A planted foot tipped onto its toes (a heel pivot, a push-off) rises by exactly as much as it tips, so
             // the ball of the foot stays on the floor instead of sinking into it.
             if (flat > 0.5f && footPitch > 0f && footY < (0.08f + 0.02f) * k) footY = Math.Max(footY, (0.08f + FootTipRise(footPitch)) * k);
@@ -321,6 +324,7 @@ namespace VaatusRevenge.Core
         // How far the ankle must rise for a foot tipped toes-down by pitch degrees to keep the ball of the foot
         // (13 cm ahead of and 6 cm below the ankle) on the floor.
         const float MinAnkleHeight = 0.06f;   // a kick along the floor: the ankle skims it
+        const float MaxAnchorPull = 0.45f;    // an anchored rear foot stays behind by at most about one stride
         const float ToesFloorHeight = 0.02f;  // the ball of the foot's joint on a flat foot (the sole is under it)
         const float MinKneeHeight = 0.05f;    // the front of a knee resting on the floor
         const float KneeLiftRange = 0.25f;    // a knee this far under the floor bends straight up

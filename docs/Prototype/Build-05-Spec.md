@@ -28,7 +28,7 @@ hands are back in guard and the circle glows blue, then X X**: that's the **paus
 Water, A (green) Earth, Y (yellow) Air** (§8.1 item 3). Do it **in the middle of a string** and the string carries on in the new element
 with its next hit: X, X, RB+X, X, X is two Fire hits then three Water hits ending on Water's finisher. The switching hit lands a little
 harder. Use more elements in one combo and every hit gets stronger: **two elements hits harder, three knocks them up on the finisher,
-four also refills your meters (and breaks the guard of a foe too heavy to launch).** The HUD calls this **MIX**.
+four also tops up Fire's Momentum (FinisherMeterRefill) (and breaks the guard of a foe too heavy to launch).** The HUD calls this **MIX**.
 
 Each element plays like its martial art:
 - **Fire (Northern Shaolin):** fast, steady, relentless; on-beat hits build Momentum.
@@ -798,9 +798,9 @@ Active 0 with `PoseEase.Snap`; dodge clips facing the fight; the multi-hit moves
   OnBeat/Auto); MIX accent (first hit after a mid-combo switch at 1.4× scale); dodge slip afterimages; per-element evade trails;
   dodge-strike burst ×1.2.
 - **HUD** (allocation-free, 1080p reference units, `HudPainter.U()`): combo counter right side (≥ 2 hits; element-tinted; pop 1.3→1.0 over
-  0.12 s; "ON BEAT" + up to 5 streak pips; drain bar from `ComboTimeRemaining01`; "MIX ×n" with element icons; fade 0.5 s on
+  0.12 s; "ON BEAT" + up to 5 streak pips; drain bar from `ComboTimeRemaining01`; "MIX n" (elements landed) with element icons; fade 0.5 s on
   `ComboEnded`); beat pulse under it (approach ring 2.2r → r driven only by `Rhythm.TimeToBeat`, gold inner disc inside the window,
-  burst on OnBeat, grey tick on Early/Mashed; optional copy at the player's feet, on during the tutorial); element wheel bottom-right
+  burst on OnBeat, grey tick on Early/Mashed, amber LATE on Late; optional copy at the player's feet, on during the tutorial); element wheel bottom-right
   (four diamonds in face-button layout from `ElementSlots`, active lit, others 55 %, grows ×1.25 with "RB +" while
   `ElementModifierHeld`, white flash + radial cooldown wipe on switch, colours from the library asset: Fire (1,.38,.12) Water
   (.25,.62,1) Earth (.45,.75,.25) Air (.95,.88,.6)); danger sense above the head (chevrons or `Common/danger.png`; one direction
@@ -1000,7 +1000,7 @@ playback rate in `[Min, Max]`; every `DangerWarning` followed by impact or `Dang
   history entries).
 
 ### 6.5 Feel checklist for David and Jeremy (Fluid, gamepad)
-1. X X, B away, X: the next hit is hit 3 (HUD string pips show 3), and the dodge strike dashes back in.
+1. X X, B away, X: the next hit is hit 3 (the hit counter reads 3 as the dodge strike lands), and the dodge strike dashes back in.
 2. Dodge in the middle of a hit's wind-up, then X: the same hit comes out again (not skipped).
 3. X X RB+X X X: two Fire hits, three Water hits ending on Water's finisher; the combo count never resets.
 4. Pressing X as the gold ring touches the circle makes the string visibly faster than mashing; mashing still finishes the string.
@@ -1008,7 +1008,7 @@ playback rate in `[Min, Max]`; every `DangerWarning` followed by impact or `Dang
 6. Dodging next to an enemy never turns your back to it; with no enemy nearby the dodge goes where you push.
 7. Three quick dodges then a short lockout; you never feel stuck after a dodge (run speed carries on).
 8. The danger mark's white flash is the right moment: dodging on it gives a perfect dodge most of the time.
-9. A three-element combo finisher launches the enemy; a four-element one launches it and refills the meters (a foe too heavy to launch
+9. A three-element combo finisher launches the enemy; a four-element one launches it and tops up Fire's Momentum (a foe too heavy to launch
    staggers instead).
 10. A first-time player finishes the tutorial in under 15 minutes without reading anything outside the game.
 
@@ -1101,6 +1101,43 @@ brief is about. These calls were made to fix it (Jeremy and David: please try th
    `DodgeProfile.SideSlipMaxDegrees` (100°) round per slip, instead of a straight tangent that left you 3-4 m away.
 7. **Earth in the air throws no rock** (§8.1 item 2 enforced in the VFX): air strikes draw dust only, the limb sheds dust, not
    gravel. "Stone Fist" renamed **Horse Stance Punch** (§7).
-8. **MIX 4** wording matches the rules: the finisher launches and refills the meters; the guard break shows on a foe too heavy to
+8. **MIX 4** wording matches the rules: the finisher launches and tops up Fire's Momentum; the guard break shows on a foe too heavy to
    launch (Jeremy's call whether MIX 4 should break guard instead of launching, open question 2).
 
+
+### 8.3 Build 05 verify round 2 (1 Oct): the controller, the teaching text and the canon
+1. **RB + a face button never fires the ranged skill.** A human "simultaneous" chord often reaches the game in one frame; the
+   reader used to start a new RB hold *after* swallowing the face button, so letting go of RB fired the Fire Blast and replaced
+   the queued switch strike. The chord logic now lives in pure C# (`Core/Contracts/PadChordReader.cs`, tested frame by frame) and a
+   face button pressed up to `elementChordGrace` (0.05 s, 3 frames) **before** RB is upgraded into the element pick: its own action
+   is taken back if it's still waiting (`PlayerInputFrame.RetractPress`; a queued X becomes the switch strike in place, keeping its
+   beat grade). An action that had already started can't be taken back. A queued switch strike can no longer be replaced by any
+   other attack press (a dodge still can).
+2. **Lunges keep the rear foot planted.** The lunge anchor pulls a planted foot back by at most one stride (0.45 m), fades out while
+   the leap lifts the body, and a foot it was holding plants where it was drawn and steps in. The `anim` scenario now fails if a
+   grounded foot trails behind at hip height for more than 3 frames or drops more than 0.3 m in one frame.
+3. **Earth off the ground is dust on every path** (`Core/Combat/ElementFxRules.cs`): hit sparks from the air string, the air dash,
+   the zip dash, a perfect dodge and a switch to Earth in the air. **Lore call for David:** on the ground Earth's limb aura is now
+   dust too (no gravel falling from a stone fist) and the switch flourish's rock rises from the floor ring, not out of the chest
+   (§7: stone comes from the ground). Say if you want the gravel back.
+4. **Tutorial hints wrap** inside the panel (and the F1 rows were shortened); the step 2 hint is shorter. Every default hint must
+   stay under `TutorialScript.HintBudget` (140 characters). `TutorialScript.CurrentDataVersion` is 3: the sandbox builder offers to
+   update an older saved tutorial.
+5. **A Late beat press shows an amber "LATE"** under the beat circle (Early and Mashed stay grey).
+6. **How-To-Play:** the Punishing three-element recipe is spread over two strings (a Punishing string only fits two elements before
+   its finisher); "the hit turns into the launcher" now reads "that hit is followed by the launcher"; mashing is "a little slower and
+   weaker, and burns stamina"; MIX 4 "tops up Fire's Momentum"; the HUD reads "MIX 2/3/4" (elements landed, not a multiplier).
+7. Smaller: arms ease back to guard over ~0.15 s when a run stops (legs still stop at once); Air's circling dodge strike now
+   counts its arc when capping the dash speed (25 → 21 m/s; the last bit is the 0.15 s startup-stretch cap); the Momentum bar shows only for an element
+   with Momentum; the element's name shows once (under the wheel); gamepad players see pad hints for the overlay, and an overlay
+   opened with Y while paused closes on resume.
+
+Still open:
+- **David:** "Air Blade" is a player-facing name (LB + Y in Air); §7 flagged it as low risk but it was never confirmed. Keep, or
+  rename (DisplayName only, no code change)? Also: the grey-box FaceBand reads as a blindfold on the painted Avatar.
+- **David and Jeremy:** gold means both "press X now" (the beat ring) and "parry with LB" (the danger mark). Give the beat its own
+  colour, or the parry mark another one?
+- **Jeremy:** the Punishing pause band is about one reaction long (Air 0.25 s, Water 0.28 s); raise Punishing `PauseGrace` to
+  ~0.35 s? Fluid `BeatLate` 0.10 → 0.15 is still open from round 1. And on Punishing an X pressed in the first ~0.3 s of a dodge
+  expires (0.2 s buffer, the dodge can't be cut before 0.48 s; `CombatTimingTests` pins this as Punishing's rule): keep it, or let
+  an attack press wait for the dodge's cancel point? How-To-Play now tells Punishing players to press X near the dodge's end.

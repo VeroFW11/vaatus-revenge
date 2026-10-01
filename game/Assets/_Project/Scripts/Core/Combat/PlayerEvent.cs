@@ -25,7 +25,7 @@ namespace VaatusRevenge.Core
         DodgeStarted,       // Direction (dash direction), Amount (distance), IsBackstep, InAir (an air dash), DodgeKind,
                             // LocalDirection (the dash in facing space: +Z forward, +X right; picks a directional clip), Element
         DodgeEnded,
-        PerfectDodge,       // TimeScale, Duration (real-time slow motion to apply), Amount (Momentum gained), Element
+        PerfectDodge,       // TimeScale, Duration (real-time slow motion to apply), Amount (Momentum gained), Element, InAir
         Jumped,
         Landed,             // Amount (downward speed at impact, m/s)
         SprintStarted,

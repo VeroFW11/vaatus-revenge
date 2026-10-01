@@ -60,5 +60,8 @@ namespace VaatusRevenge.Core
 
         public int SwitchTargetDelta; // -1 = previous/left, +1 = next/right, 0 = none (edge-triggered)
         public ElementId ElementSelect; // None unless an element was picked this frame (edge-triggered; see ElementButtonLayout)
+        // With ElementSelect: the face press made a frame or two before RB that became this pick (PadChordReader's grace).
+        // Its normal action was already reported; the model takes it back if it's still waiting. None otherwise.
+        public PlayerCommand RetractPress;
     }
 }

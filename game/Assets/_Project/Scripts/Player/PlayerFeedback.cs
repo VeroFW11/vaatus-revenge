@@ -104,7 +104,7 @@ namespace VaatusRevenge
                     StopJets();
                     StopAfterimage();
                     break;
-                case PlayerEventType.PerfectDodge: PerfectDodge(ElementOf(in e, model), s); break;
+                case PlayerEventType.PerfectDodge: PerfectDodge(ElementOf(in e, model), e.InAir, s); break;
                 case PlayerEventType.Jumped: ElementVfx.Burst(model.ActiveElement, FootPosition(s), Vector3.down, s.JumpBurstScale); break;
                 case PlayerEventType.Landed:
                     if (!plungeLandedThisFrame && e.Amount >= s.HardLandingSpeed) Pulse(s.HardLanding);
@@ -150,10 +150,16 @@ namespace VaatusRevenge
 
         public void OnHitReport(in HitReport report, ElementId element, PlayerFeedbackSettings s)
         {
+            OnHitReport(in report, element, false, s);
+        }
+
+        // attackerAirborne: the hit came from the air (the air string): Earth's spark is then dust, never rock (canon).
+        public void OnHitReport(in HitReport report, ElementId element, bool attackerAirborne, PlayerFeedbackSettings s)
+        {
             switch (report.Result.Outcome)
             {
                 case HitOutcome.Hit:
-                    ElementVfx.HitSpark(element, report.Point, HitSparkColor(element, s));
+                    ElementVfx.HitSpark(element, report.Point, HitSparkColor(element, s), attackerAirborne);
                     break;
                 case HitOutcome.Blocked:
                 case HitOutcome.GuardBroken:
@@ -244,7 +250,7 @@ namespace VaatusRevenge
             if (e.IsCounter) Flash(s.CounterFlashColor, s.CounterFlashTime);
             strikeLimb = move.Limb == Limb.Weapon ? Limb.RightFist : move.Limb;
             PlayerStrikePoses p = s.Poses;
-            if (e.AttackKind == PlayerAttackKind.ZipStrike) ZipDashStarted(move, s);
+            if (e.AttackKind == PlayerAttackKind.ZipStrike) ZipDashStarted(move, ElementFxRules.IsAirborne(in e), s);
             if (rig == null || p == null || !p.LimbFlames || e.AttackKind == PlayerAttackKind.Plunge) return;
             // The striking fist or foot takes on the element as it winds up and keeps it until the strike is over. Moves with
             // a big effect of their own keep it shorter.
@@ -391,12 +397,16 @@ namespace VaatusRevenge
         void ElementSwitched(in PlayerEvent e, PlayerFeedbackSettings s)
         {
             ElementId element = e.Element;
-            ElementVfx.Switch(e.PreviousElement, element, ChestPosition(), body.position);
+            // Off the ground (mid air string) Earth washes over the body as dust, never rock (ElementFxRules.DustOnly).
+            bool dustOnly = ElementFxRules.DustOnly(element, e.InAir);
+            ElementVfx.Switch(e.PreviousElement, element, ChestPosition(), body.position, e.InAir);
             StopAuras();
             if (rig != null && s.SwitchAuraTime > 0f)
             {
-                leftAura = ElementVfx.LimbAura(element, rig.GetAnchor(Limb.LeftFist), s.SwitchAuraTime);
-                rightAura = ElementVfx.LimbAura(element, rig.GetAnchor(Limb.RightFist), s.SwitchAuraTime);
+                leftAura = dustOnly ? ElementVfx.LimbDust(element, rig.GetAnchor(Limb.LeftFist), s.SwitchAuraTime)
+                                    : ElementVfx.LimbAura(element, rig.GetAnchor(Limb.LeftFist), s.SwitchAuraTime);
+                rightAura = dustOnly ? ElementVfx.LimbDust(element, rig.GetAnchor(Limb.RightFist), s.SwitchAuraTime)
+                                     : ElementVfx.LimbAura(element, rig.GetAnchor(Limb.RightFist), s.SwitchAuraTime);
             }
             Flash(ElementVfx.WorldColor(element), s.SwitchFlashTime);   // the colour its effects have in the world
             PlaySound(SoundKind.Switch, s);
@@ -409,8 +419,9 @@ namespace VaatusRevenge
         {
             ElementId element = ElementOf(in e, model);
             Vector3 direction = e.Direction.ToUnity();
-            // A push from the feet the other way (Flame Step's jets of fire; a splash, a scuff of dust, a gust).
-            ElementVfx.Burst(element, FootPosition(s), -direction, s.DodgeBurstScale);
+            // A push from the feet the other way (Flame Step's jets of fire; a splash, a scuff of dust, a gust). An Earth air
+            // dash pushes dust, not rock (ElementFxRules.DustOnly).
+            ElementVfx.BurstOrDust(element, FootPosition(s), -direction, s.DodgeBurstScale, e.InAir);
             DodgeProfile dodge = model.MoveSet != null ? model.MoveSet.Dodge : null;
             float duration = dodge != null ? dodge.Duration : 0f;
             StopDodgeTrails();
@@ -433,9 +444,9 @@ namespace VaatusRevenge
         }
 
         // The zip strike's dash: a push from both feet carries you across the gap for the whole dash.
-        void ZipDashStarted(MoveData move, PlayerFeedbackSettings s)
+        void ZipDashStarted(MoveData move, bool inAir, PlayerFeedbackSettings s)
         {
-            ElementVfx.Burst(attackElement, FootPosition(s), -body.forward, s.DodgeBurstScale);
+            ElementVfx.BurstOrDust(attackElement, FootPosition(s), -body.forward, s.DodgeBurstScale, inAir);
             StopDodgeTrails();
             StartJets(-body.forward, move.Startup + move.Active, attackElement, s);
         }
@@ -449,12 +460,12 @@ namespace VaatusRevenge
             rightJet = ElementVfx.FootJet(element, rig.GetAnchor(Limb.RightFoot), direction, duration);
         }
 
-        void PerfectDodge(ElementId element, PlayerFeedbackSettings s)
+        void PerfectDodge(ElementId element, bool inAir, PlayerFeedbackSettings s)
         {
             Flash(s.PerfectDodgeFlashColor, s.PerfectDodgeFlashTime);
             Vector3 chest = ChestPosition();
-            ElementVfx.Burst(element, chest, body.forward, s.PerfectDodgeBurstScale);
-            ElementVfx.HitSpark(element, chest, s.PerfectDodgeFlashColor);
+            ElementVfx.BurstOrDust(element, chest, body.forward, s.PerfectDodgeBurstScale, inAir);
+            ElementVfx.HitSpark(element, chest, s.PerfectDodgeFlashColor, inAir);
             Pulse(s.PerfectDodge);
         }
 

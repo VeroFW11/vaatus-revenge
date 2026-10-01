@@ -312,6 +312,20 @@ namespace VaatusRevenge.Core
             bool abilityNorthPressed = Pressed(input.AbilityNorth, ref abilityNorthHeld);
             bool abilityEastPressed = Pressed(input.AbilityEast, ref abilityEastHeld);
 
+            // RB pressed a frame or two after a face button: that face press became this frame's element pick
+            // (PadChordReader's grace). Take its normal action back if it's still waiting; a queued string press keeps
+            // its slot and beat grade and becomes the switch strike below.
+            bool upgradeQueuedLight = false;
+            if (input.RetractPress != PlayerCommand.None && input.ElementSelect != ElementId.None)
+            {
+                if (input.RetractPress == PlayerCommand.Dodge) dodgeButton.Reset();   // its swallowed release must not dodge
+                if (buffer.Command == input.RetractPress)
+                {
+                    if (buffer.Command == PlayerCommand.Light && buffer.Locked) upgradeQueuedLight = true;
+                    else buffer.Clear();
+                }
+            }
+
             bool dodgePressed = input.Dodge.Pressed || (input.Dodge.Held && !dodgeButton.IsHeld);
             bool dodgeTap = dodgeButton.Update(dodgePressed, input.Dodge.Released, input.Dodge.Held, dt,
                 tuning.DodgeTrigger, tuning.TapHoldThreshold);
@@ -319,6 +333,13 @@ namespace VaatusRevenge.Core
             if (state == PlayerState.Dead) return;
             // RB + an element's button: a switch now, a switch strike for the string (buffered like Light), or nothing.
             PlayerCommand elementChord = ReadElementSelect(input.ElementSelect);
+            if (upgradeQueuedLight)
+            {
+                // The queued X was the first half of the chord: it becomes the switch strike in place (already judged
+                // against the beat), or stays a Light when the switch was denied (cooldown, same element).
+                if (elementChord == PlayerCommand.SwitchStrike) buffer.Replace(PlayerCommand.SwitchStrike);
+                elementChord = PlayerCommand.None;
+            }
 
             // Ability chords (hold the guard button, then a face button: Heavy, AbilityNorth, AbilityEast). The guard
             // button is the chord's modifier, so its own press was only ever the first half of the chord: the chord

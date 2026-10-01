@@ -104,7 +104,7 @@ namespace VaatusRevenge
         // An Earth strike made in the air (the air string, or any strike while off the ground): dust only, no rock.
         public static bool IsAirborneEarth(in PlayerEvent e, ElementId element)
         {
-            return element == ElementId.Earth && (e.InAir || e.Branch == ComboBranch.Air || e.AttackKind == PlayerAttackKind.Air);
+            return ElementFxRules.DustOnly(element, ElementFxRules.IsAirborne(in e));
         }
 
         // The shapes Build 05 added for Water, Earth and Air; Fire has none of its own.

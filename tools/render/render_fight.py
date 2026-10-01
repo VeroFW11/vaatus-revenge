@@ -11,7 +11,7 @@ Needs: pip install matplotlib imageio imageio-ffmpeg (ffmpeg comes with imageio-
 
 What you see: a 3/4 camera that follows the player; each fighter drawn as thick limbs with joints, a torso, a head
 with a face marker (so facing reads); team colours (the Avatar in the chosen character sheet's colours: crimson
-tunic, bare arms with black bracers, black sash, maroon trousers, dark shin wraps; soldiers dark red with a sword,
+tunic, bare arms with black bracers, black sash, maroon trousers, dark shin wraps; soldiers slate and iron with a sword,
 crossbowmen tan, dummies straw); a 1 m ground grid; effects as translucent shapes matching their EffectKey (cone,
 ring, ribbon, pillar, slam, trails, jets, and since Build 05 wave, line, dome, vortex, shards, stomp) coloured by the
 element that made them (fire orange, water blue, earth brown, air pale green-white); a ring round the player's
@@ -36,7 +36,7 @@ COLOURS = {
     # bare warm-tan arms with black leather bracers, black sash with gold trim, maroon trousers, dark shin wraps, black shoes
     "player": {"body": "#8c1d2c", "limb": "#c98a5c", "trim": "#d4a43a", "skin": "#c98a5c", "dark": "#2a1416",
                "uarm": "#c98a5c", "farm": "#231a1a", "thigh": "#4a1420", "shin": "#3a2a26", "foot": "#141010", "fist": "#c98a5c"},
-    "soldier": {"body": "#5e1a1a", "limb": "#7a2424", "trim": "#2b2b2b", "skin": "#c89878", "dark": "#240808"},
+    "soldier": {"body": "#333a45", "limb": "#262a30", "trim": "#946b33", "skin": "#c79470", "dark": "#0f0f12"},  # BodyLook.Soldier: slate and iron, bronze trim
     "crossbow": {"body": "#9c7f55", "limb": "#b39468", "trim": "#5b4a30", "skin": "#c89878", "dark": "#3b2f1d"},
     "dummy": {"body": "#c9a86a", "limb": "#d8bb80", "trim": "#8a6a3a", "skin": "#c9a86a", "dark": "#6a5230"},
 }
@@ -423,11 +423,13 @@ class Renderer:
         elif key == "pillar":
             height = 3.2 * min(1.0, u * 2.5)
             items.append(self.pillar((o[0], 0.0, o[2]), height, 0.3, fade, outer, hot))
-        elif key == "burst":
+        elif key in ("burst", "dust"):
+            # dust: Earth off the ground (no rock, canon): a fainter, wider puff
             if fighter is not None:
                 p = joints_of(fighter)[fx["joint"]]
                 reach = min(fx["range"], 3.5) * 0.35
-                items.append(self.flame_ball(add(p, mul(d, reach * u)), 0.18 + 0.25 * u, fade, outer, hot))
+                soft = 0.5 if key == "dust" else 1.0
+                items.append(self.flame_ball(add(p, mul(d, reach * u)), (0.18 + 0.25 * u) * (1.4 if key == "dust" else 1.0), fade * soft, outer, hot))
         elif key == "trail":
             hist = self.history.get(fx["fighter"], [])
             pts = [h[fx["joint"]] for h in hist[-8:]]

@@ -83,7 +83,7 @@ namespace VaatusRevenge
             };
         }
 
-        // Dao soldier: dark red lacquered armour, helmet, a dao in the right hand.
+        // Dao soldier: dark iron and slate lacquered armour, helmet, a dao in the right hand.
         public static BodyLook Soldier()
         {
             return new BodyLook

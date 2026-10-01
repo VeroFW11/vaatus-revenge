@@ -16,7 +16,11 @@ namespace VaatusRevenge.Core
         // Bumped when the default steps change, so the sandbox builder can offer to update an old saved tutorial.
         // A field missing from an old asset keeps its initialiser, so it reads 0.
         public int DataVersion = 0;
-        public const int CurrentDataVersion = 2;   // 2: Build 05 verify (pause finisher X X wait X X, beat taught as anticipation)
+        public const int CurrentDataVersion = 3;   // 2: Build 05 verify (pause finisher X X wait X X, beat taught as anticipation)
+                                                   // 3: verify round 2 (shorter step 2 hint; hints wrap and stay under HintBudget)
+        // Longest hint, in characters (a {button} counts as 3): the panel wraps hints, and this keeps any of them to two
+        // or three short lines. TutorialTrackerTests checks every default hint against it.
+        public const int HintBudget = 140;
 
         public int StepCount => Steps != null ? Steps.Length : 0;
 
@@ -43,7 +47,7 @@ namespace VaatusRevenge.Core
                     {
                         Id = "2", Title = "On the beat", Goal = TutorialGoal.OnBeatFinisher, MinOnBeat = 3,
                         Prompt = "{X} ×5, press as the ring touches the circle",
-                        Hint = "Press so your X lands WITH the hit: follow the gold ring closing on the circle and press as it touches, not after the flash (the flash and chime only confirm it). The next hit comes faster and harder."
+                        Hint = "Press as the gold ring touches the circle, not after the flash (that only confirms it). On the beat, the next hit is faster and harder."
                     },
                     new TutorialStepData
                     {

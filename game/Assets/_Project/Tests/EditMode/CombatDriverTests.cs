@@ -36,6 +36,7 @@ namespace VaatusRevenge.Tests
         public int Frame = -1;
         public PlayerTickResult Last;
         public ElementId Select;    // sent as PlayerInputFrame.ElementSelect on the next Step only (RB + a face button)
+        public PlayerCommand Retract;   // sent as PlayerInputFrame.RetractPress with Select (a face press upgraded late)
         Pad held;
 
         public PlayerDriver(PlayerTuning tuning = null, ElementMoveSet moveSet = null, float fps = 60f)
@@ -112,7 +113,7 @@ namespace VaatusRevenge.Tests
 
         public PlayerInputFrame MakeInput(Pad now, Vector2 move)
         {
-            var input = new PlayerInputFrame { Move = move, ElementSelect = Select };
+            var input = new PlayerInputFrame { Move = move, ElementSelect = Select, RetractPress = Retract };
             input.Light = ButtonState.From((now & Pad.Light) != 0, (held & Pad.Light) != 0);
             input.Heavy = ButtonState.From((now & Pad.Heavy) != 0, (held & Pad.Heavy) != 0);
             input.Dodge = ButtonState.From((now & Pad.Dodge) != 0, (held & Pad.Dodge) != 0);
@@ -131,6 +132,7 @@ namespace VaatusRevenge.Tests
             PlayerInputFrame input = MakeInput(now, move);
             held = now;
             Select = ElementId.None;
+            Retract = PlayerCommand.None;
             float stepDt = dt ?? Dt;
             Frame++;
             Last = Model.Tick(stepDt, input, World);

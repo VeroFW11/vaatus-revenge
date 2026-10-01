@@ -104,6 +104,25 @@ namespace VaatusRevenge.Tests
             Assert.AreEqual(0, new TutorialScript().DataVersion, "an asset saved before the version existed reads 0 (stale)");
         }
 
+        // Verify round 2 (R2-04): hints wrap in the panel, but a hint must stay short enough to read mid-fight: under
+        // TutorialScript.HintBudget characters (a {button} counts as 3), pad and keyboard, normal and "already in" text.
+        [Test]
+        public void EveryHintStaysUnderTheBudget()
+        {
+            TutorialScript script = TutorialScript.CreateDefault();
+            foreach (TutorialStepData step in script.Steps)
+            {
+                foreach (bool pad in new[] { true, false })
+                {
+                    foreach (string hint in new[] { step.HintFor(pad), step.AlreadyInElementHintFor(pad) })
+                    {
+                        int length = System.Text.RegularExpressions.Regex.Replace(hint ?? "", @"\{[A-Za-z]+\}", "BTN").Length;
+                        Assert.LessOrEqual(length, TutorialScript.HintBudget, "step " + step.Id + (pad ? " pad" : " keyboard") + ": " + hint);
+                    }
+                }
+            }
+        }
+
         [Test]
         public void SwitchStepsUseTheColourMatchedLayout()
         {
