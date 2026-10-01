@@ -37,7 +37,50 @@ namespace VaatusRevenge.CombatSim
                 var m = new Table("Other", "Measured");
                 foreach (var row in MeasureMisc(p, o.Fps)) m.Row(row.Item1, row.Item2);
                 m.Print();
+
+                RhythmFrames(p, o.Fps);
             }
+        }
+
+        // Build 05: a string move plays at the rate its press earned (spec 2.4.1), so every one of its times is the data
+        // divided by that rate: on the beat (the element's OnBeatPlaybackRate, or the preset's), at 1.0 (late, a pause,
+        // the string's first hit) and off the beat (early or mashed: OffBeatPlaybackRate). Frames at this frame rate.
+        static void RhythmFrames(Preset p, float fps)
+        {
+            Session.MakePreset(p, out PlayerTuning tuning, out ElementLoadout loadout);
+            RhythmTuning r = tuning.Rhythm;
+            Out.Line("String moves by beat grade (" + p + "): active start / chain cancel / end, in frames from the move's start, on the beat | at 1.0 | "
+                     + "off the beat. The beat window is where the next press must land for an on-beat grade, from this move's start.");
+            var t = new Table("Element", "Move", "On beat (x rate)", "1.0", "Off beat (x" + Out.N(r.OffBeatPlaybackRate, 2) + ")", "Beat window (on beat)",
+                "Beat window (1.0)");
+            for (ElementId el = ElementId.Fire; el <= ElementId.Air; el++)
+            {
+                ElementMoveSet set = loadout.Get(el);
+                ElementRhythm er = set.Rhythm;
+                float on = Math.Clamp(er.OnBeatPlaybackRate > 0f ? er.OnBeatPlaybackRate : r.OnBeatPlaybackRate, r.MinPlaybackRate, r.MaxPlaybackRate);
+                float off = Math.Clamp(r.OffBeatPlaybackRate, r.MinPlaybackRate, r.MaxPlaybackRate);
+                float early = r.BeatEarly + er.BeatEarlyDelta, late = r.BeatLate + er.BeatLateDelta;
+                string Frames(MoveData mv, float rate)
+                {
+                    int F(float seconds) => (int)Math.Ceiling(seconds / rate * fps - 1e-4);
+                    return F(mv.ActiveStart) + " / " + F(mv.ChainCancelAt) + " / " + F(mv.TotalDuration);
+                }
+                string Window(MoveData mv, float rate)
+                {
+                    float beat = mv.ActiveStart / rate;
+                    return (int)Math.Round((beat - early) * fps) + "-" + (int)Math.Round((beat + late) * fps) + " f";
+                }
+                void Row(string slot, MoveData mv)
+                {
+                    if (mv == null) return;
+                    t.Row(el, slot + " " + mv.DisplayName, Frames(mv, on) + " (x" + Out.N(on, 2) + ")", Frames(mv, 1f), Frames(mv, off),
+                        Window(mv, on), Window(mv, 1f));
+                }
+                for (int i = 0; i < set.LightChain.Length; i++) Row("X" + (i + 1), set.LightChain[i]);
+                for (int i = 0; i < (set.PauseChain?.Length ?? 0); i++) Row("Pause " + (i + 1), set.PauseChain[i]);
+                Row("Dodge strike", set.DodgeStrike);
+            }
+            t.Print();
         }
 
         static float Flat(Vector3 v)

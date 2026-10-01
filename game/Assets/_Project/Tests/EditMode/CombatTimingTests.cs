@@ -127,7 +127,7 @@ namespace VaatusRevenge.Tests
             var tuning = PlayerTuning.CreateFluid();
             tuning.MaxStamina = 10f;
             tuning.StaminaRegen = 0f;
-            var d = new PlayerDriver(tuning);
+            var d = PlayerDriver.PreBuild05(tuning);             // a dodge that costs 6 and needs stamina (Build 05 Fluid: free)
             d.Tap(Pad.Dodge, Forward);                           // 6 -> 4 left
             d.RunUntil(x => x.Model.State == PlayerState.Locomotion, 60, Pad.None, Forward);
             Assert.That(d.Model.Stamina, Is.EqualTo(4f).Within(1e-4f));
@@ -148,7 +148,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void StaminaRegenWaitsForItsDelay()
         {
-            var d = new PlayerDriver();
+            var d = PlayerDriver.PreBuild05();                   // a dodge that costs stamina (Build 05 Fluid dodges are free)
             PlayerTuning t = d.Model.Tuning;
             d.Tap(Pad.Dodge, Forward);
             float afterSpend = d.Model.Stamina;

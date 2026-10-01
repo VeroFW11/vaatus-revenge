@@ -2,11 +2,33 @@ using System;
 
 namespace VaatusRevenge.Core
 {
-    // Element switching (hold RB + a face button; 1-4 on the keyboard). PlayerInputFrame.ElementSelect names the
-    // element; the loadout says which are learned.
+    // Element switching (hold RB + a face button; 1-4 on the keyboard). PlayerInputFrame.ElementSelect names the element;
+    // the loadout says which are learned. One rule: "RB + an element's button on the beat = your next hit in that element".
+    //
+    //   A. String live (a string move running; or dodging / free with the string remembered or the pause band open; or
+    //      airborne in an air string): the chord is a SWITCH STRIKE, buffered and beat-judged exactly like a Light press
+    //      (with SwitchStrikeBeatLateBonus more late window). It switches element as its move starts (the normal cancel
+    //      point, never at the press), and that move comes from the new element in the same slot (see .Actions); it hits
+    //      harder (SwitchStrikeDamageMultiplier) and breaks more poise (SwitchStrikePoiseMultiplier), that one hit only.
+    //   B. String not live: a plain switch. Instant when free, airborne, in a non-string attack, dodging, or guarding with
+    //      no deflect armed; while busy (charging, plunging, healing, staggered, a deflect window open) it waits up to
+    //      SwitchBufferWindow (a stagger drops it).
+    //   C. On cooldown: a switch strike is played as a normal Light press in the current element (the string never drops)
+    //      and ElementSwitchDenied{Cooldown} is raised; a plain switch is just denied.
+    //   D. NotLearned (the HUD shows a message) and SameElement (no message) are denied.
+    // A running action always finishes with the element it started with (actionSet). Switching from a held block into a
+    // parry-only element drops the guard; into a blocking element with the guard button held, it rises when free.
+    // Switching costs no stamina: the cooldown is the limiter.
     public sealed partial class PlayerCombatModel
     {
+        readonly ElementSwitchTuning fallbackSwitch = new ElementSwitchTuning();
+
         double switchCooldownUntil = double.NegativeInfinity;
+        ElementId pendingSwitchElement;           // the switch strike's element (the buffered SwitchStrike command)
+        ElementId pendingSwitch;                  // a plain switch waiting for the player to be free (B, busy)
+        double pendingSwitchUntil = double.NegativeInfinity;
+
+        ElementSwitchTuning SwitchRules => tuning.ElementSwitch ?? fallbackSwitch;
 
         // Points the model at a loadout and picks the active element: the current one if still learned, else the
         // loadout's starting element (or the first learned one).
@@ -30,25 +52,95 @@ namespace VaatusRevenge.Core
             || state == PlayerState.Dodging || state == PlayerState.Guarding || state == PlayerState.Healing
             || state == PlayerState.Staggered;
 
-        void ReadElementSelect(ElementId requested)
+        // While these run, a plain switch waits (B).
+        bool IsSwitchBusy => state == PlayerState.Charging || state == PlayerState.Plunging || state == PlayerState.Healing
+            || state == PlayerState.Staggered || (state == PlayerState.Guarding && deflectArmed);
+
+        // A string the next X would continue (A).
+        bool IsStringLive => IsStringMoveRunning || IsStringMemoryLive || IsPauseBandLive;
+
+        // RB + a face button this frame. Returns the command to buffer: SwitchStrike (A), Light (C: the string goes on in
+        // the current element) or None (a plain switch, done or waiting, or a denial).
+        PlayerCommand ReadElementSelect(ElementId requested)
         {
-            if (requested == ElementId.None) return;
+            if (requested == ElementId.None) return PlayerCommand.None;
             if (!loadout.IsLearned(requested))
             {
                 EmitSwitchDenied(requested, SwitchDeniedReason.NotLearned);
-                return;
+                return PlayerCommand.None;
             }
             if (requested == activeElement)
             {
                 EmitSwitchDenied(requested, SwitchDeniedReason.SameElement);
-                return;
+                return PlayerCommand.None;
             }
-            if (clock < switchCooldownUntil)
+            bool coolingDown = clock < switchCooldownUntil;
+            if (IsStringLive)
+            {
+                if (coolingDown)
+                {
+                    EmitSwitchDenied(requested, SwitchDeniedReason.Cooldown);
+                    return PlayerCommand.Light;
+                }
+                pendingSwitchElement = requested;
+                return PlayerCommand.SwitchStrike;
+            }
+            if (coolingDown)
             {
                 EmitSwitchDenied(requested, SwitchDeniedReason.Cooldown);
-                return;
+                return PlayerCommand.None;
+            }
+            if (IsSwitchBusy)
+            {
+                pendingSwitch = requested;
+                pendingSwitchUntil = clock + Math.Max(0f, SwitchRules.SwitchBufferWindow);
+                return PlayerCommand.None;
             }
             SwitchElement(requested, false, ComboBranch.Other);
+            return PlayerCommand.None;
+        }
+
+        // Still worth switching to when the buffered switch strike finally runs.
+        bool IsSwitchUsable(ElementId element)
+        {
+            return element != ElementId.None && element != activeElement && loadout.IsLearned(element);
+        }
+
+        // A plain switch that waited for the player to be free (B).
+        void UpdatePendingSwitch()
+        {
+            if (pendingSwitch == ElementId.None) return;
+            if (clock > pendingSwitchUntil + 1e-6)
+            {
+                ElementId expired = pendingSwitch;
+                pendingSwitch = ElementId.None;
+                EmitSwitchDenied(expired, SwitchDeniedReason.Busy);
+                return;
+            }
+            if (IsSwitchBusy || state == PlayerState.Dead) return;
+            ElementId element = pendingSwitch;
+            pendingSwitch = ElementId.None;
+            if (!IsSwitchUsable(element)) return;
+            if (clock < switchCooldownUntil)
+            {
+                EmitSwitchDenied(element, SwitchDeniedReason.Cooldown);
+                return;
+            }
+            SwitchElement(element, false, ComboBranch.Other);
+        }
+
+        void CancelPendingSwitch()
+        {
+            if (pendingSwitch != ElementId.None && state != PlayerState.Dead) EmitSwitchDenied(pendingSwitch, SwitchDeniedReason.Busy);
+            pendingSwitch = ElementId.None;
+        }
+
+        // The switch strike's move is starting (StartAttack, after the previous move has ended): switch now.
+        void ApplySwitchStrike(ElementId element, ComboBranch branch)
+        {
+            if (!IsSwitchUsable(element)) return;
+            SwitchElement(element, true, branch);
+            actionSet = moveSet;                  // between two moves: the new one is the new element's
         }
 
         void SwitchElement(ElementId element, bool switchStrike, ComboBranch branch)
@@ -57,12 +149,18 @@ namespace VaatusRevenge.Core
             activeElement = element;
             moveSet = loadout.Get(element);
             if (!IsInAction) actionSet = moveSet;
-            switchCooldownUntil = clock + Math.Max(0f, tuning.ElementSwitch != null ? tuning.ElementSwitch.Cooldown : 0f);
+            switchCooldownUntil = clock + Math.Max(0f, SwitchRules.Cooldown);
             Emit(new PlayerEvent
             {
                 Type = PlayerEventType.ElementSwitched, Element = element, PreviousElement = previous, IsSwitchStrike = switchStrike,
                 Branch = branch, Count = MixLevel, InAir = !grounded
             });
+            // A held block doesn't survive a switch to a parry-only element (a parry window would have kept it busy).
+            if (state == PlayerState.Guarding && (moveSet.Guard ?? FallbackGuard).IsParryOnly && !(actionSet.Guard ?? FallbackGuard).IsParryOnly)
+            {
+                ExitAction(false);
+                state = PlayerState.Locomotion;
+            }
         }
 
         void EmitSwitchDenied(ElementId requested, SwitchDeniedReason reason)

@@ -8,7 +8,8 @@ namespace VaatusRevenge.CombatSim
     // Mirror of Player/PlayerController.cs Update (execution order 0), minus visuals:
     //   world state (camera yaw, ground, lock-on target, soft-lock candidate) -> model.Tick -> one Move ->
     //   facing -> events (arc query on AttackActiveStart, EndAttack, projectiles, landing ring, slow motion on a
-    //   perfect dodge, hitstop on a deflect) -> keep querying the open hitbox every later frame.
+    //   perfect dodge, hitstop on a deflect) -> keep querying the open hitbox every later frame. Clean hits report
+    //   whether the target was in the air (ComboHit.InAir), as PlayerController.IsAirborne does.
     public sealed class SimPlayer : SimFighter
     {
         public int AirHitsLanded;                      // clean hits by air-string moves (scenario stats)
@@ -26,7 +27,7 @@ namespace VaatusRevenge.CombatSim
         public SimFighter LockTarget;
         public readonly List<PlayerEvent> FrameEvents = new List<PlayerEvent>(16);
 
-        public SimPlayer(SimWorld world, PlayerTuning tuning, ElementMoveSet moves, Vector3 position, float yaw)
+        public SimPlayer(SimWorld world, PlayerTuning tuning, ElementLoadout loadout, Vector3 position, float yaw)
         {
             this.world = world;
             Id = CombatIds.Next();
@@ -34,7 +35,7 @@ namespace VaatusRevenge.CombatSim
             Team = Team.Player;
             Controller.Position = position;
             facingYaw = yaw;
-            Model = new PlayerCombatModel(tuning, moves, Id, yaw);
+            Model = new PlayerCombatModel(tuning, loadout, Id, yaw);
         }
 
         public override bool IsAlive => Model.IsAlive;
@@ -97,6 +98,7 @@ namespace VaatusRevenge.CombatSim
             {
                 ws.HasNearestEnemy = true;
                 ws.NearestEnemyPosition = nearest.Feet;
+                ws.NearestEnemyRadius = nearest.Radius;
             }
             LockTarget = Usable(world.LockOn != null ? world.LockOn.Target : null);
             SoftTarget = null;
@@ -250,7 +252,7 @@ namespace VaatusRevenge.CombatSim
             for (int i = 0; i < hits.Count; i++)
             {
                 SimHitReport report = hits[i];
-                Model.OnAttackLanded(in report.Result, attackId);
+                Model.OnAttackLanded(in report.Result, attackId, IsAirborne(report.Target));
                 world.OnPlayerHitLanded(move, in report);
                 if (report.Result.Outcome == HitOutcome.Hit)
                 {
@@ -267,10 +269,15 @@ namespace VaatusRevenge.CombatSim
         void OnProjectileHit(SimHitReport report, DamageInfo damage)
         {
             if (!Active || !Model.IsAlive) return;
-            Model.OnAttackLanded(in report.Result, damage.AttackId);
+            Model.OnAttackLanded(in report.Result, damage.AttackId, IsAirborne(report.Target));
             world.OnPlayerHitLanded(null, in report);
             if (report.Result.Outcome != HitOutcome.Hit) return;
             world.Time.Hitstop(damage.Hitstop);
+        }
+
+        static bool IsAirborne(SimFighter target)
+        {
+            return target != null && target.Controller.Enabled && !target.Controller.IsGrounded;
         }
 
         void QueryActiveAttack()

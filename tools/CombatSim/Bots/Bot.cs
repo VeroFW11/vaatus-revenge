@@ -557,12 +557,366 @@ namespace VaatusRevenge.CombatSim
         }
     }
 
+    // ---------------------------------------------------------------- Build 05: string players
+
+    // A player who reads the beat (the HUD ring closing on each hit) and presses for the next hit at a chosen moment
+    // relative to it. Each string move's beat is known when it starts (start + ActiveStart / playback rate, the same rule
+    // the ring follows); the press is aimed at beat + Offset() with human timing noise. Defends like 'anticipate' (or
+    // with danger sense, see SenseBot) and keeps strings going while it's safe. Like a practised souls player it minds
+    // its stamina: it finishes the string it's in, but only starts a new one with enough stamina for most of a string
+    // (StartStringStamina of the bar), so it never runs the bar dry and eats the empty-bar pause.
+    public class StringBot : Bot
+    {
+        protected double plannedPress = -1;    // game time of the next string press (-1 = none)
+        protected double stringMoveStarted;    // game time the running string move started
+        protected PlayerEvent lastStart;       // the running string move's AttackStarted
+        protected bool defend = true;
+        protected float meanOffset, sd;
+        protected bool continueStrings = true;  // press for every next hit (false: one hit, then start again later)
+        protected float StartStringStamina = 0.55f;
+        double nextStringAt;
+
+        public StringBot(string name, float meanOffset, float sd)
+        {
+            Name = name;
+            this.meanOffset = meanOffset;
+            this.sd = sd;
+        }
+
+        public override void Attach(Session s, int seed)
+        {
+            base.Attach(s, seed);
+            H.TimingSd = 0.05f;
+            W.PlayerEvent += e =>
+            {
+                if (e.Type == PlayerEventType.AttackStarted && IsStringMove(e)) OnStringMoveStarted(e);
+                OnPlayer(e);
+            };
+        }
+
+        protected static bool IsStringMove(in PlayerEvent e)
+        {
+            return e.AttackKind == PlayerAttackKind.Light || e.AttackKind == PlayerAttackKind.Air || e.AttackKind == PlayerAttackKind.DodgeStrike;
+        }
+
+        protected double BeatOf(in PlayerEvent e) => stringMoveStarted + e.Move.ActiveStart / Math.Max(0.01f, e.PlaybackRate);
+
+        protected virtual void OnStringMoveStarted(in PlayerEvent e)
+        {
+            stringMoveStarted = GameNow;
+            lastStart = e;
+            plannedPress = continueStrings ? BeatOf(e) + Offset(e) : -1;
+        }
+
+        protected virtual void OnPlayer(in PlayerEvent e) { }
+
+        // The press that opens a new string (X; the switcher opens with a zip strike).
+        protected virtual void StartString(ref Pad pad)
+        {
+            Tap(Button.Light);
+        }
+
+        // When to press relative to the beat (seconds; negative = before it).
+        protected virtual double Offset(in PlayerEvent e) => H.Normal(meanOffset, sd);
+
+        // The press for the next hit (Light; the switcher sometimes changes element instead).
+        protected virtual void PressForNextHit(ref Pad pad)
+        {
+            Tap(Button.Light);
+        }
+
+        protected override void Think(ref Pad pad)
+        {
+            SimEnemy t = Target;
+            if (defend) Defend();
+            bool danger = defend && ThreatSoon(0.4, 0.8f);
+            if (t != null) MoveToward(t, 1.8f, danger ? 0.5f : 0f);
+            // One frame of input lag: a press made now lands on the next frame.
+            if (plannedPress >= 0 && GameNow + W.LastGameDt >= plannedPress)
+            {
+                plannedPress = -1;
+                if (M.State == PlayerState.Attacking || M.State == PlayerState.Dodging || M.IsAlive) PressForNextHit(ref pad);
+            }
+            bool idle = M.State == PlayerState.Locomotion || M.State == PlayerState.Sprinting;
+            if (idle && plannedPress < 0 && !danger && !Busy && t != null && Dist(t) < 2.9f && M.Stamina >= M.MaxStamina * StartStringStamina
+                && RealNow >= nextStringAt && !Buttons.IsScheduled(Button.Light, RealNow))
+            {
+                StartString(ref pad);
+                nextStringAt = RealNow + H.Range(0.15f, 0.35f);
+            }
+            MaybeHeal(0.3f);
+        }
+
+        // 'anticipate' style: a dodge timed just before each strike, toward or beside it.
+        protected virtual void Defend()
+        {
+            foreach (Threat th in Threats)
+            {
+                if (th.Handled || RealNow < th.SeenRealTime || !InReachOf(th, 1.2f)) continue;
+                th.Handled = true;
+                if (th.IsRanged)
+                {
+                    double arrive = th.StrikeTime(0) + Dist(th.Enemy) / Math.Max(1f, th.Attack.Move.Projectile.Speed);
+                    PlanDodge(arrive - 0.1 + H.Jitter(), SideStep(th.Enemy));
+                    continue;
+                }
+                PlanDodge(th.StrikeTime(0) - 0.06 + H.Jitter(), H.Chance(0.6f) ? DirTo(th.Enemy) : SideStep(th.Enemy));
+                if (th.HitCount > 1) PlanDodge(th.StrikeTime(1) - 0.06 + H.Jitter(), SideStep(th.Enemy));
+            }
+        }
+    }
+
+    // On the beat (a practised player): presses at the beat, timing noise 0.03 s.
+    public sealed class RhythmBot : StringBot
+    {
+        public RhythmBot() : base("rhythm", 0.005f, 0.03f) { }
+    }
+
+    // Roughly on the beat: the right idea, loose timing (0.08 s).
+    public sealed class SloppyBot : StringBot
+    {
+        public SloppyBot() : base("sloppy", 0.0f, 0.08f) { }
+    }
+
+    // Presses after the beat window, inside the combo window (Late every time): a slow, deliberate tapper.
+    public sealed class SlowTapBot : StringBot
+    {
+        public SlowTapBot() : base("slowtap", 0f, 0f) { }
+
+        protected override double Offset(in PlayerEvent e)
+        {
+            RhythmTuning r = M.Tuning.Rhythm;
+            float rate = Math.Max(0.01f, e.PlaybackRate);
+            double windowEnd = e.Move.ComboWindowEnd / rate - e.Move.ActiveStart / rate;   // from the beat
+            double from = r.BeatLate + 0.03, to = Math.Max(from, windowEnd - 0.03);
+            return H.Range((float)from, (float)to);
+        }
+    }
+
+    // Reacts to each hit landing (the flash) instead of anticipating it: presses a reaction time after the strike goes
+    // active, sometimes twice (a nervous double tap).
+    public sealed class ReactPressBot : StringBot
+    {
+        public ReactPressBot() : base("reactpress", 0f, 0f) { }
+
+        protected override void OnStringMoveStarted(in PlayerEvent e)
+        {
+            base.OnStringMoveStarted(e);
+            plannedPress = -1;                  // pressed on seeing the strike, not on the ring
+        }
+
+        protected override void OnPlayer(in PlayerEvent e)
+        {
+            if (e.Type != PlayerEventType.AttackActiveStart || !IsStringMove(e) || plannedPress >= 0) return;
+            plannedPress = GameNow + Math.Clamp(H.Normal(0.2f, 0.035f), 0.13f, 0.32f);
+            if (H.Chance(0.15f)) doubleTapAt = plannedPress + H.Range(0.07f, 0.14f);
+        }
+
+        double doubleTapAt = -1;
+
+        protected override void PressForNextHit(ref Pad pad)
+        {
+            base.PressForNextHit(ref pad);
+            if (doubleTapAt > 0)
+            {
+                Tap(Button.Light, doubleTapAt - GameNow);
+                doubleTapAt = -1;
+            }
+        }
+    }
+
+    // X X, wait, X: the pause finisher. Presses hit 2 on the beat, then waits past its combo window and presses; the pause
+    // chain's own follow-up on the beat; then starts again.
+    public sealed class PauserBot : StringBot
+    {
+        public PauserBot() : base("pauser", 0.005f, 0.03f) { }
+
+        protected override double Offset(in PlayerEvent e)
+        {
+            if (e.Branch == ComboBranch.Main && e.ChainIndex == M.MoveSet.Rhythm.PauseAfterIndex)
+            {
+                float rate = Math.Max(0.01f, e.PlaybackRate);
+                // A person's pause: past the combo window, before the band closes (aim for its middle).
+                double windowEnd = e.Move.ComboWindowEnd / rate - e.Move.ActiveStart / rate;
+                return windowEnd + H.Range(0.05f, 0.2f);
+            }
+            if (e.Branch == ComboBranch.Pause && e.IsFinisher) return 10.0;   // after the pause finisher: a fresh string later
+            return base.Offset(e);
+        }
+
+        protected override void OnStringMoveStarted(in PlayerEvent e)
+        {
+            base.OnStringMoveStarted(e);
+            if (plannedPress > GameNow + 5.0) plannedPress = -1;
+        }
+    }
+
+    // Mixes elements mid-string: on the beat, RB + the next element not yet in this combo's MIX (a switch strike), so
+    // a string lands Fire, Water, Earth, Air and finishes at MIX 4. When the switch cooldown would refuse the press, it
+    // waits the cooldown out if the string is still live by then (a late press inside the combo window, or after hit 2
+    // the pause band); otherwise it presses X. Back to ordinary presses once the MIX is full.
+    // It opens each string with a zip strike and a plain switch while the zip flies, so the cooldown has run out by the
+    // string's second hit: zip (element 1), X (2), RB + 3 on the beat, wait, RB + 4 (the pause chain), X: the pause
+    // finisher at MIX 4. With Punishing's 0.6 s cooldown that is the only way to fit four elements before a finisher.
+    public sealed class SwitcherBot : StringBot
+    {
+        public SwitcherBot() : base("switcher", 0.005f, 0.03f) { }
+        public int MixFourFinishers;
+        public int SwitchStrikes;
+        double switchAt = -1;            // game time of the plain switch during the opening zip
+
+        protected override void OnPlayer(in PlayerEvent e)
+        {
+            if (e.Type == PlayerEventType.MixFinisher && e.Count >= 4) MixFourFinishers++;
+            if (e.Type == PlayerEventType.ElementSwitched && e.IsSwitchStrike) SwitchStrikes++;
+            if (e.Type == PlayerEventType.AttackStarted && e.AttackKind == PlayerAttackKind.ZipStrike)
+            {
+                zipStarted = true;
+                switchAt = GameNow + Math.Max(0.05f, H.Reaction() * 0.5f);
+                // X as the zip lands (waits in the buffer for its cancel point): the string's first hit.
+                Tap(Button.Light, e.Move.ActiveEnd + Math.Abs(H.Jitter()));
+            }
+        }
+
+        protected override void StartString(ref Pad pad)
+        {
+            // No zip came of the last try (no target in its cone): open with X instead.
+            if (zipTried && !zipStarted) Tap(Button.Light);
+            else pad.ZipStrike = true;
+            zipTried = !zipTried || zipStarted;
+            zipStarted = false;
+        }
+
+        bool zipTried, zipStarted;
+
+        protected override void Think(ref Pad pad)
+        {
+            base.Think(ref pad);
+            if (switchAt >= 0 && GameNow + W.LastGameDt >= switchAt)
+            {
+                switchAt = -1;
+                ElementId next = NextElement();
+                if (next != ElementId.None && M.State == PlayerState.Attacking && M.CurrentAttackKind == PlayerAttackKind.ZipStrike)
+                    pad.Element = next;
+            }
+        }
+
+        protected override void PressForNextHit(ref Pad pad)
+        {
+            ElementId next = NextElement();
+            if (next == ElementId.None)
+            {
+                base.PressForNextHit(ref pad);
+                return;
+            }
+            float cooldown = M.SwitchCooldownRemaining;
+            if (cooldown <= 0f)
+            {
+                pad.Element = next;
+                return;
+            }
+            double ready = GameNow + cooldown + W.LastGameDt;
+            if (ready <= StringLiveUntil() - 0.03)
+            {
+                plannedPress = ready;            // wait for it (one late press instead of a refused one)
+                return;
+            }
+            base.PressForNextHit(ref pad);
+        }
+
+        // The last moment a press still continues the running string move: its combo window, or the end of the pause band
+        // after the pause-eligible hit (as the HUD's ring and pause cue show).
+        double StringLiveUntil()
+        {
+            if (lastStart.Move == null) return GameNow;
+            float rate = Math.Max(0.01f, lastStart.PlaybackRate);
+            double until = lastStart.Move.ComboWindowEnd / rate;
+            bool pauseEligible = M.Tuning.Rhythm.Enabled && lastStart.Branch == ComboBranch.Main && !lastStart.IsFinisher
+                                 && lastStart.ChainIndex == M.MoveSet.Rhythm.PauseAfterIndex && M.MoveSet.PauseChain != null
+                                 && M.MoveSet.PauseChain.Length > 0;
+            if (pauseEligible) until = Math.Max(until, (lastStart.Move.TotalDuration + M.Tuning.Rhythm.PauseGrace) / rate);
+            return stringMoveStarted + until;
+        }
+
+        ElementId NextElement()
+        {
+            for (int i = 1; i <= 4; i++)
+            {
+                var e = (ElementId)(((int)M.ActiveElement - 1 + i) % 4 + 1);
+                if (e == M.ActiveElement) continue;
+                if ((M.MixElementsMask & (1 << (int)e)) == 0 && M.IsLearned(e)) return e;
+            }
+            return ElementId.None;
+        }
+    }
+
+    // Switches on every follow-up press, cooldown or not (a player hammering RB + a face button): the stress test for
+    // "a switch the cooldown refuses still continues the string". Half the presses go to a random other element.
+    public sealed class ChaosSwitchBot : StringBot
+    {
+        public ChaosSwitchBot() : base("chaosswitch", 0.005f, 0.03f) { defend = false; }
+
+        protected override void PressForNextHit(ref Pad pad)
+        {
+            if (!H.Chance(0.5f))
+            {
+                base.PressForNextHit(ref pad);
+                return;
+            }
+            int pick = H.Rng.Range(1, 4);
+            pad.Element = (ElementId)(((int)M.ActiveElement - 1 + pick) % 4 + 1);
+        }
+    }
+
+    // Defends with danger sense: dodges a reaction time after the mark turns white (DangerNow), with a neutral stick
+    // (the automatic side-step) or away from the attacker. Without a white cue (Punishing), on the warning plus the lead
+    // difference it has learned. Otherwise plays strings on the beat.
+    public sealed class SenseBot : StringBot
+    {
+        public SenseBot() : base("sense", 0.005f, 0.03f) { defend = false; }
+        public int ThrustDodges, ThrustPanicDodges;
+        readonly List<(double at, SimEnemy by)> planned = new List<(double, SimEnemy)>();
+
+        protected override void OnPlayer(in PlayerEvent e)
+        {
+            DangerSenseSettings d = M.Tuning.DangerSense;
+            bool cue = d.NowLead > 0f ? e.Type == PlayerEventType.DangerNow : e.Type == PlayerEventType.DangerWarning;
+            if (!cue) return;
+            double react = H.Reaction();
+            // Without a white cue, wait out the gap a person learns between the mark and the strike.
+            double wait = d.NowLead > 0f ? 0.0 : Math.Max(0.0, e.Duration - 0.05 - react);
+            double at = GameNow + react + wait;
+            for (int i = 0; i < planned.Count; i++) if (Math.Abs(planned[i].at - at) < 0.15) return;
+            SimEnemy by = null;
+            foreach (SimEnemy enemy in W.Enemies) if (enemy.Id == e.AttackerId) by = enemy;
+            planned.Add((at, by));
+            Vector3 away = by != null && H.Chance(0.5f) ? SideStep(by, 0.2f) : Vector3.Zero;
+            PlanDodge(at, away);
+            if (by != null && by.Brain.CurrentMove != null && by.Brain.CurrentAttack != null
+                && by.Brain.CurrentAttack.Telegraph == TelegraphKind.Delayed)
+            {
+                ThrustDodges++;
+                double impact = GameNow + e.Duration;
+                if (impact - at > M.MoveSet.Dodge.PerfectWindow + 0.05) ThrustPanicDodges++;
+            }
+            planned.RemoveAll(p => p.at < GameNow - 1.0);
+        }
+    }
+
     public static class Bots
     {
         public static Bot Create(string name)
         {
             switch (name.ToLowerInvariant())
             {
+                case "rhythm": return new RhythmBot();
+                case "sloppy": return new SloppyBot();
+                case "slowtap": return new SlowTapBot();
+                case "reactpress": return new ReactPressBot();
+                case "pauser": return new PauserBot();
+                case "switcher": return new SwitcherBot();
+                case "sense": return new SenseBot();
+                case "chaosswitch": return new ChaosSwitchBot();
                 case "masher": return new MasherBot();
                 case "react": return new DodgerBot(false);
                 case "anticipate": return new DodgerBot(true);
@@ -575,6 +929,6 @@ namespace VaatusRevenge.CombatSim
             }
         }
 
-        public static readonly string[] Players = { "masher", "react", "anticipate", "guard", "aggressive", "fajin" };
+        public static readonly string[] Players = { "masher", "react", "anticipate", "guard", "aggressive", "fajin", "rhythm", "switcher", "sense" };
     }
 }

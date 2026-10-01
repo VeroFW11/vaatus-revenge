@@ -9,7 +9,8 @@ namespace VaatusRevenge.CombatSim
     // chest aim point, line of sight chest-to-chest), brain.Tick, one Move (not for planted dummies), facing,
     // events (arc query when a strike opens, EndAttack when it closes, bolts as projectiles), keep sweeping an
     // open strike on later frames, corpse stops blocking once grounded. A deflected melee strike staggers the
-    // attacker; a deflected bolt doesn't (EnemyStrikes.ReactToBolt).
+    // attacker; a deflected bolt doesn't (EnemyStrikes.ReactToBolt). Every brain event also goes to
+    // DangerSenseRelay (EnemyStrikes.RelayDanger), so the player's danger sense works here as in Unity.
     public sealed class SimEnemy : SimFighter
     {
         const float MaxCorpseFallSeconds = 3f;
@@ -112,6 +113,7 @@ namespace VaatusRevenge.CombatSim
             {
                 EnemyEvent e = events[i];
                 FrameEvents.Add(e);
+                if (world.Player != null) DangerSenseRelay.OnEnemyEvent(in e, Brain, Id, Feet, world.Player.Feet, world.Player.Model);
                 world.OnEnemyEvent(this, in e);
                 switch (e.Type)
                 {

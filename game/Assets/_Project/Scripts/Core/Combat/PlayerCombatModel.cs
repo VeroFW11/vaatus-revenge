@@ -59,12 +59,26 @@ namespace VaatusRevenge.Core
         int recentAttackCursor;
         int recentHitCursor;
 
+        // What we remember about each of our recent attacks (sub-hits and projectiles too), so a hit that lands later,
+        // or the hit query on a later frame, gets the numbers the attack started with.
         struct AttackRecord
         {
             public int AttackId;
+            public int MoveInstanceId;    // the first sub-hit's AttackId
+            public bool FirstSubHit;      // the record that holds the per-move totals (heal so far)
             public float MomentumGain;
-            public bool Rewarded;
+            public bool Rewarded;         // its clean hit has been counted
             public ElementId Element;
+            public MoveData Move;
+            public PlayerAttackKind Kind;
+            public ComboBranch Branch;
+            public int ChainIndex;
+            public bool IsFinisher;       // a main or pause chain finisher (the MIX finisher bonuses)
+            public BeatGrade Grade;
+            public float DamageScale;     // on-beat x switch strike x perfect string
+            public float PoiseScale;      // switch strike
+            public float LaunchSpeed;     // perfect-string launch (0 = the move's own)
+            public float Healed;          // HealOnHit given so far by this move (first sub-hit's record)
         }
 
         bool insideTick;
@@ -91,9 +105,18 @@ namespace VaatusRevenge.Core
         bool lungeHoming;             // a stretched lunge or zip dash travels straight at its target, not along the facing
         Vector3 lungeTargetFeet;      // where that target was when last seen: kept if the soft lock drops it mid-lunge
         float lungeTargetRadius;
-        double chainGraceUntil = double.NegativeInfinity;   // see UpdateAttack: chain survives a short recovery
-        int chainGraceNext;
-        PlayerAttackKind chainGraceKind;   // which string the grace continues (the ground one or the air one)
+        ComboBranch chainBranch;      // the chain chainIndex counts in (Main, Pause, Air; Other for non-string moves)
+        ComboBranch currentBranch;    // the branch the running move reports (a dodge strike: DodgeStrike)
+        BeatGrade moveGrade;          // the grade of the press that started the running move
+        bool moveIsChainFinisher;     // the running move is its chain's last
+        bool moveIsSwitchStrike;
+        float attackPlaybackRate = 1f; // the running attack's speed (rhythm): its whole timeline is scaled by this
+        float moveDamageScale = 1f;   // on-beat x switch strike x perfect string (copied into the attack record)
+        float movePoiseScale = 1f;
+        float moveLaunchSpeed;
+        bool moveOnBeatArmor;         // Earth's on-beat perk: armoured until the active frames end
+        int moveInstanceId;           // the running move's first sub-hit AttackId
+        int subHitIndex;              // the next sub-hit to open
         double attackStartClock;      // when the running attack started (the launcher checks the press that started it is still held)
         int airAttacksUsed;           // air strikes since we last touched the ground (AerialSettings.AirAttacksPerJump)
         int airDashesUsed;            // air dashes since we last touched the ground
@@ -237,6 +260,7 @@ namespace VaatusRevenge.Core
                 realClock += frameRealDt;
                 bodyHeight = world.SelfHeight;
                 lastPosition = world.Position;
+                bodyRadius = Math.Max(0f, world.SelfRadius);
                 ReadInput(input, dt);
                 buffer.Expire(clock, tuning.InputBufferWindow, tuning.QueuedPressMaxAge);
                 UpdateGrounding(dt, world);
@@ -244,6 +268,7 @@ namespace VaatusRevenge.Core
                 UpdateThreats();
                 AdvanceAction(dt, world);
                 TryRunBufferedCommand(world);
+                UpdatePendingSwitch();
                 UpdateHeldStates(dt);
                 ComputeMotion(dt, world);
                 UpdateMomentum(dt, world);
@@ -288,7 +313,8 @@ namespace VaatusRevenge.Core
                 tuning.DodgeTrigger, tuning.TapHoldThreshold);
 
             if (state == PlayerState.Dead) return;
-            ReadElementSelect(input.ElementSelect);
+            // RB + an element's button: a switch now, a switch strike for the string (buffered like Light), or nothing.
+            PlayerCommand elementChord = ReadElementSelect(input.ElementSelect);
 
             // Ability chords (hold the guard button, then a face button: Heavy, AbilityNorth, AbilityEast). The guard
             // button is the chord's modifier, so its own press was only ever the first half of the chord: the chord
@@ -313,9 +339,18 @@ namespace VaatusRevenge.Core
             if (abilityNorthPressed) buffer.Push(PlayerCommand.AbilityNorth, clock, defensiveWins);
             if (abilityEastPressed) buffer.Push(PlayerCommand.AbilityEast, clock, defensiveWins);
             if (lightPressed) buffer.Push(PlayerCommand.Light, clock, defensiveWins);
+            if (elementChord != PlayerCommand.None) buffer.Push(elementChord, clock, defensiveWins);
             if (jumpPressed) buffer.Push(PlayerCommand.Jump, clock, defensiveWins);
             if (guardPressed) buffer.Push(PlayerCommand.Guard, clock, defensiveWins);
             if (dodgeTap) buffer.Push(PlayerCommand.Dodge, clock, defensiveWins);
+
+            // A string press the buffer kept (a dodge or guard pressed with it wins) is judged against the beat now, at
+            // the clock it was made (a press during a hitstop counts at the frozen moment).
+            bool stringPress = lightPressed || elementChord != PlayerCommand.None;
+            if (stringPress && (buffer.Command == PlayerCommand.Light || buffer.Command == PlayerCommand.SwitchStrike))
+            {
+                OnStringPress(buffer.Command == PlayerCommand.SwitchStrike);
+            }
         }
 
         // A press is the Pressed flag, or "held now but not last frame" (covers a skipped frame).
@@ -345,11 +380,19 @@ namespace VaatusRevenge.Core
 
         void EmitMoveEvent(PlayerEventType type)
         {
-            Emit(new PlayerEvent
+            Emit(MoveEvent(type));
+        }
+
+        // An event about the running move, with everything a listener may want to know about it.
+        PlayerEvent MoveEvent(PlayerEventType type)
+        {
+            return new PlayerEvent
             {
-                Type = type, Move = currentMove, AttackKind = attackKind, AttackId = currentAttackId,
-                ChargeTier = chargeTier, IsCounter = isCounter, InAir = !grounded
-            });
+                Type = type, Move = currentMove, AttackKind = attackKind, AttackId = currentAttackId, ChargeTier = chargeTier,
+                IsCounter = isCounter, InAir = !grounded, ChainIndex = chainIndex, Branch = currentBranch,
+                IsFinisher = moveIsChainFinisher, PlaybackRate = attackPlaybackRate, Element = actionSet.Element, Grade = moveGrade,
+                MoveInstanceId = moveInstanceId, IsSwitchStrike = moveIsSwitchStrike
+            };
         }
 
         void UpdateTimers(float dt)
@@ -358,6 +401,7 @@ namespace VaatusRevenge.Core
             stamina.Tick(dt, MaxStamina, regen);
             poise.Tick(dt, tuning.MaxPoise, tuning.PoiseRegenDelay, tuning.PoiseRegenRate);
             UpdateDeflectWindow();
+            UpdateComboTimer(dt);
         }
 
         // Live tuning safety: if someone drags a maximum below the current value mid-fight, follow it.
@@ -370,8 +414,9 @@ namespace VaatusRevenge.Core
 
         // ---------------------------------------------------------------- feedback from the hit system
 
-        // Our attack connected. Only clean hits build Momentum, once per attack (a wide kick hitting two
-        // enemies still counts once). Use the AttackId from the event for projectiles that land later.
+        // Our attack connected. Only clean hits count: the hit counter, Momentum, MIX and Water's healing, once per attack
+        // (a wide kick hitting two enemies still counts once; each sub-hit of a multi-hit move is its own attack). Use the
+        // AttackId from the event for projectiles that land later. See .Combo.
         public void OnAttackLanded(in HitResult result, int attackId)
         {
             OnAttackLanded(result, attackId, false);
@@ -383,20 +428,6 @@ namespace VaatusRevenge.Core
             OnAttackLanded(result, lastAttackId, false);
         }
 
-        // targetAirborne: the target was in the air (juggled) when it was hit (ComboHit.InAir).
-        public void OnAttackLanded(in HitResult result, int attackId, bool targetAirborne)
-        {
-            if (result.Outcome != HitOutcome.Hit || attackId == 0) return;
-            for (int i = 0; i < recentAttacks.Length; i++)
-            {
-                if (recentAttacks[i].AttackId != attackId) continue;
-                if (recentAttacks[i].Rewarded) return;
-                recentAttacks[i].Rewarded = true;
-                MeterOf(recentAttacks[i].Element).Gain(recentAttacks[i].MomentumGain, MomentumRulesOf(recentAttacks[i].Element));
-                return;
-            }
-        }
-
         // An enemy deflected our attack: we stagger.
         public void OnParried()
         {
@@ -405,22 +436,53 @@ namespace VaatusRevenge.Core
             Stagger(tuning.ParriedStaggerDuration);
         }
 
-        void RememberAttack(int attackId, float momentumGain)
+        // firstSubHit: the move's first (or only) sub-hit; later sub-hits share its MoveInstanceId.
+        void RememberAttack(int attackId, float momentumGain, bool firstSubHit)
         {
-            recentAttacks[recentAttackCursor] = new AttackRecord { AttackId = attackId, MomentumGain = momentumGain, Element = actionSet.Element };
+            recentAttacks[recentAttackCursor] = new AttackRecord
+            {
+                AttackId = attackId, MoveInstanceId = moveInstanceId, FirstSubHit = firstSubHit, MomentumGain = momentumGain,
+                Element = actionSet.Element, Move = currentMove, Kind = attackKind, Branch = currentBranch, ChainIndex = chainIndex,
+                IsFinisher = moveIsChainFinisher && (chainBranch == ComboBranch.Main || chainBranch == ComboBranch.Pause),
+                Grade = moveGrade, DamageScale = moveDamageScale, PoiseScale = movePoiseScale, LaunchSpeed = moveLaunchSpeed
+            };
             recentAttackCursor = (recentAttackCursor + 1) % recentAttacks.Length;
             lastAttackId = attackId;
         }
 
+        // Index of an attack's record, -1 if it's too old to remember.
+        int FindAttack(int attackId)
+        {
+            if (attackId == 0) return -1;
+            for (int i = 0; i < recentAttacks.Length; i++)
+            {
+                if (recentAttacks[i].AttackId == attackId) return i;
+            }
+            return -1;
+        }
+
+        int FindMoveRecord(int instanceId)
+        {
+            if (instanceId == 0) return -1;
+            for (int i = 0; i < recentAttacks.Length; i++)
+            {
+                if (recentAttacks[i].MoveInstanceId == instanceId && recentAttacks[i].FirstSubHit) return i;
+            }
+            return -1;
+        }
+
         // ---------------------------------------------------------------- damage out
 
-        // The DamageInfo for one of our attacks: the move's numbers x Momentum multiplier x counter bonus x
-        // fa jin/charge multipliers. The hit system fills Direction and Point per target.
+        // The DamageInfo for one of our attacks: the move's numbers x the identity meter (Momentum) of the attack's element
+        // x fa jin / charge x counter x on-beat x switch strike x perfect string x MIX (and the MIX finisher tiers). Poise
+        // is scaled only by fa jin and the switch strike: never by rhythm or MIX. The hit system fills Direction and Point
+        // per target.
         public DamageInfo BuildDamage(MoveData move, int attackId, ChargeTier tier = ChargeTier.None, bool counter = false)
         {
             var info = new DamageInfo();
             if (move == null) return info;
-            ElementId element = ElementOfAttack(attackId);
+            int record = FindAttack(attackId);
+            ElementId element = record >= 0 ? recentAttacks[record].Element : activeElement;
             float damageScale = MeterOf(element).DamageMultiplier(MomentumRulesOf(element));
             float poiseScale = 1f;
             float hitstop = move.Hitstop;
@@ -434,10 +496,21 @@ namespace VaatusRevenge.Core
             {
                 damageScale *= Charge.ChargedDamageMultiplier;
             }
-            if (counter) damageScale *= Dodge.CounterDamageMultiplier;
+            if (counter) damageScale *= CounterMultiplierOf(element);
+            float launchSpeed = move.LaunchSpeed;
+            bool poiseBreak = false;
+            if (record >= 0)
+            {
+                AttackRecord r = recentAttacks[record];
+                damageScale *= r.DamageScale;
+                poiseScale *= r.PoiseScale;
+                launchSpeed = Math.Max(launchSpeed, r.LaunchSpeed);
+                ApplyMixFinisher(r.IsFinisher, ref damageScale, ref launchSpeed, ref poiseBreak);
+            }
+            damageScale *= MixRules.DamageFor(MixLevel);
 
             info.Damage = move.Damage * damageScale;
-            info.PoiseDamage = move.PoiseDamage * poiseScale;
+            info.PoiseDamage = poiseBreak ? float.MaxValue : move.PoiseDamage * poiseScale;
             info.GuardStaminaDamage = move.GuardStaminaDamage;
             info.Knockback = move.Knockback;
             info.Hitstop = hitstop;
@@ -447,25 +520,20 @@ namespace VaatusRevenge.Core
             info.AttackId = attackId;
             info.Parryable = move.Parryable;
             info.Unblockable = move.Unblockable;
-            info.LaunchSpeed = move.LaunchSpeed;
+            info.LaunchSpeed = launchSpeed;
             info.AirLift = move.AirLift;
             info.SlamSpeed = move.SlamSpeed;
             info.Element = element;
+            info.MoveInstanceId = record >= 0 ? recentAttacks[record].MoveInstanceId : attackId;
             info.PullDistance = move.PullDistance;
             return info;
         }
 
-        // The element an attack was made with (an attack no longer remembered: the active element).
-        ElementId ElementOfAttack(int attackId)
+        float CounterMultiplierOf(ElementId element)
         {
-            if (attackId != 0)
-            {
-                for (int i = 0; i < recentAttacks.Length; i++)
-                {
-                    if (recentAttacks[i].AttackId == attackId) return recentAttacks[i].Element;
-                }
-            }
-            return activeElement;
+            ElementMoveSet set = loadout.Get(element) ?? actionSet;
+            DodgeProfile dodge = set.Dodge ?? FallbackDodge;
+            return dodge.CounterDamageMultiplier;
         }
 
         public DamageInfo BuildDamage(in PlayerEvent evt)
@@ -506,6 +574,9 @@ namespace VaatusRevenge.Core
                 ExitAction(true);
                 EnterFreeState();
             }
+            EndCombo(ComboEndReason.PresetChanged);
+            ClearStringMemory();
+            CancelPendingSwitch();
             tuning = newTuning ?? PlayerTuning.CreateFluid();
             SetLoadout(newLoadout);
             if (state != PlayerState.Dead) health = Math.Max(1f, healthShare * MaxHealth);
@@ -524,6 +595,7 @@ namespace VaatusRevenge.Core
         public void Respawn(float newFacingYaw)
         {
             if (state != PlayerState.Dead) ExitAction(true);
+            EndCombo(ComboEndReason.Respawned);
             ClearThreats();
             ResetState(newFacingYaw);
             Emit(PlayerEventType.Respawned);
@@ -544,13 +616,20 @@ namespace VaatusRevenge.Core
             attackKind = PlayerAttackKind.None;
             currentAttackId = 0;
             chainIndex = -1;
+            chainBranch = ComboBranch.Other;
+            currentBranch = ComboBranch.Other;
+            moveGrade = BeatGrade.None;
+            moveIsChainFinisher = false;
+            moveIsSwitchStrike = false;
+            moveOnBeatArmor = false;
+            moveInstanceId = 0;
+            subHitIndex = 0;
             lungeDistance = 0f;
             lungeHoming = false;
             lightPressClock = double.NegativeInfinity;
             airAttacksUsed = 0;
             airDashesUsed = 0;
             dodgeInAir = false;
-            chainGraceUntil = double.NegativeInfinity;
             activeOpen = false;
             isCounter = false;
             releasingCharge = false;
@@ -560,7 +639,8 @@ namespace VaatusRevenge.Core
             heavyPressRealClock = double.NegativeInfinity;
             counterWindowUntil = double.NegativeInfinity;
             ResetCombo();
-            ClearStringMemory();
+            ResetRhythm();
+            CancelPendingSwitch();
             ResetDefense();
             ResetLocomotion(newFacingYaw);
         }

@@ -13,7 +13,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void DodgeIFramesMatchTheProfile()
         {
-            var d = new PlayerDriver();
+            var d = PlayerDriver.PreBuild05();   // pins the frame maths with i-frames 0.02-0.24 (Build 05 Fluid: 0-0.18)
             DodgeProfile dodge = d.Model.MoveSet.Dodge;
             d.Step(Pad.Dodge, Forward);
             Assert.IsFalse(d.Model.IsInvulnerable, "first frame of the dash is still vulnerable (i-frames start at 0.02)");
@@ -76,7 +76,10 @@ namespace VaatusRevenge.Tests
             Assert.IsTrue(d.Model.IsCounterAttack);
             MoveData jab = d.Model.CurrentMove;
             DamageInfo counter = d.Model.BuildCurrentDamage();
-            float expected = jab.Damage * d.Model.MomentumMultiplier * d.Model.MoveSet.Dodge.CounterDamageMultiplier;
+            // Build 05: a counter is graded Auto (on the beat), so the on-beat multiplier applies too.
+            Assert.AreEqual(BeatGrade.Auto, d.All(PlayerEventType.AttackStarted)[0].Grade);
+            float expected = jab.Damage * d.Model.MomentumMultiplier * d.Model.MoveSet.Dodge.CounterDamageMultiplier
+                             * d.Model.Tuning.Rhythm.OnBeatDamageMultiplier;
             Assert.That(counter.Damage, Is.EqualTo(expected).Within(1e-3f));
             Assert.IsFalse(d.Model.IsCounterWindowOpen, "used up by that attack");
         }
@@ -111,12 +114,35 @@ namespace VaatusRevenge.Tests
                     }
                 }
             }
+
+            // Build 05: the Fluid dodge is free and spammable (three in a row, then ChainCooldown), so the cap is checked as
+            // a share too: whatever the press rhythm, at most 60 % of any 3 s can be invulnerable, for every element.
+            foreach (float fps in new[] { 30f, 60f, 144f })
+            {
+                foreach (bool punishing in new[] { false, true })
+                {
+                    for (ElementId element = ElementId.Fire; element <= ElementId.Air; element++)
+                    {
+                        for (int interval = 1; interval <= 24; interval++)
+                        {
+                            PlayerDriver d = punishing
+                                ? PlayerDriver.Elements(PlayerTuning.CreatePunishing(), ElementLoadout.CreatePunishing(), fps)
+                                : PlayerDriver.Elements(null, null, fps);
+                            d.Model.Tuning.StaminaRegen = 1000f;
+                            d.Select = element;
+                            d.Step();
+                            CheckDodgeSpam(d, d.Model.MoveSet.Dodge, interval, 0, fps, true);
+                        }
+                    }
+                }
+            }
         }
 
-        static void CheckDodgeSpam(PlayerDriver d, DodgeProfile profile, int interval, int phase, float fps)
+        // checkShare: also the Build 05 cap (a shipped tuning; the deliberately broken one only proves the gap rule).
+        static void CheckDodgeSpam(PlayerDriver d, DodgeProfile profile, int interval, int phase, float fps, bool checkShare = false)
         {
             int frames = (int)(3f * fps);
-            int run = 0, longestRun = 0, gap = 0, runsSeen = 0;
+            int run = 0, longestRun = 0, gap = 0, runsSeen = 0, invulnerableFrames = 0;
             float maxRun = profile.IFrameEnd - profile.IFrameStart + d.Dt + 1e-4f;
             string context = d.Model.Tuning.PresetName + " " + fps + "fps every " + interval + " frames, phase " + phase;
             for (int f = 0; f < frames; f++)
@@ -126,6 +152,7 @@ namespace VaatusRevenge.Tests
                 d.Step(press ? Pad.Dodge : Pad.None, Forward);
                 if (d.Model.IsInvulnerable)
                 {
+                    invulnerableFrames++;
                     if (run == 0 && runsSeen > 0)
                     {
                         float gapTime = gap * d.Dt;
@@ -143,6 +170,7 @@ namespace VaatusRevenge.Tests
                 }
             }
             Assert.LessOrEqual(longestRun * d.Dt, maxRun, context + ": one run is at most one dodge's i-frames");
+            if (checkShare) Assert.LessOrEqual(invulnerableFrames / (float)frames, 0.6f, context + " " + d.Model.ActiveElement + ": invulnerable share over 3 s");
         }
 
         [Test]

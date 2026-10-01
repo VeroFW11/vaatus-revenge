@@ -30,7 +30,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void ChordFinishedDuringAJabReplacesTheBufferedParry()
         {
-            var d = new PlayerDriver();
+            var d = PlayerDriver.PreBuild05();   // a jab whose guard cancel is late, so the parry press waits in the buffer (pre-C13)
             d.Step(Pad.Light);
             d.Run(2);
             d.Step(Pad.Guard);                                   // LB goes down mid-jab: buffered as a parry...

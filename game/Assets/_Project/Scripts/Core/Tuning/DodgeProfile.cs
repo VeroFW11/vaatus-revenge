@@ -21,12 +21,12 @@ namespace VaatusRevenge.Core
     public class DodgeProfile
     {
         public string DisplayName = "Flame Step";
-        public float Duration = 0.30f;               // time the dash takes
-        public float DashEaseOut = 0.6f;             // 0 = constant speed, 1 = explosive start that slows to a stop
+        public float Duration = 0.24f;               // time the dash takes
+        public float DashEaseOut = 0.70f;            // 0 = constant speed, 1 = explosive start that slows to a stop
         public float EndRecovery = 0f;               // committed, vulnerable time after the dash before you're free
 
         // --- Distances per kind ---
-        public float EvadeOutDistance = 4.2f;        // stick away from the target (and a Traverse along the stick)
+        public float EvadeOutDistance = 4.0f;        // stick away from the target (and a Traverse along the stick)
         public float SideSlipDistance = 3.0f;        // stick sideways, and the automatic side-step
         public float SlipInMaxDistance = 3.4f;       // stick toward the target: at most this far...
         public float SlipInStopGap = 0.6f;           // ...stopping this far from its body
@@ -37,29 +37,29 @@ namespace VaatusRevenge.Core
         // --- Facing ---
         public float FocusRadius = 7f;               // the nearest enemy this close counts as the focus target
         public float FocusTurnRate = 900f;           // degrees per second you keep turning to the focus target while dodging
-        public bool AutoEvadeOnNeutral = false;       // neutral stick with a strike about to land = automatic side-step (false = backstep)
+        public bool AutoEvadeOnNeutral = true;       // neutral stick with a strike about to land = automatic side-step (false = backstep)
 
         // --- Costs ---
-        public float StaminaCost = 6f;
-        public bool RequiresStamina = true;          // false: an empty bar still dodges (Fluid); true: no stamina, no dodge
+        public float StaminaCost = 0f;
+        public bool RequiresStamina = false;         // false: an empty bar still dodges (Fluid); true: no stamina, no dodge
 
         // Invincibility frames ("i-frames"): hits during this window pass straight through you.
-        public float IFrameStart = 0.02f;
-        public float IFrameEnd = 0.24f;
+        public float IFrameStart = 0f;
+        public float IFrameEnd = 0.18f;
         // Guaranteed vulnerable time between one dodge's i-frames and the next, so dodge-spam can never be
         // permanent invincibility. Enforced by the rules even if the numbers above are tuned badly.
-        public float ChainIFrameGap = 0.05f;
+        public float ChainIFrameGap = 0.06f;
 
         // --- Cancels ---
-        public float EvadeAttackCancelAt = 0.14f;    // earliest an attack, jump or guard can cut the dodge short (every kind but SlipIn)
-        public float SlipInAttackCancelAt = 0.14f;   // the same for a slip-in (you're already close: hit sooner)
-        public float NextDodgeAt = 0.28f;            // earliest a new dodge can start
+        public float EvadeAttackCancelAt = 0.08f;    // earliest an attack, jump or guard can cut the dodge short (every kind but SlipIn)
+        public float SlipInAttackCancelAt = 0.05f;   // the same for a slip-in (you're already close: hit sooner)
+        public float NextDodgeAt = 0.18f;            // earliest a new dodge can start
 
         // --- Chains: a few quick dodges, then a breather ---
-        public int ChainMax = 99;                     // dodges in a row (each starting within ChainLink of the last one ending)...
+        public int ChainMax = 3;                     // dodges in a row (each starting within ChainLink of the last one ending)...
         public float ChainLink = 0.12f;
         public float ChainCooldown = 0.30f;          // ...then no dodge for this long (DodgeChainLimited)
-        public float ExitSpeedCarry = 0f;            // stick held as the dodge ends: you leave it at RunSpeed x this (no re-accelerating)
+        public float ExitSpeedCarry = 1f;            // stick held as the dodge ends: you leave it at RunSpeed x this (no re-accelerating)
 
         // Perfect dodge: a hit arrives in the first moments of the dash, i.e. you dodged at the last instant.
         public bool PerfectDodgeEnabled = true;

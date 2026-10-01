@@ -7,8 +7,9 @@ using VaatusRevenge.Core;
 namespace VaatusRevenge.CombatSim
 {
     // Robustness: long runs of random input (mashing, long holds, sticks near the dead zone, huge mouse deltas,
-    // lock-on spam, shoulder swaps) at 30/60/144 fps and with dt spikes and paused frames, plus preset swaps
-    // mid-move (F5/F6), respawns and enemy resets, against the mixed group and a swinging dummy. Every frame is
+    // lock-on spam, shoulder swaps, element switches, dodges of every kind) at 30/60/144 fps and with dt spikes and
+    // paused frames, plus preset swaps mid-move (F5/F6), respawns and enemy resets, against the mixed group and a
+    // swinging dummy. Every frame is
     // checked by Invariants (finite and in-range numbers, nothing stuck, balanced events, telegraphed strikes,
     // consistent attack tokens).
     public static class FuzzScenario
@@ -53,7 +54,9 @@ namespace VaatusRevenge.CombatSim
 
             static readonly float[] StartChance = { 0.08f, 0.02f, 0.04f, 0.02f, 0.03f, 0.015f, 0.004f, 0.004f, 0.003f, 0.02f, 0.012f, 0.012f };
 
-            public Pad Next(double now)
+            // dodgeStick(kind): the stick for a dodge of that kind against the nearest enemy (0 slip in, 1 evade out, 2 side
+            // slip, 3 neutral), so every Build 05 dodge kind comes up, not just whatever the random stick happens to say.
+            public Pad Next(double now, Func<int, Vector2> dodgeStick = null)
             {
                 var pad = new Pad();
                 for (int b = 0; b < until.Length; b++)
@@ -64,6 +67,11 @@ namespace VaatusRevenge.CombatSim
                         double len = r.Chance(0.8f) ? r.Range(0.01f, 0.15f) : r.Range(0.15f, 1.6f);
                         until[b] = now + len;
                         Set(ref pad, b);
+                        if (b == 2 && dodgeStick != null && r.Chance(0.6f))
+                        {
+                            stick = dodgeStick(r.Range(0, 4));
+                            nextStick = now + len + 0.1;
+                        }
                     }
                 }
                 if (now >= nextStick)
@@ -86,7 +94,7 @@ namespace VaatusRevenge.CombatSim
                 pad.Look = look;
                 pad.LookIsMouse = lookMouse;
                 if (r.Chance(0.003f)) pad.SwitchTarget = r.Chance(0.5f) ? 1 : -1;
-                if (r.Chance(0.002f)) pad.Element = (ElementId)r.Range(1, 5);
+                if (r.Chance(0.01f)) pad.Element = (ElementId)r.Range(1, 5);     // RB + a face button (Build 05: mid-string switches)
                 return pad;
             }
 
@@ -123,12 +131,26 @@ namespace VaatusRevenge.CombatSim
             s.World.AddEnemy(EnemyTuning.CreateSparringDummy(), new Vector3(0f, 0f, -9f), 180f, seed + 5, dummySwings: true);
             var rp = new RandomPad(seed * 7 + timing.Length);
             var rng = new DeterministicRandom(seed * 13 + 5);
-            Session.MakePreset(Preset.Fluid, out PlayerTuning ft, out ElementMoveSet fm);
-            Session.MakePreset(Preset.Punishing, out PlayerTuning pt, out ElementMoveSet pm);
+            Session.MakePreset(Preset.Fluid, out PlayerTuning ft, out ElementLoadout fm);
+            Session.MakePreset(Preset.Punishing, out PlayerTuning pt, out ElementLoadout pm);
             int deaths = 0, resets = 0;
             double deadSince = -1;
             double invulnerable = 0;
             var cam = new List<string>();
+            Vector2 DodgeStick(int kind)
+            {
+                SimEnemy near = null;
+                float best = float.MaxValue;
+                foreach (SimEnemy e in s.World.Enemies)
+                {
+                    float d = Vector3.Distance(e.Feet, s.Player.Feet);
+                    if (e.IsAlive && d < best) { best = d; near = e; }
+                }
+                if (near == null || kind == 3) return Vector2.Zero;
+                Vector3 to = Directions.SafeNormalize(Directions.Flatten(near.Feet - s.Player.Feet), Vector3.UnitZ);
+                Vector3 dir = kind == 0 ? to : kind == 1 ? -to : Directions.RightFromYaw(Directions.YawOf(to)) * (rng.Chance(0.5f) ? 1f : -1f);
+                return s.StickToward(dir);
+            }
             for (int f = 0; f < frames; f++)
             {
                 float dt;
@@ -146,7 +168,7 @@ namespace VaatusRevenge.CombatSim
                 }
                 bool pausedFrame = timing.Contains("pauses") && rng.NextFloat() < 0.01f;
                 s.World.Time.Paused = pausedFrame;
-                s.Step(rp.Next(s.World.RealTime), dt);
+                s.Step(rp.Next(s.World.RealTime, DodgeStick), dt);
                 if (s.Model.IsInvulnerable) invulnerable += s.World.LastGameDt;
 
                 // SandboxDirector behaviour: respawn a second after death, reset everyone when all are dead, F5/F6.

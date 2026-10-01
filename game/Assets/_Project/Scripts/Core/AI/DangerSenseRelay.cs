@@ -8,7 +8,8 @@ namespace VaatusRevenge.Core
     // Stateless: the Unity side (EnemyStrikes) and the headless harness (SimEnemy) call it for every enemy event.
     //
     //   TelegraphStarted   every strike of the attack is registered: strike h lands Move.Startup + h x HitInterval from
-    //                      now (+ the bolt's flight time for a ranged attack, estimated from where the player stands)
+    //                      now (+ the bolt's flight time for a ranged attack, estimated from where the player stands, until
+    //                      it touches the body)
     //   ProjectileLaunched that bolt's impact is worked out again from where it really left and how fast it flies
     //   AttackEnded        a melee attack's strikes are called off (any still pending never came); a ranged attack's
     //                      too, if it was cut short (staggered, launched, dead, gave up): bolts already flying keep
@@ -46,7 +47,9 @@ namespace VaatusRevenge.Core
             int hits = attack != null ? Math.Max(1, attack.HitCount) : 1;
             float interval = attack != null ? Math.Max(0f, attack.HitInterval) : 0f;
             // A bolt still has to cross the gap: estimated from where the player stands now, refreshed when it flies.
-            float flight = move.LaunchesProjectile ? FlightTime(move, Directions.Flatten(playerFeet - attackerFeet).Length() - move.OriginForward) : 0f;
+            float flight = move.LaunchesProjectile
+                ? FlightTime(move, Directions.Flatten(playerFeet - attackerFeet).Length() - move.OriginForward, player.BodyRadius)
+                : 0f;
             for (int h = 0; h < hits; h++)
             {
                 IncomingStrike strike = Describe(attack, move, attackerId, e.AttackId, h, attackerFeet, playerFeet);
@@ -60,7 +63,7 @@ namespace VaatusRevenge.Core
             MoveData move = e.Move ?? (e.Attack != null ? e.Attack.Move : null);
             if (move == null) return;
             IncomingStrike strike = Describe(e.Attack, move, attackerId, e.AttackId, e.HitIndex, attackerFeet, playerFeet);
-            strike.ImpactClock = player.Clock + FlightTime(move, Directions.Flatten(playerFeet - e.Origin).Length());
+            strike.ImpactClock = player.Clock + FlightTime(move, Directions.Flatten(playerFeet - e.Origin).Length(), player.BodyRadius);
             player.NotifyIncomingStrike(in strike);
         }
 
@@ -78,10 +81,14 @@ namespace VaatusRevenge.Core
             };
         }
 
-        static float FlightTime(MoveData move, float distance)
+        // Until the bolt touches the body: the gap to the player's centre less both radii.
+        static float FlightTime(MoveData move, float distance, float bodyRadius)
         {
-            float speed = move.Projectile != null ? move.Projectile.Speed : 0f;
-            return speed > 0f ? Math.Max(0f, distance) / speed : 0f;
+            ProjectileSpec bolt = move.Projectile;
+            float speed = bolt != null ? bolt.Speed : 0f;
+            if (!(speed > 0f)) return 0f;
+            float gap = distance - Math.Max(0f, bodyRadius) - Math.Max(0f, bolt.Radius);
+            return Math.Max(0f, gap) / speed;
         }
 
         // The attack stopped before its recovery played out: its bolts that never flew must not keep warning.

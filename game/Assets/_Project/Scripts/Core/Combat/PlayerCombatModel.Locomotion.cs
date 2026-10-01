@@ -29,6 +29,11 @@ namespace VaatusRevenge.Core
         bool sprintExhausted;         // ran dry while sprinting: sprint returns at SprintResumeStamina
         PushMotion knockback;
         Vector3 actionStep;           // this frame's dash or lunge movement, in metres (see AdvanceAction)
+        bool orbiting;                // the running attack's lunge curves round its target (MoveData.OrbitDegrees)
+        Vector3 orbitStartDirection;  // flat, target -> us, when the attack started
+        float orbitStartRadius;
+        float orbitEndRadius;
+        float orbitSign;              // +1 or -1: which way round
 
         void ResetLocomotion(float newFacingYaw)
         {
@@ -87,13 +92,19 @@ namespace VaatusRevenge.Core
             {
                 float impactSpeed = Math.Max(0f, -verticalVelocity);
                 state = PlayerState.Locomotion;
+                OnLandedForString();
                 Emit(new PlayerEvent { Type = PlayerEventType.Landed, Amount = impactSpeed });
             }
             else if (IsFree && !OnGroundish)
             {
                 ExitAction(false);   // ends a sprint or guard with its event
                 state = PlayerState.Airborne;
+                HoldStringIfLive(false);
                 airSpeedCap = Math.Max(tuning.RunSpeed, Directions.Flatten(moveVelocity).Length());
+            }
+            else if (grounded && stringNext >= 0 && stringBranch == ComboBranch.Air && state != PlayerState.Attacking)
+            {
+                ClearStringMemory();   // back on the ground: the air string is over
             }
         }
 
@@ -110,6 +121,7 @@ namespace VaatusRevenge.Core
             Vector3 carry = Directions.Flatten(IsFree ? moveVelocity : lastVelocity);
             ExitAction(true);
             state = PlayerState.Airborne;
+            HoldStringIfLive(false);   // a jump keeps the ground string (an air attack starts the air string instead)
             float speed = carry.Length();
             float maxCarry = Math.Max(tuning.RunSpeed, tuning.SprintSpeed);
             moveVelocity = speed > maxCarry ? carry * (maxCarry / speed) : carry;
@@ -215,7 +227,11 @@ namespace VaatusRevenge.Core
                     // Attack tracking: turn toward the target (or stick) during startup, then commit.
                     moveVelocity = Vector3.Zero;
                     bool tracking = state == PlayerState.Charging || action.Time < currentMove.Startup;
-                    if (tracking)
+                    if (orbiting && TryGetLungeTarget(world, out Vector3 orbitTarget, out _))
+                    {
+                        facingYaw = YawTowards(world.Position + actionStep, orbitTarget);   // circling: always face it
+                    }
+                    else if (tracking)
                     {
                         float aimYaw = AttackAimYaw(world, hasStick, stickDir, lockYaw);
                         facingYaw = LocomotionRules.Turn(facingYaw, aimYaw, currentMove.TrackingTurnRate, dt);
@@ -224,7 +240,12 @@ namespace VaatusRevenge.Core
                 }
                 case PlayerState.Dodging:
                     moveVelocity = Vector3.Zero;
-                    if (locked) facingYaw = LocomotionRules.Turn(facingYaw, lockYaw, tuning.TurnRate, dt);
+                    // Spider-Man 2: keep facing the enemy you dodged around (Traverse and a focus-less backstep keep theirs).
+                    if (dodgeHasFocus)
+                    {
+                        float focusYaw = YawTowards(world.Position + actionStep, TrackFocus(world));
+                        facingYaw = LocomotionRules.Turn(facingYaw, focusYaw, Dodge.FocusTurnRate, dt);
+                    }
                     break;
                 default:   // Plunging, Staggered, Dead: no control
                     moveVelocity = Vector3.Zero;
@@ -281,7 +302,13 @@ namespace VaatusRevenge.Core
                 float duration = dodgeInAir ? Aerial.AirDashDuration : dodge.Duration;
                 float before = MotionCurves.WindowProgress(action.PreviousTime, 0f, duration, dodge.DashEaseOut);
                 float after = MotionCurves.WindowProgress(action.Time, 0f, duration, dodge.DashEaseOut);
-                return dodgeDirection * (dodgeDistance * (after - before));
+                Vector3 dash = dodgeDirection * (dodgeDistance * (after - before));
+                // A slip-in stops SlipInStopGap from the target's body, even if it stepped toward you.
+                if (dodgeKind == DodgeKind.SlipIn && dodgeHasFocus)
+                {
+                    dash = LimitApproachTo(dash, TrackFocus(world), dodgeFocus.Radius, dodge.SlipInStopGap, world);
+                }
+                return dash;
             }
             return state == PlayerState.Attacking ? LungeStep(world) : Vector3.Zero;
         }
@@ -297,7 +324,47 @@ namespace VaatusRevenge.Core
             float start = move.LungeTime > 0f ? Math.Max(0f, end - move.LungeTime) : 0f;
             float before = MotionCurves.WindowProgress(action.PreviousTime, start, end, 0f);
             float after = MotionCurves.WindowProgress(action.Time, start, end, 0f);
+            if (orbiting) return OrbitStep(world, before, after);
             return LimitApproach(LungeDirection(world) * (lungeDistance * (after - before)), world);
+        }
+
+        // Air's circling strikes (MoveData.OrbitDegrees): the lunge curves round the target, ending OrbitDegrees round it,
+        // closing in by up to the lunge distance (never nearer than LungeStopGap from its body). Which way round: the
+        // side the stick points to; with the stick neutral, the camera's right (deterministic).
+        void PlanOrbit(MoveData move, in PlayerWorldState world)
+        {
+            orbiting = false;
+            if (!(move.OrbitDegrees > 0f) || !TryGetLungeTarget(world, out Vector3 target, out float targetRadius)) return;
+            Vector3 offset = Directions.Flatten(world.Position - target);
+            float radius = offset.Length();
+            if (radius < 1e-3f) return;
+            orbiting = true;
+            orbitStartDirection = offset / radius;
+            orbitStartRadius = radius;
+            float closest = Math.Max(0f, world.SelfRadius) + Math.Max(0f, targetRadius) + Math.Max(0f, tuning.LungeStopGap);
+            orbitEndRadius = radius > closest ? Math.Max(closest, radius - Math.Max(0f, lungeDistance)) : radius;
+            // Our right while facing the target is the side the stick (or the camera's right) points to.
+            Vector3 ourRight = new Vector3(-orbitStartDirection.Z, 0f, orbitStartDirection.X);   // -offset turned 90 degrees clockwise
+            Vector3 stick = Directions.CameraRelative(moveStick, world.CameraYaw);
+            Vector3 wanted = stick.Length() > Math.Max(tuning.StickDeadzone, Epsilon) ? stick : Directions.FromYaw(world.CameraYaw + 90f);
+            float goRight = Vector3.Dot(wanted, ourRight) >= 0f ? 1f : -1f;
+            // Turning the offset by +degrees (clockwise from above) moves us to our left as we face the target.
+            orbitSign = -goRight;
+        }
+
+        Vector3 OrbitStep(in PlayerWorldState world, float before, float after)
+        {
+            float degrees = currentMove.OrbitDegrees * orbitSign;
+            Vector3 from = OrbitOffset(degrees * before, before);
+            Vector3 to = OrbitOffset(degrees * after, after);
+            return to - from;
+        }
+
+        Vector3 OrbitOffset(float degrees, float progress)
+        {
+            float yaw = Directions.YawOf(orbitStartDirection, 0f) + degrees;
+            float radius = orbitStartRadius + (orbitEndRadius - orbitStartRadius) * progress;
+            return Directions.FromYaw(yaw) * radius;
         }
 
         // Launching yourself: a launcher's rise, or an air strike's small lift. Leaves the ground this frame.
@@ -388,14 +455,19 @@ namespace VaatusRevenge.Core
         Vector3 LimitApproach(Vector3 step, in PlayerWorldState world)
         {
             if (!TryGetLungeTarget(world, out Vector3 target, out float targetRadius)) return step;
+            return LimitApproachTo(step, target, targetRadius, tuning.LungeStopGap, world);
+        }
 
+        // Removes the part of a step that would carry us closer than 'gap' to a body at 'target'.
+        Vector3 LimitApproachTo(Vector3 step, Vector3 target, float targetRadius, float gap, in PlayerWorldState world)
+        {
             Vector3 toTarget = Directions.Flatten(target - world.Position);
             float distance = toTarget.Length();
             if (distance < 1e-4f) return Vector3.Zero;   // standing on it: don't lunge at all
             Vector3 dir = toTarget / distance;
             float along = Vector3.Dot(step, dir);
             if (along <= 0f) return step;
-            float allowed = Math.Max(0f, distance - Math.Max(0f, world.SelfRadius) - Math.Max(0f, targetRadius) - tuning.LungeStopGap);
+            float allowed = Math.Max(0f, distance - Math.Max(0f, world.SelfRadius) - Math.Max(0f, targetRadius) - gap);
             return along <= allowed ? step : step - dir * (along - allowed);
         }
 

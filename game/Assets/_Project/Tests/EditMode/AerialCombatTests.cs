@@ -96,7 +96,10 @@ namespace VaatusRevenge.Tests
         [Test]
         public void OneAirDashPerJumpFlatAndInvincibleAtFirst()
         {
-            var d = new PlayerDriver();
+            // AirDashesPerJump = 1 here (Build 05 gave Fluid two; TwoAirDashesFluidZeroPunishing covers that): the per-jump limit.
+            ElementMoveSet set = ElementMoveSet.CreateFireFluid();
+            set.Aerial.AirDashesPerJump = 1;
+            var d = new PlayerDriver(null, set);
             d.Step(Pad.Jump);
             d.Run(8);
             d.Step(Pad.Dodge, Forward);

@@ -132,7 +132,7 @@ namespace VaatusRevenge.Core
                 Startup = 0.12f, Active = 0.10f, Recovery = 0.30f,
                 Damage = 8f, PoiseDamage = 8f, GuardStaminaDamage = 8f, Knockback = 0.2f, Hitstop = 0.035f,
                 Range = 2.6f, ArcDegrees = 70f, LungeDistance = 0.4f,
-                ComboWindowStart = 0.14f, ComboWindowEnd = 0.40f, ChainCancelAt = 0.24f, DodgeCancelAt = 0.22f,
+                ComboWindowStart = 0.14f, ComboWindowEnd = 0.40f, ChainCancelAt = 0.24f, DodgeCancelAt = 0f,
                 StaminaCost = 9f, MomentumGain = 8f
             };
             var cross = new MoveData
@@ -142,7 +142,7 @@ namespace VaatusRevenge.Core
                 Startup = 0.13f, Active = 0.10f, Recovery = 0.32f,
                 Damage = 9f, PoiseDamage = 9f, GuardStaminaDamage = 9f, Knockback = 0.25f, Hitstop = 0.035f,
                 Range = 2.7f, ArcDegrees = 70f, LungeDistance = 0.45f,
-                ComboWindowStart = 0.15f, ComboWindowEnd = 0.42f, ChainCancelAt = 0.25f, DodgeCancelAt = 0.23f,
+                ComboWindowStart = 0.15f, ComboWindowEnd = 0.42f, ChainCancelAt = 0.25f, DodgeCancelAt = 0f,
                 StaminaCost = 9f, MomentumGain = 8f
             };
             var snap = new MoveData
@@ -152,7 +152,7 @@ namespace VaatusRevenge.Core
                 Startup = 0.14f, Active = 0.10f, Recovery = 0.32f,
                 Damage = 10f, PoiseDamage = 7f, GuardStaminaDamage = 10f, Knockback = 0.3f, Hitstop = 0.045f,
                 Range = 2.9f, ArcDegrees = 60f, LungeDistance = 0.5f,
-                ComboWindowStart = 0.18f, ComboWindowEnd = 0.46f, ChainCancelAt = 0.28f, DodgeCancelAt = 0.24f,
+                ComboWindowStart = 0.18f, ComboWindowEnd = 0.46f, ChainCancelAt = 0.28f, DodgeCancelAt = 0f,
                 StaminaCost = 9f, MomentumGain = 7f
             };
             var spin = new MoveData
@@ -162,7 +162,7 @@ namespace VaatusRevenge.Core
                 Startup = 0.18f, Active = 0.12f, Recovery = 0.40f,
                 Damage = 13f, PoiseDamage = 8f, GuardStaminaDamage = 13f, Knockback = 0.6f, Hitstop = 0.055f,
                 Range = 3.0f, ArcDegrees = 200f, OriginForward = 0f, LungeDistance = 0.5f,
-                ComboWindowStart = 0.30f, ComboWindowEnd = 0.62f, ChainCancelAt = 0.42f, DodgeCancelAt = 0.30f,
+                ComboWindowStart = 0.30f, ComboWindowEnd = 0.62f, ChainCancelAt = 0.42f, DodgeCancelAt = 0f,
                 StaminaCost = 11f, MomentumGain = 8f
             };
             var palm = new MoveData
@@ -172,7 +172,7 @@ namespace VaatusRevenge.Core
                 Startup = 0.22f, Active = 0.12f, Recovery = 0.50f,
                 Damage = 18f, PoiseDamage = 11f, GuardStaminaDamage = 18f, Knockback = 1.4f, Hitstop = 0.07f,
                 Range = 4.5f, ArcDegrees = 90f, LungeDistance = 0.4f,
-                ComboWindowStart = 0.50f, ComboWindowEnd = 0.80f, ChainCancelAt = 0.60f, DodgeCancelAt = 0.38f,
+                ComboWindowStart = 0.50f, ComboWindowEnd = 0.80f, ChainCancelAt = 0.60f, DodgeCancelAt = 0.30f,
                 StaminaCost = 14f, MomentumGain = 12f                // the committed finisher earns a little more
             };
             return new[] { jab, cross, snap, spin, palm };
@@ -200,7 +200,9 @@ namespace VaatusRevenge.Core
                 Damage = 14f, PoiseDamage = 12f, GuardStaminaDamage = 14f, Knockback = 0.6f, Hitstop = 0.065f,
                 Range = 2.8f, ArcDegrees = 100f, VerticalReach = 1.6f, LungeDistance = 0.4f,
                 LaunchSpeed = 10f, SelfLift = 0f,
-                ComboWindowStart = 0.52f, ComboWindowEnd = 0.80f, ChainCancelAt = 0.50f, DodgeCancelAt = 0.30f,
+                // Combo window opens at 0.50 (the spec table's 0.52 would open after the 0.50 cancel point, which the beat
+                // validation forbids: a press could chain before its window).
+                ComboWindowStart = 0.50f, ComboWindowEnd = 0.80f, ChainCancelAt = 0.50f, DodgeCancelAt = 0.30f,
                 StaminaCost = 12f, MomentumGain = 12f
             };
             return new[] { sweep, rising };

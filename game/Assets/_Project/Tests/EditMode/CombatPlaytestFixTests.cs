@@ -162,8 +162,10 @@ namespace VaatusRevenge.Tests
         {
             var t = PlayerTuning.CreateFluid();
             t.MaxStamina = 9f;                                   // the jab empties the bar
-            t.StaminaRegenDelay = 0.42f;                         // regen resumes 0.42 s into the jab, after the cap
-            t.EmptyStaminaRegenDelay = 0.42f;
+            // Build 05 (C9): a queued press ages from the jab's cancel point (0.24 s), not from the press, so the cap is
+            // measured from there: regen resumes 0.45 s in, about 0.23 s past the cancel point (and before the jab ends).
+            t.StaminaRegenDelay = 0.45f;
+            t.EmptyStaminaRegenDelay = 0.45f;
             t.QueuedPressMaxAge = queuedMaxAge;
             var d = new PlayerDriver(t);
             d.Step(Pad.Light);
@@ -178,7 +180,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void QueuedChainPressExpiresInsteadOfFiringLate()
         {
-            Assert.AreEqual(0, CrossesAfterAQueuedPressWaitsForStamina(0.35f), "0.38 s old by the time stamina is back: dropped");
+            Assert.AreEqual(0, CrossesAfterAQueuedPressWaitsForStamina(0.15f), "0.23 s past the cancel point when stamina is back: dropped");
             Assert.AreEqual(1, CrossesAfterAQueuedPressWaitsForStamina(10f), "the bug this pins: without the cap it fires late");
         }
 
@@ -233,7 +235,7 @@ namespace VaatusRevenge.Tests
             Assert.Greater(punishing.EmptyStaminaRegenDelay, punishing.StaminaRegenDelay, "running dry still costs extra");
 
             t.MaxStamina = 6f;                                   // one dodge empties it
-            var empty = new PlayerDriver(t);
+            var empty = PlayerDriver.PreBuild05(t);              // a dodge that costs 6 (Build 05 Fluid dodges are free)
             empty.Tap(Pad.Dodge, Forward);
             Assert.AreEqual(0f, empty.Model.Stamina);
             empty.Run(empty.FramesToReach(t.EmptyStaminaRegenDelay) - 3);
@@ -241,7 +243,7 @@ namespace VaatusRevenge.Tests
             empty.Run(6);
             Assert.Greater(empty.Model.Stamina, 0f);
 
-            var partial = new PlayerDriver();
+            var partial = PlayerDriver.PreBuild05();
             partial.Tap(Pad.Dodge, Forward);
             float left = partial.Model.Stamina;
             partial.Run(partial.FramesToReach(0.6f) + 2);
@@ -296,11 +298,14 @@ namespace VaatusRevenge.Tests
         // ---------------------------------------------------------------- CTRL-01: buffered dodge/guard vs later attacks
         // (default pending David's answer; PlayerTuning.DefensivePressesWin flips it)
 
+        // Uses the pre-Build 05 chain cancels: Build 05 made Fluid chain hits dodge-cancellable from their first frame (C13),
+        // so a dodge pressed during a jab no longer waits in the buffer. These tests are about the buffer, so they keep a
+        // jab whose dodge cancel is late (0.22 s).
         static PlayerDriver PressSequence(bool defensiveWins, params (int frame, Pad pad)[] presses)
         {
             var t = PlayerTuning.CreateFluid();
             t.DefensivePressesWin = defensiveWins;
-            var d = new PlayerDriver(t);
+            var d = PlayerDriver.PreBuild05(t);
             for (int frame = 0; frame < 60; frame++)
             {
                 Pad pad = Pad.None;
@@ -343,7 +348,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void GuardPressedDuringAnAttackIsBufferedAndRaisedAtTheCancelPoint()
         {
-            var d = PlayerDriver.Blocking();   // held guard: a blocking element
+            var d = PlayerDriver.Blocking(PlayerDriver.PreBuild05Fire());   // held guard; a jab whose guard cancel is late (pre-C13)
             MoveData jab = d.Model.MoveSet.LightChain[0];
             d.Step(Pad.Light);
             d.Run(3);
@@ -367,7 +372,7 @@ namespace VaatusRevenge.Tests
         // A soldier 1.6 m in front swings at where the player stood; the player dodges on 'stick' a few frames before.
         static PlayerDriver DodgeAStrike(Vector2 stick, int framesBeforeStrike, PerfectDodgeRule rule, out bool awarded)
         {
-            var moves = ElementMoveSet.CreateFireFluid();
+            var moves = PlayerDriver.PreBuild05Fire();           // i-frames from 0.02: "before the i-frames" stays testable
             moves.Dodge.PerfectRule = rule;
             var d = new PlayerDriver(null, moves);
             Vector3 soldier = new Vector3(0f, 0f, 1.6f);

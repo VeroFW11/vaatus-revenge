@@ -19,6 +19,10 @@ namespace VaatusRevenge.Core
         IncomingStrike[] threats = new IncomingStrike[8];
         int threatCount;
         Vector3 lastPosition;          // the player's feet last frame: the cues point from the attacker to here
+        float bodyRadius;              // the player's body radius last frame: a bolt lands when it touches the body
+
+        // The player's body radius (as of the last frame): the enemy side times a bolt's landing to the touch.
+        public float BodyRadius => bodyRadius;
 
         readonly DangerSenseSettings fallbackDanger = new DangerSenseSettings { Enabled = false };   // tuning without the section
 

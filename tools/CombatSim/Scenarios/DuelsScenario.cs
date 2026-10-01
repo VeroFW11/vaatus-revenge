@@ -21,7 +21,7 @@ namespace VaatusRevenge.CombatSim
     public static class DuelsScenario
     {
         public static DuelResult Play(Options o, Preset preset, string botName, string enemies, int seed, double seconds, Recorder rec,
-            bool stopWhenEnemiesDead = true, bool invariants = true)
+            bool stopWhenEnemiesDead = true, bool invariants = true, Action<Session> setup = null)
         {
             var s = new Session(preset, o.Fps, SimLevel.SandboxArena(), camera: true, playerAt: new Vector3(0f, 0f, -5f), playerYaw: 0f);
             s.World.Recorder = rec;
@@ -46,6 +46,7 @@ namespace VaatusRevenge.CombatSim
                 else throw new ArgumentException("unknown enemy '" + raw + "' (use soldier, crossbow, platform, dummy)");
             }
             s.World.LockOn.SnapBehindPlayer();
+            setup?.Invoke(s);
             Bot bot = Bots.Create(botName);
             bot.Attach(s, seed * 977 + 13);
             int maxAtt = 0;
@@ -82,8 +83,9 @@ namespace VaatusRevenge.CombatSim
             Out.Heading("Duels: bots vs the sandbox enemies (" + o.Seeds + " seeds each, 120 s limit)");
             Out.Line("Bots: masher (mashes light, never defends), react (dodges on seeing a wind-up, ~0.25 s reaction), anticipate (knows each attack's timing, "
                      + "dodges ~0.06 s before the strike ± 0.05 s, dashes into attacks), guard (holds guard, re-presses to deflect ± 0.05 s), aggressive "
-                     + "(stays close, chains, sprint-kicks in, fa jin on staggers), fajin (waits for openings, fa jin with ± 0.05 s timing). "
-                     + "All use lock-on and move relative to the real camera.");
+                     + "(stays close, chains, sprint-kicks in, fa jin on staggers), fajin (waits for openings, fa jin with ± 0.05 s timing), "
+                     + "rhythm (Build 05: on-beat strings ± 0.03 s, defends like anticipate), switcher (on-beat strings that mix all four "
+                     + "elements), sense (on-beat strings, dodges on the danger sense's white cue). All use lock-on and move relative to the real camera.");
             // The last group is the whole sandbox ring: both soldiers and both crossbowmen (one on the platform).
             string[] groups = { "soldier", "soldier,soldier", "crossbow", "soldier,soldier,crossbow", "soldier,soldier,crossbow,platform" };
             if (!string.IsNullOrEmpty(o.Groups)) groups = o.Groups.Split('/', StringSplitOptions.RemoveEmptyEntries);

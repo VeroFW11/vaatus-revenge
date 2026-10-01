@@ -112,7 +112,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void ADodgePressIsNotReplacedByAZipPress()
         {
-            var d = new PlayerDriver();
+            var d = PlayerDriver.PreBuild05();   // a jab whose dodge cancel is late, so the dodge waits in the buffer (pre-C13)
             SetZipTarget(d, new Vector3(0f, 0f, 8f));
             d.Step(Pad.Light);
             d.Run(2);

@@ -25,10 +25,15 @@ dotnet run --project tools/CombatSim -- help
 | `controls` | Dodge tap vs hold, stick dead zone, camera turning during a dodge, sprint attack and plunge conditions, guard/deflect windows, heal | < 1 s |
 | `abilities` | Fa jin timing (with human timing noise), fa jin after a perfect dodge, damage loops, stamina at zero, Fire Blast vs a strafing target, Momentum, perfect-dodge windows, stagger immunity | ~2 s |
 | `fairness` | Telegraph length vs human reaction, reaction dodges/deflects, unavoidable damage (oracle bot), attack-token release, the platform crossbowman | ~5 min (40 seeds; `--seeds 20` ≈ 2.5 min) |
-| `duels` | Six bot styles vs five enemy groups, both presets, many seeds | ~9 min (40 seeds) |
+| `duels` | Nine bot styles (six from before Build 05 plus `rhythm`, `switcher`, `sense`) vs five enemy groups, both presets, many seeds | ~9 min (40 seeds) |
 | `duel` | One duel, optionally recorded (`--record`) | seconds |
 | `fuzz` | Long random-input runs at 30/60/144 fps, with hitches and paused frames, preset swaps, respawns and resets. Every frame is checked against invariants | ~4 min: 8 runs × 150,000 frames (`--quick`: 60,000) |
 | `camera` | Over-the-shoulder camera and lock-on: circling, dash-past, overhead target, elevated target, framing, retarget on kill, switching, line of sight, walls, shoulder swaps (auto and the hold-to-swap button), combat pull-back, look input at several frame rates, real fights, and pops near the low corridor and the pillars | ~11 s |
+| `rhythm` | Build 05 rhythm combos: on-beat, early, late and mashed shares for timing bots playing strings into a passive sparring partner for 60 s, accidental pause moves, string DPS (`rhythm` vs `masher`) | ~3 s Release |
+| `dodgeflow` | Build 05 dodge, every element and preset: facing error to the enemy during dodges against a live soldier, where a slip-in stops, invulnerable share under dodge spam at 30/60/144 fps, time to run speed after a dodge, the string's third hit after X X + dodge / zip strike / ability (the dodge strike after a 4 m evade-out must land) | ~5 s Release |
+| `switch` | Build 05 element switching: switches the cooldown refuses mid-string (the string must go on), air strings with switches against the air-attack cap, MIX 4 finishers by `switcher` against the partner and in a duel | ~6 s Release |
+| `danger` | Build 05 danger sense in real duels: warning timing against each strike's landing, every warning resolved, `sense` vs `react` (perfect-dodge rate, damage taken), panic dodges on the delayed thrust | ~1 min Release (40 seeds) |
+| `elements` | Each element's string DPS at 1.0× (from the data and as played), the poise budgets, the beat-data rules and the string move tables, for whoever fills in an element's move set | < 1 s |
 | `all` | Everything except `duel` (`--quick` caps seeds at 12 and shortens the fuzz) | ~18 min (`--quick`: ~6 min) |
 
 Times above are for Debug builds. `dotnet run --project tools/CombatSim -c Release -- <scenario>` is roughly 10× faster (fairness ~20 s, duels ~1 min, fuzz ~25 s).
@@ -41,14 +46,14 @@ Options:
 | `--preset fluid\|punishing\|both` | Which preset(s) | both (`duel` uses the first) |
 | `--fps N` | Frame rate for `duel` and `duels` | 60 |
 | `--out file.md` | Also write the output to a file | stdout only |
-| `--bot NAME` | `duel` only: `masher`, `react`, `anticipate`, `guard`, `aggressive`, `fajin`, `oracle`, `idle` | `anticipate` |
+| `--bot NAME` | `duel` only: `masher`, `react`, `anticipate`, `guard`, `aggressive`, `fajin`, `rhythm`, `switcher`, `sense`, `oracle`, `idle` (and the string bots `sloppy`, `slowtap`, `reactpress`, `pauser`, `chaosswitch`) | `anticipate` |
 | `--enemies LIST` | `duel` only: comma list of `soldier`, `crossbow`, `platform`, `dummy` | `soldier` |
 | `--seconds N` | `duel` only: time limit | 60 |
 | `--record file.json` | `duel` only: write a per-frame replay | off |
 | `--quick` | Shorter fuzz (60,000 frames per run), at most 12 seeds for `all` | off |
 | `--no-notify-strikes` | Enemies do **not** call `PlayerCombatModel.NotifyEnemyStrike`. Since the round-2 fixes (report 02, NEW-01) `EnemyStrikes.OpenMelee` calls it on every melee strike, so the harness does too by default; this flag reproduces the 60cb8ee Unity behaviour. (`--notify-strikes` is still accepted and is a no-op.) | notify on |
-| `--set target.Field=value` | What-if tuning without touching game code, repeatable. Targets: `player` (PlayerTuning), `dodge` (DodgeProfile), `charge` (ChargeSettings), `soldier` / `crossbow` (EnemyTuning), `camera` (CameraTuning, e.g. `--set camera.OcclusionGraceTime=0 --set camera.MinCollisionDistance=0` for the pre-round-2 wall rules). Nested fields take dots: `--set soldier.BreakOut.Enabled=false`, `--set soldier.BreakOut.Attack.Move.Damage=24`. E.g. `--set player.EmptyStaminaRegenDelay=0.8 --set soldier.MaxHealth=110` | none |
-| `--groups A/B` / `--bots x,y` | `duels` only: just these enemy groups (`/`-separated, e.g. `soldier/soldier,soldier`) and bots (e.g. `masher,react`), for quick what-ifs | all five groups, all six bots |
+| `--set target.Field=value` | What-if tuning without touching game code, repeatable. Targets: `player` (PlayerTuning), `dodge` (DodgeProfile), `charge` (ChargeSettings), `soldier` / `crossbow` (EnemyTuning), `camera` (CameraTuning, e.g. `--set camera.OcclusionGraceTime=0 --set camera.MinCollisionDistance=0` for the pre-round-2 wall rules). Nested fields take dots: `--set soldier.BreakOut.Enabled=false`, `--set soldier.BreakOut.Attack.Move.Damage=24`. E.g. `--set player.EmptyStaminaRegenDelay=0.8 --set soldier.MaxHealth=110`. Build 05 adds `rhythm` (RhythmTuning), `combo` (ComboTuning), `mix` (MixTuning; arrays by index, `--set mix.DamageByLevel.3=1.4`), `switch` (ElementSwitchTuning), `danger` (DangerSenseSettings) and `loadout.<element>` (that element's ElementMoveSet, e.g. `--set loadout.water.LightChain.0.Damage=9`). `dodge` and `charge` now change all four elements' profiles | none |
+| `--groups A/B` / `--bots x,y` | `duels` only: just these enemy groups (`/`-separated, e.g. `soldier/soldier,soldier`) and bots (e.g. `masher,react`), for quick what-ifs | all five groups, all nine bots |
 
 Examples:
 
@@ -80,6 +85,21 @@ separately in `camera`.
 | `oracle` | Frame-perfect defence, never attacks. Dodges 5 frames before every strike (7 before a bolt arrives), sideways and away from the group. Hits it still takes can't be avoided by dodging alone |
 | `idle` | Does nothing (how fast do enemies kill a passive player?) |
 
+Build 05 string players. Each schedules its presses from the move data when a string move starts (the beat is
+`start + ActiveStart / playback rate`, the same rule the HUD's beat ring follows), defends like `anticipate`, and
+only starts a new string with at least 55 % stamina, as a souls player minds the bar.
+
+| Bot | Plays like |
+|---|---|
+| `rhythm` | Presses on the beat (± 0.03 s) |
+| `sloppy` | Roughly on the beat (± 0.08 s) |
+| `slowtap` | Always after the beat window, inside the combo window (graded Late) |
+| `reactpress` | Presses a reaction time after each hit lands instead of reading the beat; 15 % nervous double taps |
+| `pauser` | X X, wait, X: the pause chain, on the beat otherwise |
+| `switcher` | A new element on every beat until all four have landed (MIX 4): opens with a zip strike and a plain switch so the cooldown is ready by hit 2, waits the cooldown out while the string is live (Punishing's route is the pause chain) |
+| `chaosswitch` | Switches on every other follow-up regardless of the cooldown (stress test for refused switches) |
+| `sense` | Dodges a reaction time after the danger mark turns white, neutral stick or away from the attacker; plays on-beat strings |
+
 ## Replays
 
 `duel --record file.json` writes one JSON object (`"format": "vaatus-combatsim-replay/1"`), so a session
@@ -96,7 +116,10 @@ can be inspected or rendered later:
   - projectile: `[x, y, z, isFire 0/1]`
   (positions are the feet, in metres, Unity axes: y up; `state` and `phase` index the header's name lists);
 - `events`: `[frame, fighterIndex, type, detail]`, e.g. `player:DodgeStarted`, `enemy:TelegraphStarted`,
-  and `hit` with the outcome (Hit, Evaded, PerfectEvade, Blocked, Parried...) for every hit resolved.
+  and `hit` with the outcome (Hit, Evaded, PerfectEvade, Blocked, Parried...) for every hit resolved. Since Build 05
+  a player `AttackStarted` detail carries the string slot, beat grade, playback rate and element
+  (`Flame Cross #12 Main[1] OnBeat x1.15 Fire`), `DodgeStarted` the dodge kind, and the rhythm, switch, combo and
+  danger-sense events have their own details.
 
 The sessions that `docs/Prototype/Playtest-Report-01.md` refers to are in `replays/` (recorded on the report-01 code; re-record them to see the 60cb8ee behaviour). They were recorded
 with the command shown for each, so they can be re-created:
