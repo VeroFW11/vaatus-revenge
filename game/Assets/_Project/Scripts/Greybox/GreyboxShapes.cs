@@ -26,6 +26,7 @@ namespace VaatusRevenge
         static readonly Mesh[] primitiveMeshes = new Mesh[8];
         static readonly HashSet<string> reportedMissing = new HashSet<string>();
         static Mesh ringBandMesh;
+        static Mesh flatRingMesh;
 
         // Domain reload is off, so statics survive between Play sessions: forget them at the start of each one (the
         // cached mesh may have been destroyed with the last scene, and a missing shader should be reported again).
@@ -34,6 +35,7 @@ namespace VaatusRevenge
         {
             reportedMissing.Clear();
             ringBandMesh = null;
+            flatRingMesh = null;
         }
 
         // Unity's built-in mesh for a primitive (the same one CreatePrimitive uses), cached.
@@ -91,6 +93,48 @@ namespace VaatusRevenge
             ringBandMesh.triangles = triangles;
             ringBandMesh.RecalculateBounds();
             return ringBandMesh;
+        }
+
+        // A flat, double-sided ring in the XZ plane: outer radius 0.5, inner radius 0.4. Turned to face the camera it draws
+        // a circle outline of steady thickness (a ring band seen along its axis would vanish edge-on); laid on the floor
+        // it is a ripple.
+        public static Mesh GetFlatRingMesh()
+        {
+            if (flatRingMesh != null) return flatRingMesh;
+            const int segments = 48;
+            const float inner = 0.4f;
+            var vertices = new Vector3[segments * 2];
+            var normals = new Vector3[segments * 2];
+            var uv = new Vector2[segments * 2];
+            var triangles = new int[segments * 12];
+            for (int i = 0; i < segments; i++)
+            {
+                float angle = i * Mathf.PI * 2f / segments;
+                var outward = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle));
+                vertices[i * 2] = outward * inner;
+                vertices[i * 2 + 1] = outward * 0.5f;
+                normals[i * 2] = Vector3.up;
+                normals[i * 2 + 1] = Vector3.up;
+                uv[i * 2] = new Vector2(i / (float)segments, 0f);
+                uv[i * 2 + 1] = new Vector2(i / (float)segments, 1f);
+            }
+            for (int i = 0; i < segments; i++)
+            {
+                int innerA = i * 2, outerA = i * 2 + 1;
+                int innerB = (i + 1) % segments * 2, outerB = innerB + 1;
+                int t = i * 12;
+                triangles[t] = innerA; triangles[t + 1] = outerA; triangles[t + 2] = outerB;
+                triangles[t + 3] = innerA; triangles[t + 4] = outerB; triangles[t + 5] = innerB;
+                triangles[t + 6] = innerA; triangles[t + 7] = outerB; triangles[t + 8] = outerA;
+                triangles[t + 9] = innerA; triangles[t + 10] = innerB; triangles[t + 11] = outerB;
+            }
+            flatRingMesh = new Mesh { name = "GreyboxFlatRing" };
+            flatRingMesh.vertices = vertices;
+            flatRingMesh.normals = normals;
+            flatRingMesh.uv = uv;
+            flatRingMesh.triangles = triangles;
+            flatRingMesh.RecalculateBounds();
+            return flatRingMesh;
         }
 
         // A renderable primitive with no collider, parented without changing its local transform.
@@ -207,6 +251,60 @@ namespace VaatusRevenge
             material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
             material.renderQueue = (int)RenderQueue.Transparent;
             return material;
+        }
+
+        // Alpha-blended material for soft effects (water blobs, dust clouds, textures with an alpha channel): it fades
+        // through the alpha of its colour and of its vertex colours, drawn after the opaque world and double-sided, so
+        // a flat picture reads from either side. Falls back to opaque unlit if the particle shader is missing.
+        public static Material CreateAlphaBlend(string name, Color color)
+        {
+            Shader shader = Shader.Find(ParticlesUnlitShaderName);
+            if (shader == null) return CreateUnlit(name, color);
+            var material = new Material(shader) { name = name };
+            SetBaseColor(material, color);
+            SetFloatIfPresent(material, "_Surface", 1f);   // transparent
+            SetFloatIfPresent(material, "_Blend", 0f);     // alpha
+            SetFloatIfPresent(material, "_SrcBlend", (float)BlendMode.SrcAlpha);
+            SetFloatIfPresent(material, "_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+            SetFloatIfPresent(material, "_SrcBlendAlpha", (float)BlendMode.One);
+            SetFloatIfPresent(material, "_DstBlendAlpha", (float)BlendMode.OneMinusSrcAlpha);
+            SetFloatIfPresent(material, "_ZWrite", 0f);
+            SetFloatIfPresent(material, "_Cull", (float)CullMode.Off);
+            material.SetOverrideTag("RenderType", "Transparent");
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            material.renderQueue = (int)RenderQueue.Transparent;
+            return material;
+        }
+
+        // See-through unlit material for effect meshes (spheres, rings, cubes, pictures on quads): additive (adds light)
+        // or alpha-blended, fading through the alpha of its colour, double-sided. Unlike the particle shader it ignores
+        // vertex colours, which primitive meshes don't have. Falls back to opaque unlit if URP's Unlit can't go transparent.
+        public static Material CreateUnlitTransparent(string name, Color color, bool additive)
+        {
+            Shader shader = FindShader(UnlitShaderName, LitShaderName);
+            if (shader == null) return null;
+            var material = new Material(shader) { name = name };
+            SetBaseColor(material, color);
+            SetFloatIfPresent(material, "_Surface", 1f);                    // transparent
+            SetFloatIfPresent(material, "_Blend", additive ? 2f : 0f);      // additive or alpha
+            SetFloatIfPresent(material, "_SrcBlend", (float)BlendMode.SrcAlpha);
+            SetFloatIfPresent(material, "_DstBlend", additive ? (float)BlendMode.One : (float)BlendMode.OneMinusSrcAlpha);
+            SetFloatIfPresent(material, "_SrcBlendAlpha", (float)BlendMode.One);
+            SetFloatIfPresent(material, "_DstBlendAlpha", additive ? (float)BlendMode.One : (float)BlendMode.OneMinusSrcAlpha);
+            SetFloatIfPresent(material, "_ZWrite", 0f);
+            SetFloatIfPresent(material, "_Cull", (float)CullMode.Off);
+            material.SetOverrideTag("RenderType", "Transparent");
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            material.renderQueue = (int)RenderQueue.Transparent;
+            return material;
+        }
+
+        // Makes a transparent effect material draw both faces (a flat picture or a ring seen from inside).
+        public static void SetDoubleSided(Material material)
+        {
+            if (material != null) SetFloatIfPresent(material, "_Cull", (float)CullMode.Off);
         }
 
         // Turns emission on (keyword + a non-black colour so URP keeps it on).

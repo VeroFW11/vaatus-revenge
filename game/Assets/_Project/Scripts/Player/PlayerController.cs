@@ -13,9 +13,9 @@ namespace VaatusRevenge
     //   1. tells the model about the world: where the camera looks, the ground, lock-on and soft-lock targets
     //   2. ticks the model with this frame's buttons and stick
     //   3. moves the CharacterController exactly once and turns the body to the model's facing
-    //   4. turns the model's events into hit checks, fireballs, hitstop and slow motion
+    //   4. turns the model's events into hit checks, projectiles (in their element), hitstop and slow motion
     //   5. keeps an attack's hitbox checking every frame while it's active
-    //   6. hands fire, flashes, screen shake and rumble to PlayerFeedback, and tells the body's martial-arts
+    //   6. hands element effects, flashes, sounds, screen shake and rumble to PlayerFeedback, and tells the body's martial-arts
     //      animator what the player is doing (PlayerAnimationFeed -> BodyAnimatorDriver)
     // The rules and every gameplay number live in the model and the tuning assets; this class only wires.
     //
@@ -49,7 +49,7 @@ namespace VaatusRevenge
         BodyAnimatorDriver animatorDriver;
         readonly PlayerAnimationFeed animationFeed = new PlayerAnimationFeed();   // combat state -> body animation
         PlayerCombatModel model;
-        PlayerFeedback feel;         // fire effects, flashes, shake and rumble (the Unity-side "feel")
+        PlayerFeedback feel;         // element effects, flashes, sounds, shake and rumble (the Unity-side "feel")
         readonly List<HitReport> hits = new List<HitReport>(8);
 
         // Only used when an asset is missing, so the player still works (with a warning).
@@ -315,6 +315,10 @@ namespace VaatusRevenge
         public string ElementMessage => elementMessage;
         public float ElementMessageRemaining => elementMessageRemaining;
 
+        // The rhythm's sounds (chime, tick, finisher, switch whoosh), for anything that wants to sound like the fight, such
+        // as the tutorial's "step passed" chime. Null until play starts.
+        public RhythmAudio RhythmAudio => feel != null ? feel.Audio : null;
+
         public string StateName => model != null ? NameOf(model.State) : "";
 
         // The move running now (attack, charge, plunge, or the dodge's name), "" when free.
@@ -398,7 +402,7 @@ namespace VaatusRevenge
 
         void OnDestroy()
         {
-            if (feel != null) feel.Shutdown();
+            if (feel != null) feel.Dispose();
         }
 
         void OnApplicationFocus(bool hasFocus)
@@ -635,7 +639,7 @@ namespace VaatusRevenge
                     if (move == null) break;
                     DamageInfo damage = model.BuildDamage(in e);
                     MeleeHitQuery.Arc(e.Origin.ToUnity(), e.Direction.ToUnity(), move.Range, move.ArcDegrees, move.VerticalReach, damage, hits);
-                    ResolveHits(move, e.AttackId, damage.Hitstop, e.ChargeTier == ChargeTier.FaJin, settings);
+                    ResolveHits(move, e.AttackId, damage.Hitstop, damage.Element, e.ChargeTier == ChargeTier.FaJin, settings);
                     break;
                 }
                 case PlayerEventType.AttackActiveEnd:
@@ -654,7 +658,7 @@ namespace VaatusRevenge
                         DamageInfo damage = model.BuildDamage(in e);
                         Vector3 centre = e.Origin.ToUnity() + Vector3.up * BodyCentreHeight;
                         MeleeHitQuery.Sphere(centre, e.Radius, damage, hits);
-                        ResolveHits(move, e.AttackId, damage.Hitstop, e.ChargeTier == ChargeTier.FaJin, settings);
+                        ResolveHits(move, e.AttackId, damage.Hitstop, damage.Element, e.ChargeTier == ChargeTier.FaJin, settings);
                     }
                     MeleeHitQuery.EndAttack(e.AttackId);
                     break;
@@ -689,7 +693,7 @@ namespace VaatusRevenge
 
         // What our swing touched. Each target already decided the outcome; we react: Momentum for clean hits,
         // hitstop and shake once per swing, a stagger for us if an enemy deflected it.
-        void ResolveHits(MoveData move, int attackId, float hitstop, bool faJin, PlayerFeedbackSettings settings)
+        void ResolveHits(MoveData move, int attackId, float hitstop, ElementId element, bool faJin, PlayerFeedbackSettings settings)
         {
             if (hits.Count == 0) return;
             bool clean = false;
@@ -698,7 +702,7 @@ namespace VaatusRevenge
             {
                 HitReport report = hits[i];
                 model.OnAttackLanded(in report.Result, attackId, IsAirborne(report.Target)); // counter, Momentum: once per attack
-                feel.OnHitReport(in report, settings);
+                feel.OnHitReport(in report, element, settings);
                 if (report.Result.Outcome == HitOutcome.Hit) clean = true;
                 else if (report.Result.Outcome == HitOutcome.Parried) parried = true;
             }
@@ -714,25 +718,25 @@ namespace VaatusRevenge
         }
 
         // A separate method so the little closure below is only created when a projectile really is launched
-        // (once per cast, never per frame). It remembers the damage and AttackId, because a fireball can land
+        // (once per cast, never per frame). It remembers the damage and AttackId, because a projectile can land
         // after the next attack has already started.
         void LaunchProjectile(in PlayerEvent e)
         {
             MoveData move = e.Move;
             if (move == null) return;
             DamageInfo damage = model.BuildDamage(in e);
-            FireProjectile.Launch(e.Origin.ToUnity(), e.Direction.ToUnity(), move.Projectile, damage, ProjectileVisual.Fire,
+            FireProjectile.Launch(e.Origin.ToUnity(), e.Direction.ToUnity(), move.Projectile, damage, ProjectileVisuals.ForElement(e.Element),
                 report => OnProjectileHit(report, damage));
         }
 
         void OnProjectileHit(HitReport report, DamageInfo damage)
         {
-            // A fireball can land after the player died, respawned or was removed from the scene.
+            // A projectile can land after the player died, respawned or was removed from the scene.
             if (this == null || !isActiveAndEnabled || model == null || !model.IsAlive) return;
             model.OnAttackLanded(in report.Result, damage.AttackId, IsAirborne(report.Target));
             PlayerFeedbackSettings settings = Feedback;
-            feel.OnHitReport(in report, settings);
-            // A deflected fireball just fizzles: the caster isn't staggered from across the arena.
+            feel.OnHitReport(in report, damage.Element, settings);
+            // A deflected projectile just fizzles: the caster isn't staggered from across the arena.
             if (report.Result.Outcome != HitOutcome.Hit) return;
             TimeScaleController.Hitstop(damage.Hitstop);
             feel.OnCleanHit(false, false, settings);
@@ -749,7 +753,7 @@ namespace VaatusRevenge
             Vector3 origin = model.GetStrikeOrigin(transform.position.ToNumerics()).ToUnity(); // follows the lunge
             DamageInfo damage = model.BuildCurrentDamage();
             MeleeHitQuery.Arc(origin, model.Forward.ToUnity(), move.Range, move.ArcDegrees, move.VerticalReach, damage, hits);
-            ResolveHits(move, attackId, damage.Hitstop, model.CurrentChargeTier == ChargeTier.FaJin, settings);
+            ResolveHits(move, attackId, damage.Hitstop, damage.Element, model.CurrentChargeTier == ChargeTier.FaJin, settings);
         }
 
         void UpdateDeath()
@@ -935,9 +939,11 @@ namespace VaatusRevenge
 
         // ---------------------------------------------------------------- text
 
-        static string LockedElementMessage(string template, ElementId element)
+        // The element's display name comes from its move set (data); the enum name is only a fallback for an empty slot.
+        string LockedElementMessage(string template, ElementId element)
         {
-            string elementName = element.ToString();
+            ElementMoveSet set = model != null && model.Loadout != null ? model.Loadout.Get(element) : null;
+            string elementName = set != null && !string.IsNullOrEmpty(set.DisplayName) ? set.DisplayName : element.ToString();
             return string.IsNullOrEmpty(template) ? elementName : template.Replace("{0}", elementName);
         }
 

@@ -30,8 +30,8 @@ namespace VaatusRevenge
         const float LedgeProbeAhead = 0.2f;
         const float LedgeProbeRadius = 0.05f;
         const float MinStepLength = 1e-5f;
-        const float LaunchPillarHeight = 3.2f;       // the column of fire under a launched enemy (visual only)
-        const float KnockdownRingRadius = 1.6f;      // the ring of fire where a launched or slammed enemy lands (visual only)
+        const float LaunchPillarHeight = 3.2f;       // the column under a launched enemy (visual only)
+        const float KnockdownRingRadius = 1.6f;      // the ring where a launched or slammed enemy lands (visual only)
 
         static readonly string[] StateNames = System.Enum.GetNames(typeof(EnemyState));
         static AttackTokenPool fallbackTokens;
@@ -58,6 +58,7 @@ namespace VaatusRevenge
         float spawnYaw;
         float deadTime;
         bool warnedNoTuning;
+        ElementId lastHitElement = ElementId.None;   // the element of the last attack that reached us (launch and landing effects)
         string debugText;
         int debugFrame = -1;
 
@@ -127,8 +128,22 @@ namespace VaatusRevenge
             if (!Application.isPlaying || !isActiveAndEnabled) return HitResult.Ignored;
             EnemyBrain b = EnsureBrain();
             if (b == null) return HitResult.Ignored;
-            // The brain ignores friendly fire and repeats of the same AttackId, and decides stagger and death.
-            return b.ReceiveHit(hit, b.Forward);
+            // The brain ignores friendly fire and repeats of the same AttackId, and decides stagger and death. The element is
+            // remembered so a launch or a landing next tick is drawn in the element that caused it.
+            HitResult result = b.ReceiveHit(hit, b.Forward);
+            if (result.Outcome == HitOutcome.Hit && hit.Element != ElementId.None) lastHitElement = hit.Element;
+            return result;
+        }
+
+        // The element a launch or a landing is drawn in: the last one that hit us, else the player's element in hand.
+        ElementId EffectElement
+        {
+            get
+            {
+                if (lastHitElement != ElementId.None) return lastHitElement;
+                PlayerController player = PlayerController.Instance;
+                return player != null && player.Model != null ? player.Model.ActiveElement : ElementId.Fire;
+            }
         }
 
         // ---------------------------------------------------------------- setup
@@ -393,10 +408,10 @@ namespace VaatusRevenge
                         presenter.OnAttackEnded();
                         break;
                     case EnemyEventType.Launched:
-                        presenter.OnLaunched(transform.position, LaunchPillarHeight);
+                        presenter.OnLaunched(transform.position, LaunchPillarHeight, EffectElement);
                         break;
                     case EnemyEventType.KnockedDown:
-                        presenter.OnKnockedDown(transform.position, KnockdownRingRadius);
+                        presenter.OnKnockedDown(transform.position, KnockdownRingRadius, EffectElement);
                         break;
                     case EnemyEventType.Damaged:
                         presenter.OnDamaged(feedback);
