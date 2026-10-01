@@ -37,6 +37,8 @@ namespace VaatusRevenge
         int nextGeneration = 1;
         float time;
         Quaternion cameraRotation = Quaternion.identity;   // billboards turn to this (updated every LateUpdate)
+        Vector3 cameraPosition;                            // ...and where the camera is (shells and walls keep out of its way, J3-08)
+        bool hasCameraPosition;
 
         // Water, Earth and Air trails and lashes: a material and a colour fade each (Fire keeps trailMaterial).
         readonly Material[] elementTrailMaterials = new Material[ElementLooks];
@@ -200,12 +202,13 @@ namespace VaatusRevenge
             return ChargeGlow(anchor, ElementId.Fire);
         }
 
-        // The heavy's wind-up gathering at a fist or foot: a fire glow, a ball of water, a spinning stone, a swirl of air.
+        // The heavy's wind-up gathering at a fist or foot: a fire glow, a ball of water, a churning ball of dust, a swirl of air.
         internal FireVfxHandle ChargeGlow(Transform anchor, ElementId element)
         {
             if (anchor == null) return FireVfxHandle.None;
             element = LookOf(element);
-            Mesh mesh = element == ElementId.Earth ? GreyboxShapes.GetMesh(PrimitiveType.Cube) : GreyboxShapes.GetMesh(PrimitiveType.Sphere);
+            // Earth gathers a ball of dust at the fist, never a stone on the body (J3-07, spec 7): a sphere like the others.
+            Mesh mesh = GreyboxShapes.GetMesh(PrimitiveType.Sphere);
             FireVfxPiece glow = AcquirePiece(mesh, out int index);
             if (glow == null) return FireVfxHandle.None;
             glow.Persistent = true;
@@ -214,7 +217,7 @@ namespace VaatusRevenge
             if (element != ElementId.Fire)
             {
                 ElementVfxStyle style = ElementVfx.StyleOf(element);
-                VfxMaterialKind kind = element == ElementId.Earth ? style.ChunkKind : style.BlobKind;
+                VfxMaterialKind kind = style.BlobKind;
                 if (!UseKind(glow, kind, null))
                 {
                     ReleasePiece(glow);
@@ -527,7 +530,12 @@ namespace VaatusRevenge
             ThirdPersonCameraRig rig = ThirdPersonCameraRig.Instance;
             Camera cam = rig != null ? rig.Camera : null;
             if (cam == null) cam = Camera.main;
-            if (cam != null) cameraRotation = cam.transform.rotation;
+            if (cam != null)
+            {
+                cameraRotation = cam.transform.rotation;
+                cameraPosition = cam.transform.position;
+                hasCameraPosition = true;
+            }
         }
 
         void UpdateGlow(FireVfxPiece glow, float dt)

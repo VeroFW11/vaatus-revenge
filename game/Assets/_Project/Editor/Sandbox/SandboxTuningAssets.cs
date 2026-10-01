@@ -149,7 +149,8 @@ namespace VaatusRevenge.EditorTools
                 }
                 else if (set.DataVersion < ElementMoveSet.CurrentDataVersion)
                 {
-                    Add(names, reasons, name, "saved before the Build 05 fixes (dodge strike reach, Water/Air dodge exits, side-slip circle)");
+                    Add(names, reasons, name, "saved before the Build 05 fixes (dodge strike reach, Water/Air dodge exits, side-slip circle, "
+                                              + "slam finishers that drop you with the foe, Tiger Claw Rake's swipe)");
                 }
                 else if (set.Element != expected)
                 {

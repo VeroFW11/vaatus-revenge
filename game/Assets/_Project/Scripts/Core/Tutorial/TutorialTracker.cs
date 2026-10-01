@@ -72,7 +72,8 @@ namespace VaatusRevenge.Core
         public float SuccessPause01 => InSuccessPause && script.SuccessPause > 0f ? Math.Min(1f, successPauseLeft / script.SuccessPause) : 0f;
 
         // How close the current attempt is (0..1) for goals with a running total: on-beat presses for the beat step,
-        // combo hits for the graduation, time for the timed step. 0 for the others.
+        // combo hits for the graduation, time for the timed step, distance from the partner for the slip-in step. 0 for
+        // the others.
         public float AttemptProgress01
         {
             get
@@ -82,6 +83,8 @@ namespace VaatusRevenge.Core
                 switch (step.Goal)
                 {
                     case TutorialGoal.Timed: return Fraction(stepTime, step.Duration);
+                    // The slip-in step: how far back you are, full once you're far enough to slip in from (J3-S13).
+                    case TutorialGoal.SlipInStrike: return Fraction(last.TargetDistance, step.MinStartDistance);
                     case TutorialGoal.OnBeatFinisher: return Fraction(stringOnBeat, step.MinOnBeat);
                     case TutorialGoal.BigMixedCombo:
                         // The hits fill the bar; it only reaches the end once enough elements are in the mix too.

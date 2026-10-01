@@ -186,7 +186,7 @@ namespace VaatusRevenge.Tests
             d.RunUntilStarted(3);
             Assert.AreEqual(ElementId.Water, d.Model.ActiveElement);
             d.SwitchOnBeat(ElementId.Water);                     // RB still down, X again: same element
-            Assert.AreEqual(SwitchDeniedReason.SameElement, d.LastOf(PlayerEventType.ElementSwitchDenied).DenyReason);
+            Assert.AreEqual(0, d.Count(PlayerEventType.ElementSwitchDenied), "the string going on is no denial (J3-S01: no wheel shake)");
             Assert.AreEqual(PlayerCommand.Light, d.Model.BufferedCommand, "played as X: the string never drops");
             d.RunUntilStarted(4);
             Assert.AreEqual(ElementId.Water, d.LastStarted.Element);

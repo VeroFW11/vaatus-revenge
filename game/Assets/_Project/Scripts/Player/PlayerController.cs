@@ -139,7 +139,7 @@ namespace VaatusRevenge
             Combatant fighter = go.AddComponent<Combatant>();
             fighter.Configure(VaatusRevenge.Core.Team.Player, aim, radius, height, settings.DisplayName);
 
-            // The jointed martial-artist body (Fire Nation red, gold sash and wraps), animated procedurally.
+            // The jointed martial-artist body (the settings' cloth colour, gold sash and wraps), animated procedurally.
             HumanoidBody humanoid = go.AddComponent<HumanoidBody>();
             go.AddComponent<BodyAnimatorDriver>();
             BodyLook look = BodyLook.Player();

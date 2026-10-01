@@ -209,6 +209,9 @@ namespace VaatusRevenge
             }
             feetRingBefore = FeetBeatRing;
             SetFeetBeatRing(true);
+            // The lessons are written for the script's start element (Fire): the beat step is timed and hinted on its string,
+            // so a player who was in Air when they opened the tutorial is put back in Fire (J3-01).
+            player.Model.SetElementAtRest(tracker.Script.StartElement);
 
             tracker.Start();
             seenPassSerial = tracker.PassSerial;

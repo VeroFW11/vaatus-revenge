@@ -47,6 +47,8 @@ namespace VaatusRevenge.Core
         float beatEarly;
         float beatLate;
         bool beatWindowAnnounced;
+        double cueFromClock;          // when the running beat's ring appeared (J3-01: with the previous move, if it queued this one)
+        double pendingCueFrom = double.NegativeInfinity;   // a judged follow-up press: when the next move's ring appeared
         int followUpCount;            // presses made during the running move
         BeatGrade followUpGrade;      // the first one's grade (Mashed after a downgrade)
         bool earlyPressSeen;
@@ -132,6 +134,7 @@ namespace VaatusRevenge.Core
             stringPerfect = false;
             stringFollowUps = 0;
             attackPlaybackRate = 1f;
+            pendingCueFrom = double.NegativeInfinity;
         }
 
         // ---------------------------------------------------------------- string memory
@@ -218,6 +221,12 @@ namespace VaatusRevenge.Core
             earlyPressSeen = false;
             beatWindowAnnounced = false;
             beatActive = RhythmOn && IsStringKind(attackKind);
+            // The ring of a move queued by a judged press has been closing since that press (the predicted next beat);
+            // any other string move's ring appears as it starts.
+            bool queued = moveGrade == BeatGrade.OnBeat || moveGrade == BeatGrade.Early || moveGrade == BeatGrade.Late
+                || moveGrade == BeatGrade.Mashed;
+            cueFromClock = queued && pendingCueFrom > double.NegativeInfinity && pendingCueFrom <= clock ? pendingCueFrom : attackBeganClock;
+            pendingCueFrom = double.NegativeInfinity;
             if (!beatActive) return;
             RhythmTuning rules = RhythmRules;
             ElementRhythm element = RhythmOf(set);
@@ -296,7 +305,13 @@ namespace VaatusRevenge.Core
             if (grade == BeatGrade.OnBeat) onBeatStreak++;
             else if (grade != BeatGrade.Pause) BreakStreak();
             EmitBeatJudged(grade, (float)(pressClock - beatClock), actionSet.Element);
-            if (grade != BeatGrade.Pause) buffer.Lock(runnableAt);
+            if (grade != BeatGrade.Pause)
+            {
+                buffer.Lock(runnableAt);
+                // The next hit's ring (J3-01) has been showing since this move started if the press came while it was
+                // up (early or on the beat); a late press starts it now.
+                pendingCueFrom = grade == BeatGrade.Late ? clock : attackBeganClock;
+            }
         }
 
         void BreakStreak()
@@ -364,8 +379,24 @@ namespace VaatusRevenge.Core
         RhythmView BuildRhythmView()
         {
             bool pendingSwitch = buffer.Command == PlayerCommand.SwitchStrike;
+            bool current = beatActive && IsStringMoveRunning && followUpCount == 0;
+            double nextBeat = 0.0;
+            bool next = !current && TryPredictQueuedBeat(out nextBeat);
+            double cueBeat = next ? nextBeat : beatClock;
+            double cueFrom = next ? pendingCueFrom : cueFromClock;
+            // While the running beat is still to come (or inside its on-beat window), the hit after it is shown too,
+            // assuming you keep the beat: its ring appears as this move starts.
+            double afterBeat = 0.0;
+            bool after = current && clock <= beatClock + beatLate + 1e-6 && TryPredictBeatAfter(moveSet, BeatGrade.OnBeat, out afterBeat);
             return new RhythmView
             {
+                Cue = current || next,
+                CueTimeToBeat = current || next ? (float)(cueBeat - clock) : 0f,
+                CueLead = current || next ? (float)Math.Max(0.0, cueBeat - cueFrom) : 0f,
+                CueIsNextHit = next,
+                NextCue = after,
+                NextCueTimeToBeat = after ? (float)(afterBeat - clock) : 0f,
+                NextCueLead = after ? (float)Math.Max(0.0, afterBeat - attackBeganClock) : 0f,
                 Active = beatActive && IsStringMoveRunning && followUpCount == 0,
                 TimeToBeat = beatActive && IsStringMoveRunning ? (float)(beatClock - clock) : 0f,
                 EarlyWindow = beatEarly,
@@ -375,6 +406,38 @@ namespace VaatusRevenge.Core
                 PlaybackRate = state == PlayerState.Attacking ? attackPlaybackRate : 1f,
                 PauseReady = IsPauseReady
             };
+        }
+
+        // J3-01: once a follow-up press is queued (locked) in the running string move, the next hit's beat is known: the
+        // move starts at the running one's cancel point (or now, if that has passed) and strikes ActiveStart later at the
+        // playback rate the press earned. Mirrors ResolveNextStringMove / TryAirAttack's queued branch. A stretched
+        // arriving lunge can still push the real beat a little later; the ring then follows the real beat.
+        bool TryPredictQueuedBeat(out double nextBeat)
+        {
+            nextBeat = 0.0;
+            if (!RhythmOn || !beatActive || !IsStringMoveRunning || followUpCount == 0 || !buffer.Locked) return false;
+            if (followUpGrade == BeatGrade.None || followUpGrade == BeatGrade.Pause || pendingCueFrom == double.NegativeInfinity) return false;
+            PlayerCommand command = buffer.Command;
+            bool switching = command == PlayerCommand.SwitchStrike && IsSwitchUsable(pendingSwitchElement);
+            if (command != PlayerCommand.Light && !switching) return false;
+            return TryPredictBeatAfter(switching ? loadout.Get(pendingSwitchElement) : moveSet, followUpGrade, out nextBeat);
+        }
+
+        // The beat of the running string move's next hit, from 'set', started by a press of this grade.
+        bool TryPredictBeatAfter(ElementMoveSet set, BeatGrade grade, out double nextBeat)
+        {
+            nextBeat = 0.0;
+            if (set == null || currentMove == null || !beatActive || !IsStringMoveRunning) return false;
+            NextSlot(chainBranch, chainIndex, moveIsChainFinisher, out ComboBranch branch, out int index);
+            MoveData[] moves = ChainOf(set, branch);
+            int length = LengthOf(moves);
+            if (index < 0 || length == 0) return false;
+            MoveData move = moves[Math.Min(index, length - 1)];
+            if (move == null) return false;
+            float rate = Math.Max(attackPlaybackRate, Epsilon);
+            double startAt = Math.Max(clock, attackStartClock + currentMove.ChainCancelAt / rate);
+            nextBeat = startAt + move.ActiveStart / Math.Max(PlaybackRateFor(grade, set), Epsilon);
+            return true;
         }
 
         // An X pressed now would take the pause branch: the eligible move is past its combo window with no press yet, or it

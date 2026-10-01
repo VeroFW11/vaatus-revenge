@@ -1084,6 +1084,7 @@ namespace VaatusRevenge.Core
             public float FadeIn = 0.1f;
             public bool UpperBodyOnly;
             public bool Aims;
+            public bool Glides;
             public float ArmSwing = 1f;
 
             public ClipBuilder(string key, ClipMode mode, PoseSpec start)
@@ -1142,7 +1143,7 @@ namespace VaatusRevenge.Core
                 return new PoseClip
                 {
                     Key = key, Mode = mode, LoopPeriod = LoopPeriod, DefaultDuration = DefaultDuration, StartupShare = StartupShare,
-                    ActiveShare = ActiveShare, FadeIn = FadeIn, UpperBodyOnly = UpperBodyOnly, Aims = Aims, ArmSwing = ArmSwing,
+                    ActiveShare = ActiveShare, FadeIn = FadeIn, UpperBodyOnly = UpperBodyOnly, Aims = Aims, Glides = Glides, ArmSwing = ArmSwing,
                     Keys = keys.ToArray()
                 };
             }

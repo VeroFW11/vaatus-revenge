@@ -48,7 +48,7 @@ Each step shows the buttons as pictures, counts your progress, and chimes when y
 |---|---|
 | Left stick / Right stick | Move / camera. Flick the right stick to change target while locked on |
 | **X** | Attack. Tap in rhythm for the 5-hit string. **X X (wait) X X** = pause finisher (NEW). In the air: air string |
-| Hold **X** | Launcher (throws the enemy up, you follow); holding any string press turns that hit into the launcher |
+| Hold **X** | Launcher (throws the enemy up, you follow); holding any string press: that hit plays, then the launcher follows |
 | **Y** | Zip strike to a far enemy (keeps your combo going) |
 | **B** | Tap: dodge (stick decides slip-in, evade-out or side-step; NEW). Hold: sprint. **X late in a dodge = dodge strike** (NEW) |
 | **A** | Jump |
@@ -400,7 +400,7 @@ Fire Blast; Flame Step Strike zip; Flying Fire Kick sprint. Fluid changes only: 
 
 Pause path poise 8+9+10+12 = 39. Fire rhythm: on-beat +3 Momentum.
 
-### 3.2 Water (Tai Chi): yield, redirect force, circle; pulls, heals, widest parry
+### 3.2 Water (Tai Chi): yield, return force, circle; pulls, heals, widest parry
 
 | Slot | Name | AnimationKey / EffectKey | S/A/R | CW | Ch/Dg | Dmg | Po | Rng/Arc | Lng | Air | St | Extra |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -1141,3 +1141,48 @@ Still open:
   ~0.35 s? Fluid `BeatLate` 0.10 → 0.15 is still open from round 1. And on Punishing an X pressed in the first ~0.3 s of a dodge
   expires (0.2 s buffer, the dodge can't be cut before 0.48 s; `CombatTimingTests` pins this as Punishing's rule): keep it, or let
   an attack press wait for the dodge's cancel point? How-To-Play now tells Punishing players to press X near the dodge's end.
+
+### 8.4 Build 05 verify round 3 (1 Oct): a cue you can anticipate, Earth's stone from the ground, motion that reads
+The judge re-derived every animation and effect claim from its own trace and found eight Majors. Calls made (Jeremy and David:
+please try them and say if any should go back):
+1. **The beat ring is predictive** (`RhythmView.Cue*` / `NextCue*`, `HudBeatPulse`). While a hit winds up, the ring for the hit
+   after it already closes, fainter and further out, assuming you keep the beat; once you press, it is the next hit's predicted beat
+   (the running move's cancel point plus the next move's startup at the rate your press earned) and keeps closing across the move
+   change. Every follow-up's ring is up 0.28-0.57 s before its beat in every element and preset (`VerifyRound3Tests` asserts
+   >= 0.25 s); only the first beat after the opening X is as short as the opener's wind-up (0.11-0.20 s), because nothing can show
+   it before you press. The rules (Active / TimeToBeat, the windows) are unchanged. The tutorial puts you in Fire as it starts
+   (`TutorialScript.StartElement`, `PlayerCombatModel.SetElementAtRest`). At the feet the ring is drawn as outlines only, so the
+   gold and blue fills no longer cover your legs.
+2. **Spins carry on.** A blend out of a fast spin keeps turning the way it was going when the short way round would reverse it by
+   more than 90° (`AnimatorSettings.SpinCarryMinSpeed` / `SpinCarryMinReverse`). Air's Spiral Kick no longer snaps on its active
+   frame and turns at an even ~35° a frame; three quarters of the turn is done by its chain cancel.
+3. **Lunges run.** A strike rushing along the ground at 2.5-12 m/s (gap-closing openers, Air's circle walk) runs there in real
+   steps (the walk/run cycle at its speed, starting with the rear foot pushing off) instead of hovering both feet in one frozen pose
+   (`AnimatorSettings.LungeStrides`, `StrideMinSpeed`, `StrideMaxSpeed`); only faster rushes leap. Surf clips (`PoseClip.Glides`)
+   keep their glide. The `anim` scenario now fails on a joint jumping > 0.8 m in a frame, a spin turning back > 60° at a clip change,
+   or both feet gliding for 3+ frames.
+4. **Effects are drawn at the reach that can hit.** Water/Earth/Air rings, explosions, dome rings and vortices drew at twice the hit
+   radius; `Band` now takes world radii (its contract comment says so). The air string's spin vortex (Spiral Kick, Fair Lady) swirls
+   round the chest up in the air, not on the floor under the juggle.
+5. **Earth's stone comes from the ground, everywhere** (`ElementFxRules.StoneFromFloor`, `FloorStoneUnder`): a burst from a fist,
+   a hit spark on a foe, the chest on a perfect dodge or a parry is dust at that point, and its rock rises out of the floor under it
+   (only dust when the point is more than 1.6 m up, e.g. a juggled foe). The charge glow is a churning ball of dust, a launched foe
+   trails dust, and an airborne switch strike into Earth accents with dust (spec 8.1 item 2). **Lore call for David:** say if you
+   prefer stone visibly gathered to the fist; it would be recorded in §7 as a canon decision.
+6. **Air Shield and Water's bubble** are a faint inner shell (60 % of the reach, alpha 0.25, never drawn round the camera) with the
+   spinning rings showing the reach; Stone Tent's slab on the camera's side rises only to a low wall (`ElementVfxStyle`
+   `DomeShell*`, `TentCamera*`).
+7. Should-fix polish: RB held with the same element mid-string no longer shakes the wheel; X a frame before RB from neutral is one
+   attack plus a plain switch (never a second, automatic switch strike); a switch strike that outlives its buffer (Punishing, early
+   in a dodge) still switches; a slip-in from contact range draws no push or trails; slam finishers no longer lift you and you fall
+   at full gravity once they strike (`AerialSettings.FinisherGravityScale`); the jump pose starts at take-off; per-element switch
+   flash colours of equal brightness (`ElementVfxStyle.SwitchFlashColor`); Tiger Claw Rake is a swipe (Trail) rather than a straight
+   spike line; the Avatar has eyes instead of the grey-box face band; the tutorial's slip-in step (now 3 m) shows a distance bar.
+   `ElementMoveSet.CurrentDataVersion` 7 and `TutorialScript.CurrentDataVersion` 4: the sandbox builder offers to update older saved
+   assets.
+
+Still open:
+- **Jeremy:** let only face presses within ~0.4 s of RB going down be element picks (later presses with RB still held would act
+  normally: B dodges)? For now How-To-Play says to let go of RB after switching. A slip-in from contact range is still a sway in place
+  (now without the backwards jet): turn it into a short circle round the foe? That would cost the "dash through the attack" perfect
+  dodge bonus at contact range, so it's your call. Per-element dodge poses (one shared pose today) and Fluid `BeatLate` are open too.

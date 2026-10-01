@@ -313,24 +313,27 @@ namespace VaatusRevenge.Core
                 .Build());
 
             // Spiral Kick (air 2): the body corkscrews a full turn with the right leg straight out, the shin striking three
-            //    times as it comes round. RootYaw 0 -> -360.
+            //    times as it comes round. RootYaw +20 (wind-up) -> -360, accelerating out of the wind-up (no snap: J3-02) and
+            //    turning at an even rate (hitstop holds it at each hit, so the rate is kept under ~35 degrees a frame).
+            //    Three quarters of the turn are done by the chain cancel (end of active): an on-beat chain into the next
+            //    move finishes the last quarter in the same direction (FighterAnimator's spin carry) instead of unwinding.
             clips.Add(Strike(AnimationKeys.AirSpiralKick, air)
-                .K(KeyPhase.Startup, 0.6f, PoseEase.InOut, s =>
+                .K(KeyPhase.Startup, 0.5f, PoseEase.InOut, s =>
                 {
-                    s.Set(PoseChannel.RootYaw, 30f).Torso(4f, 15f);
+                    s.Set(PoseChannel.RootYaw, 20f).Torso(4f, 15f);
                     s.Kick(R, 60f, -20f, 0.5f, 20f, 30f);
                 })
-                .K(KeyPhase.Active, 0f, PoseEase.Snap, s =>
+                .K(KeyPhase.Active, 0f, PoseEase.Linear, s =>
                 {
                     s.Set(PoseChannel.RootYaw, -40f).Set(PoseChannel.LookFront, 0.3f).Set(PoseChannel.ArmFollow, 0.6f);
                     s.Torso(-5f, 0f, 18f).Kick(R, 40f, 0f, 1f, 30f, 45f).Kick(L, 6f, -70f, 0.55f, 0f, 25f);
                     s.Arm(L, 75f, 10f, 0.85f, 10f).Arm(R, 30f, 20f, 0.55f, 10f);
                 })
-                .K(KeyPhase.Interval, 1f, PoseEase.Linear, s => s.Set(PoseChannel.RootYaw, -160f))
-                .K(KeyPhase.Recovery, 0f, PoseEase.Linear, s => s.Set(PoseChannel.RootYaw, -220f))
-                .K(KeyPhase.Recovery, 0.5f, PoseEase.Out, s =>
+                .K(KeyPhase.Interval, 1f, PoseEase.Linear, s => s.Set(PoseChannel.RootYaw, -210f))
+                .K(KeyPhase.Recovery, 0f, PoseEase.Linear, s => s.Set(PoseChannel.RootYaw, -265f))
+                .K(KeyPhase.Recovery, 0.4f, PoseEase.Linear, s =>
                 {
-                    s.Set(PoseChannel.RootYaw, -300f).Set(PoseChannel.LookFront, 0.8f);
+                    s.Set(PoseChannel.RootYaw, -360f).Set(PoseChannel.LookFront, 0.8f);
                     s.Kick(R, 35f, -60f, 0.6f, 0f, 30f).Torso(6f, 5f, 4f);
                 })
                 .K(KeyPhase.Recovery, 1f, PoseEase.InOut, s => { s.CopyFrom(air); s.Set(PoseChannel.RootYaw, -360f); })

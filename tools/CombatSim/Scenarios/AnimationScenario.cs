@@ -935,6 +935,113 @@ namespace VaatusRevenge.CombatSim
                 footFrames++;
             }
 
+            // Build 05 verify round 3. While the player attacks:
+            //   J3-02: no joint jumps more than JointJumpMax in one frame (measured against the body's own travel), and
+            //          a clip change during a fast spin (the hip line turning over SpinBefore degrees in the 3 frames
+            //          before) doesn't turn it back more than SpinReverseMax degrees in the next 5 frames;
+            //   J3-03: no glide: both feet under GlideHeight and each moving faster than GlideSpeed, with the body
+            //          travelling, for GlideFrames frames or more on the ground (a clip that Glides, a surf, excepted).
+            const float JointJumpMax = 0.8f, SpinBefore = 45f, SpinReverseMax = 60f;
+            const float GlideHeight = 0.16f, GlideSpeed = 2f, GlideRootSpeed = 1f;
+            const int GlideFrames = 3;
+            readonly List<(string scene, int frame, string key, string what, float amount)> motionIssues
+                = new List<(string, int, string, string, float)>();
+            readonly Vector3[] prevJoints = new Vector3[BodyJoints.Count];
+            Vector3 prevRoot;
+            bool prevAttacking;
+            string prevMotionScene, prevMotionKey;
+            readonly List<float> hipHistory = new List<float>();
+            int motionFrames, glideRun, glideStart, spinCheckUntil = -1, spinSign;
+            float spinTurned, spinWorst;
+            string glideKey, spinKeys;
+
+            static float HipLine(Vector3[] joints)
+            {
+                Vector3 l = joints[(int)BodyJoint.LeftUpperLeg], r = joints[(int)BodyJoint.RightUpperLeg];
+                return (float)(Math.Atan2(r.Z - l.Z, r.X - l.X) * 180.0 / Math.PI);
+            }
+
+            static float Wrap180(float a)
+            {
+                a %= 360f;
+                if (a > 180f) a -= 360f;
+                if (a < -180f) a += 360f;
+                return a;
+            }
+
+            void CheckMotion(AnimRig rig, string key)
+            {
+                var player = (SimPlayer)rig.Fighter;
+                bool attacking = player.Model.State == PlayerState.Attacking;
+                bool same = prevMotionScene == scene;
+                Vector3[] joints = rig.Fk.Positions;
+                Vector3 root = rig.Fighter.Feet;
+                float hip = HipLine(joints);
+                if (!same) hipHistory.Clear();
+                if (same && attacking && prevAttacking)
+                {
+                    motionFrames++;
+                    Vector3 travel = root - prevRoot;
+                    float worst = 0f;
+                    for (int j = 0; j < joints.Length; j++) worst = Math.Max(worst, Vector3.Distance(joints[j] - travel, prevJoints[j]));
+                    if (worst > JointJumpMax) motionIssues.Add((scene, FrameCount, key, "joint jumped in one frame", worst));
+
+                    // A clip change in a fast spin: watch the next frames for the spin turning back.
+                    if (key != prevMotionKey && hipHistory.Count >= 4)
+                    {
+                        float before = 0f;
+                        for (int k = hipHistory.Count - 3; k < hipHistory.Count; k++) before += Wrap180(hipHistory[k] - hipHistory[k - 1]);
+                        if (Math.Abs(before) >= SpinBefore)
+                        {
+                            spinCheckUntil = FrameCount + 5;
+                            spinSign = Math.Sign(before);
+                            spinTurned = 0f;
+                            spinWorst = 0f;
+                            spinKeys = prevMotionKey + " -> " + key;
+                        }
+                    }
+                    if (FrameCount < spinCheckUntil && hipHistory.Count > 0)
+                    {
+                        spinTurned += Wrap180(hip - hipHistory[hipHistory.Count - 1]);
+                        spinWorst = Math.Max(spinWorst, -spinSign * spinTurned);
+                        if (FrameCount == spinCheckUntil - 1 && spinWorst > SpinReverseMax)
+                            motionIssues.Add((scene, FrameCount, spinKeys, "spin turned back (degrees)", spinWorst));
+                    }
+
+                    // Gliding: both feet low and sliding with the body.
+                    PoseClip clip = rig.Animator.Clip(key);
+                    float dt = Dt;
+                    Vector3 lf = joints[(int)BodyJoint.LeftFoot], rf = joints[(int)BodyJoint.RightFoot];
+                    float lv = Vector3.Distance(lf, prevJoints[(int)BodyJoint.LeftFoot]) / dt;
+                    float rv = Vector3.Distance(rf, prevJoints[(int)BodyJoint.RightFoot]) / dt;
+                    float rootSpeed = new Vector2(travel.X, travel.Z).Length() / dt;
+                    bool glide = rig.LastInput.Grounded && (clip == null || !clip.Glides)
+                                 && lf.Y - root.Y < GlideHeight && rf.Y - root.Y < GlideHeight
+                                 && lv > GlideSpeed && rv > GlideSpeed && rootSpeed > GlideRootSpeed;
+                    if (glide && glideRun > 0 && key == glideKey) glideRun++;
+                    else
+                    {
+                        if (glideRun >= GlideFrames) motionIssues.Add((scene, glideStart, glideKey, "both feet glided " + glideRun + " frames", 0f));
+                        glideRun = glide ? 1 : 0;
+                        glideKey = key;
+                        glideStart = FrameCount;
+                    }
+                }
+                else
+                {
+                    if (glideRun >= GlideFrames) motionIssues.Add((scene, glideStart, glideKey, "both feet glided " + glideRun + " frames", 0f));
+                    glideRun = 0;
+                    spinCheckUntil = -1;
+                }
+                hipHistory.Add(hip);
+                if (hipHistory.Count > 8) hipHistory.RemoveAt(0);
+                Array.Copy(joints, prevJoints, prevJoints.Length);
+                prevRoot = root;
+                prevAttacking = attacking;
+                prevMotionScene = scene;
+                prevMotionKey = key;
+            }
+
             // R2-03: no Earth rock effect (a burst or a spark) traced while the player is off the ground.
             int earthAirFx, earthAirRockFx;
 
@@ -972,6 +1079,7 @@ namespace VaatusRevenge.CombatSim
                     }
                 }
                 CheckEarthInAir(s);
+                CheckEarthOnBody(s);
                 var sb = frames;
                 if (FrameCount > 0) sb.Append(",\n");
                 sb.Append("{\"t\":").Append(F(time)).Append(",\"scene\":").Append(Q(scene)).Append(",\"caption\":").Append(Q(caption));
@@ -1002,7 +1110,11 @@ namespace VaatusRevenge.CombatSim
                 string key = action.IsValid ? action.Key : loco.Key;
                 Covered.Add(key);
                 if (loco.IsValid) Covered.Add(loco.Key);
-                if (rig.Fighter is SimPlayer) CheckFeet(rig, key);
+                if (rig.Fighter is SimPlayer)
+                {
+                    CheckFeet(rig, key);
+                    CheckMotion(rig, key);
+                }
                 string state = rig.Fighter is SimPlayer p ? p.Model.State.ToString() : ((SimEnemy)rig.Fighter).Brain.State.ToString();
                 sb.Append("{\"id\":").Append(rig.Id).Append(",\"kind\":").Append(Q(rig.Kind)).Append(",\"state\":").Append(Q(state));
                 sb.Append(",\"key\":").Append(Q(key)).Append(",\"alive\":").Append(rig.Fighter.IsAlive ? "true" : "false");
@@ -1067,9 +1179,15 @@ namespace VaatusRevenge.CombatSim
                         string el = ElementName(e.Element);
                         // As ElementMoveEffects: Earth in the air pushes dust from the limb, no rock (ElementFxRules).
                         if (ElementFxRules.DustOnly(e.Element, ElementFxRules.IsAirborne(in e))) key = "dust";
+                        // As ElementBurst (J3-07): Earth's burst from a limb is dust there, its rock rises from the floor under it.
                         if (key == EffectKeys.Pillar || key == EffectKeys.Slam)
-                            fx.Add(Fx(EffectKeys.Burst, e.Origin, key == EffectKeys.Slam ? -Vector3.UnitY : dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id, el));
-                        else fx.Add(Fx(key, e.Origin, dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id, el));
+                            BodyBurst(EffectKeys.Burst, e.Element, e.Origin, key == EffectKeys.Slam ? -Vector3.UnitY : dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id);
+                        else if (key == EffectKeys.Burst) BodyBurst(key, e.Element, e.Origin, dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id);
+                        else
+                        {
+                            fx.Add(Fx(key, e.Origin, dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id, el));
+                            if (key == EffectKeys.Trail) BodyBurst(null, e.Element, e.Origin, dir, m.Range, m.ArcDegrees, duration, LimbJoint(m.Limb), rig.Id);
+                        }
                         if (key != EffectKeys.Burst && key != EffectKeys.Trail && key != "dust")
                             fx.Add(Fx(EffectKeys.Trail, e.Origin, dir, m.Range, m.ArcDegrees, m.Active + 0.05f, LimbJoint(m.Limb), rig.Id, el));
                         // A flurry's later sub-hits change hands (Air's palm changes): the striking hand is whichever is out.
@@ -1093,7 +1211,9 @@ namespace VaatusRevenge.CombatSim
                         break;
                     }
                     case PlayerEventType.DodgeStarted:
-                        // As PlayerFeedback.DodgeStarted: a push from the feet (BurstOrDust), then jets.
+                        // As PlayerFeedback.DodgeStarted: a push from the feet (BurstOrDust), then jets; nothing for a dodge
+                        // that doesn't travel (a slip-in from contact range, J3-S04).
+                        if (!e.InAir && e.Amount < 0.3f) break;
                         fx.Add(Fx(ElementFxRules.DustOnly(e.Element, e.InAir) ? "dust" : EffectKeys.Burst, rig.Fighter.Feet, -e.Direction, 1f, 0f, 0.2f,
                             (int)BodyJoint.RightFoot, rig.Id, ElementName(e.Element)));
                         fx.Add(Fx("jet", rig.Fighter.Feet, -e.Direction, 1f, 0f, 0.3f, (int)BodyJoint.RightFoot, rig.Id, ElementName(e.Element)));
@@ -1116,6 +1236,47 @@ namespace VaatusRevenge.CombatSim
                 }
             }
 
+            // An effect made at a point on a body (a strike's limb, a hit on a foe), as the Unity runner draws it: the
+            // element's own key there, except Earth (J3-07: ElementFxRules.StoneFromFloor), which is dust at the point and
+            // its rock (a burst) rising from the floor under it, if the floor is near enough. key null: Earth's part only.
+            void BodyBurst(string key, ElementId element, Vector3 at, Vector3 dir, float range, float arc, float duration, int joint, int fighter)
+            {
+                string el = ElementName(element);
+                if (!ElementFxRules.StoneFromFloor(element))
+                {
+                    if (key != null) fx.Add(Fx(key, at, dir, range, arc, duration, joint, fighter, el));
+                    return;
+                }
+                if (key != null) fx.Add(Fx("dust", at, dir, range, arc, duration, joint, fighter, el));
+                if (ElementFxRules.FloorStoneUnder(element, at.Y - ArenaFloorY))
+                    fx.Add(Fx(EffectKeys.Burst, new Vector3(at.X, ArenaFloorY, at.Z), Vector3.UnitY, range, arc, duration, joint, fighter, el));
+            }
+
+            const float ArenaFloorY = 0f;   // every anim scene is on flat ground at y = 0
+
+            // J3-07: no Earth rock effect (a burst or a spark) made on or out of a body while the player is on the ground:
+            // its origin must be on the floor (within BodyRockHeight of it).
+            const float BodyRockHeight = 0.5f;
+            int earthGroundFx, earthBodyRockFx;
+            static readonly System.Text.RegularExpressions.Regex FxOriginY =
+                new System.Text.RegularExpressions.Regex(@"""o"":\[[^,]+,([^,]+),");
+
+            void CheckEarthOnBody(Scene s)
+            {
+                foreach (AnimRig rig in s.Rigs)
+                {
+                    if (!(rig.Fighter is SimPlayer) || !rig.LastInput.Grounded) continue;
+                    foreach (string f in fx)
+                    {
+                        if (!f.Contains("\"el\":\"earth\"")) continue;
+                        earthGroundFx++;
+                        if (!(f.Contains("\"key\":\"burst\"") || f.Contains("\"key\":\"spark\""))) continue;
+                        var match = FxOriginY.Match(f);
+                        if (match.Success && float.Parse(match.Groups[1].Value, C) - ArenaFloorY > BodyRockHeight) earthBodyRockFx++;
+                    }
+                }
+            }
+
             // The element an enemy's launch, landing and hit spark are drawn in: as EnemyFighter.EffectElement, the player's
             // element (the sim's only attacker), so a render shows Earth launches in Earth's colour (R2-S16).
             void EnemyEffect(AnimRig rig, SimEnemy enemy, in EnemyEvent e, SimPlayer player)
@@ -1135,8 +1296,8 @@ namespace VaatusRevenge.CombatSim
                     {
                         // As PlayerFeedback.OnHitReport: Earth hitting from the air sparks dust, never rock (R2-03).
                         bool airborne = player != null && ElementFxRules.IsAirborneAttacker(player.Model.IsGrounded, player.Model.CurrentAttackKind);
-                        fx.Add(Fx(ElementFxRules.DustOnly(element, airborne) ? "dust" : "spark", enemy.AimPoint, Vector3.UnitZ, 0.4f, 0f, 0.16f,
-                            (int)BodyJoint.Chest, rig.Id, el));
+                        if (ElementFxRules.DustOnly(element, airborne)) fx.Add(Fx("dust", enemy.AimPoint, Vector3.UnitZ, 0.4f, 0f, 0.16f, (int)BodyJoint.Chest, rig.Id, el));
+                        else BodyBurst("spark", element, enemy.AimPoint, Vector3.UnitZ, 0.4f, 0f, 0.16f, (int)BodyJoint.Chest, rig.Id);
                         break;
                     }
                     case EnemyEventType.AttackActiveStart:
@@ -1373,9 +1534,18 @@ namespace VaatusRevenge.CombatSim
                 t3.Row("Rear foot dragged", footFrames, drags, Out.Target(drags == 0));
                 t3.Row("Foot snapped down", footFrames, drops, Out.Target(drops == 0));
                 t3.Row("Earth rock effects in the air (R2-03)", earthAirFx + " Earth fx in the air", earthAirRockFx, Out.Target(earthAirRockFx == 0));
+                int jumps = motionIssues.Count(x => x.what.StartsWith("joint"));
+                int spins = motionIssues.Count(x => x.what.StartsWith("spin"));
+                int glides = motionIssues.Count(x => x.what.StartsWith("both"));
+                t3.Row("Joint jumps over " + Out.N(JointJumpMax, 1) + " m while attacking (J3-02)", motionFrames, jumps, Out.Target(jumps == 0));
+                t3.Row("Spin turned back over " + Out.N(SpinReverseMax, 0) + " deg at a clip change (J3-02)", motionFrames, spins, Out.Target(spins == 0));
+                t3.Row("Gliding strikes, both feet sliding " + GlideFrames + "+ frames (J3-03)", motionFrames, glides, Out.Target(glides == 0));
+                t3.Row("Grounded Earth rock from the body (J3-07)", earthGroundFx + " grounded Earth fx", earthBodyRockFx, Out.Target(earthBodyRockFx == 0));
                 t3.Print();
                 foreach (var issue in footIssues.Take(20))
                     Out.Line("- frame " + issue.frame + " (" + issue.scene + ", " + issue.key + "): " + issue.what + ", " + Out.N(issue.amount, 2) + " m");
+                foreach (var issue in motionIssues.Take(20))
+                    Out.Line("- frame " + issue.frame + " (" + issue.scene + ", " + issue.key + "): " + issue.what + ", " + Out.N(issue.amount, 2));
                 var keys = typeof(AnimationKeys).GetFields().Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()).ToList();
                 Out.Line("Animation keys shown: " + keys.Count(k => Covered.Contains(k)) + " / " + keys.Count
                          + (keys.All(k => Covered.Contains(k)) ? "" : " (missing: " + string.Join(", ", keys.Where(k => !Covered.Contains(k))) + ")"));

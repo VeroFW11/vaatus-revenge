@@ -97,6 +97,15 @@ namespace VaatusRevenge
             return color;
         }
 
+        // The body flash on a switch and the MIX accent ring (J3-S09): each element's own hue at about the same brightness,
+        // so Fire's flash isn't many times Earth's, and Air isn't the plain white of a perfect dodge or a heal.
+        public static Color SwitchFlashColor(ElementId element)
+        {
+            Color color = StyleOf(element).SwitchFlashColor;
+            color.a = 1f;
+            return color;
+        }
+
         // The look of an element's effects. Replace or edit it to restyle; never null. (Fire's moves use FireVfx.Style;
         // Fire's entry here only colours the Build 05 extras: switch ring, afterimages, accents.)
         public static ElementVfxStyle StyleOf(ElementId element)
@@ -264,9 +273,15 @@ namespace VaatusRevenge
         // A spinning swirl round the body out to radius. Fire: a burst.
         public static void Vortex(ElementId element, Vector3 center, float radius, Vector3 direction, float burstScale)
         {
+            Vortex(element, center, radius, direction, burstScale, true);
+        }
+
+        // onFloor false: the swirl turns round center itself (an air-string spin kick's chest, J3-05), not on the floor below.
+        public static void Vortex(ElementId element, Vector3 center, float radius, Vector3 direction, float burstScale, bool onFloor)
+        {
             if (IsFire(element)) { FireVfx.Burst(center, direction, burstScale); return; }
             FireVfxRunner r = FireVfx.Runner;
-            if (r != null) r.ElementVortex(element, center, radius);
+            if (r != null) r.ElementVortex(element, center, radius, onFloor);
         }
 
         // Small fast pieces flying along direction to range (ice darts, stone chips, cutting air). Fire: a burst.

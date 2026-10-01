@@ -73,9 +73,11 @@ namespace VaatusRevenge.Core
             if (requested == activeElement)
             {
                 // Mid-string, RB still held for the next X (X is also Water's button): the press carries the string on in
-                // the current element, like a cooldown denial (C), instead of being swallowed.
+                // the current element (C), instead of being swallowed. That's the string going on, not a refusal, so no
+                // denial (the element wheel would shake on every hit with RB down, J3-S01).
+                if (IsStringLive) return PlayerCommand.Light;
                 EmitSwitchDenied(requested, SwitchDeniedReason.SameElement);
-                return IsStringLive ? PlayerCommand.Light : PlayerCommand.None;
+                return PlayerCommand.None;
             }
             bool coolingDown = clock < switchCooldownUntil;
             if (IsStringLive)
@@ -101,6 +103,27 @@ namespace VaatusRevenge.Core
             }
             SwitchElement(requested, false, ComboBranch.Other);
             return PlayerCommand.None;
+        }
+
+        // A switch strike waited in the buffer and never got to run (pressed early in a long dodge on Punishing, whose
+        // buffer is short): the switch still happens, as a plain switch (or waits, or is refused with the wheel's shake),
+        // so RB + a face button is never dropped without a trace (J3-S03). The next X carries the string on in it.
+        void SwitchStrikeExpired()
+        {
+            ElementId element = pendingSwitchElement;
+            if (!IsSwitchUsable(element) || state == PlayerState.Dead) return;
+            if (clock < switchCooldownUntil)
+            {
+                EmitSwitchDenied(element, SwitchDeniedReason.Cooldown);
+                return;
+            }
+            if (IsSwitchBusy)
+            {
+                pendingSwitch = element;
+                pendingSwitchUntil = clock + Math.Max(0f, SwitchRules.SwitchBufferWindow);
+                return;
+            }
+            SwitchElement(element, false, ComboBranch.Other);
         }
 
         // Still worth switching to when the buffered switch strike finally runs.
@@ -136,6 +159,18 @@ namespace VaatusRevenge.Core
         {
             if (pendingSwitch != ElementId.None && state != PlayerState.Dead) EmitSwitchDenied(pendingSwitch, SwitchDeniedReason.Busy);
             pendingSwitch = ElementId.None;
+        }
+
+        // Puts the player straight into a learned element while nothing is running (the tutorial starts its lessons in its
+        // StartElement, J3-01): no cooldown, no switch strike, no MIX. False when the element isn't learned or an action
+        // is running (nothing changes then).
+        public bool SetElementAtRest(ElementId element)
+        {
+            if (!loadout.IsLearned(element) || IsInAction) return false;
+            CancelPendingSwitch();
+            if (element != activeElement) SwitchElement(element, false, ComboBranch.Other);
+            switchCooldownUntil = double.NegativeInfinity;
+            return true;
         }
 
         // The switch strike's move is starting (StartAttack, after the previous move has ended): switch now.

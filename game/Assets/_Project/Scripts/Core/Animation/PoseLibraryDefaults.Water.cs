@@ -459,7 +459,9 @@ namespace VaatusRevenge.Core
 
             // Wave Ride Strike (zip): ride across on a surge of water, side-on like a board rider, arms out for balance, then
             //    turn square and arrive with both palms.
-            clips.Add(Strike(AnimationKeys.WaveRide, water)
+            var waveRide = Strike(AnimationKeys.WaveRide, water);
+            waveRide.Glides = true;
+            clips.Add(waveRide
                 .K(KeyPhase.Startup, 0.3f, PoseEase.Out, s =>
                 {
                     s.Set(PoseChannel.ArmFollow, 0.3f);

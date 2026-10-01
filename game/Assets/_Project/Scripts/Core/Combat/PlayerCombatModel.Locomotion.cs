@@ -264,6 +264,9 @@ namespace VaatusRevenge.Core
                 bool aerialMove = state == PlayerState.Attacking && (attackKind == PlayerAttackKind.Air
                     || attackKind == PlayerAttackKind.Launcher || attackKind == PlayerAttackKind.ZipStrike);
                 float gravityScale = aerialMove ? Angles.Clamp(Aerial.AirAttackGravityScale, 0f, 1f) : 1f;
+                // The air string's slam finisher drops you with the foe once it has struck (J3-S05).
+                if (aerialMove && attackKind == PlayerAttackKind.Air && moveIsChainFinisher && currentMove != null && action.Time >= currentMove.ActiveStart)
+                    gravityScale = Angles.Clamp(Aerial.FinisherGravityScale, 0f, 1f);
                 verticalVelocity = LocomotionRules.ApplyGravity(verticalVelocity, tuning.Gravity * gravityScale, tuning.MaxFallSpeed, dt);
             }
 

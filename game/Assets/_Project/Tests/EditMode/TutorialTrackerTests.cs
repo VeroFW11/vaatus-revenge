@@ -224,6 +224,21 @@ namespace VaatusRevenge.Tests
             AssertPassed(t, "4");
         }
 
+        // J3-S13: the slip-in step shows how far back you are (a bar that fills at MinStartDistance), so a slip-in from too
+        // close is never silently ignored; the hint points at the bar.
+        [Test]
+        public void SlipInStepShowsADistanceBar()
+        {
+            TutorialTracker t = At("5");
+            TutorialStepData step = t.Step;
+            Assert.LessOrEqual(step.MinStartDistance, 3f);
+            StringAssert.Contains("bar", step.Hint);
+            Tick(t, Frame, new TutorialSnapshot { TargetDistance = step.MinStartDistance * 0.5f });
+            Assert.AreEqual(0.5f, t.AttemptProgress01, 1e-3f);
+            Tick(t, Frame, new TutorialSnapshot { TargetDistance = step.MinStartDistance + 1f });
+            Assert.AreEqual(1f, t.AttemptProgress01, 1e-3f);
+        }
+
         [Test]
         public void SlipInMustStartFromRangeAndHitInTime()
         {

@@ -216,14 +216,14 @@ namespace VaatusRevenge
 
             int r = 0;
             Pattern(ref r, "{X} · {X} · {X} · {X} · {X}",
-                "Press as the gold ring touches the circle: faster, harder hits. Mashing burns stamina");
+                "Press each time a gold ring touches the circle: faster, harder hits. Mashing burns stamina");
             Pattern(ref r, "{X} · {X} · (wait) · {X} · {X}", "Pause finisher: two hits, wait for your guard (the circle glows blue), two more. A different ending");
             Pattern(ref r, "hold {X}, then {X} · {X} · {X}", "Launcher throws them up and you follow; then the air string");
             Pattern(ref r, "{B} toward  /  {B} away", "Dodge: slip in close / evade out of reach. Your combo keeps going");
             Pattern(ref r, "{B}, then {X} late", "Dodge strike: a counter that dashes back in and counts as the next hit");
             Pattern(ref r, chords.ToString(), keys.ToString(),
                 "Switch element. Mid-string it's a switch strike: the next hit is in that element, and harder");
-            Pattern(ref r, "MIX", "Elements landed in a combo: 2 hit harder, 3 launch, 4 also top up Fire's Momentum");
+            Pattern(ref r, "MIX", "Elements landed in a combo: 2 hit harder, 3 launch, 4 also top up Fire's Momentum (a heavy foe staggers)");
             Pattern(ref r, "gold: {LB}   red: {B}", sense + ": the mark above you. Gold = parry, red = dodge, white (Fluid) = now");
         }
 

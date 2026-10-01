@@ -266,7 +266,9 @@ namespace VaatusRevenge.Core
                 lastPosition = world.Position;
                 bodyRadius = Math.Max(0f, world.SelfRadius);
                 ReadInput(input, dt);
+                bool switchStrikeWaiting = buffer.Command == PlayerCommand.SwitchStrike;
                 buffer.Expire(clock, tuning.InputBufferWindow, tuning.QueuedPressMaxAge);
+                if (switchStrikeWaiting && !buffer.HasCommand) SwitchStrikeExpired();
                 UpdateGrounding(dt, world);
                 UpdateTimers(dt);
                 UpdateThreats();
@@ -316,6 +318,7 @@ namespace VaatusRevenge.Core
             // (PadChordReader's grace). Take its normal action back if it's still waiting; a queued string press keeps
             // its slot and beat grade and becomes the switch strike below.
             bool upgradeQueuedLight = false;
+            bool lightAlreadyRan = false;
             if (input.RetractPress != PlayerCommand.None && input.ElementSelect != ElementId.None)
             {
                 if (input.RetractPress == PlayerCommand.Dodge) dodgeButton.Reset();   // its swallowed release must not dodge
@@ -323,6 +326,12 @@ namespace VaatusRevenge.Core
                 {
                     if (buffer.Command == PlayerCommand.Light && buffer.Locked) upgradeQueuedLight = true;
                     else buffer.Clear();
+                }
+                else if (input.RetractPress == PlayerCommand.Light && IsStringMoveRunning && attackBeganClock >= lightPressClock - Epsilon)
+                {
+                    // The X already started its hit (from neutral it runs at once): it stays that hit, and RB makes this
+                    // a plain switch, never a second, automatic switch strike: one press is one attack (J3-S02).
+                    lightAlreadyRan = true;
                 }
             }
 
@@ -333,6 +342,11 @@ namespace VaatusRevenge.Core
             if (state == PlayerState.Dead) return;
             // RB + an element's button: a switch now, a switch strike for the string (buffered like Light), or nothing.
             PlayerCommand elementChord = ReadElementSelect(input.ElementSelect);
+            if (lightAlreadyRan && elementChord == PlayerCommand.SwitchStrike)
+            {
+                SwitchElement(pendingSwitchElement, false, ComboBranch.Other);   // the running hit keeps its own element
+                elementChord = PlayerCommand.None;
+            }
             if (upgradeQueuedLight)
             {
                 // The queued X was the first half of the chord: it becomes the switch strike in place (already judged

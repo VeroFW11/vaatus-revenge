@@ -18,6 +18,11 @@ namespace VaatusRevenge.Core
         // shown as a whip-round turn of the body over TurnCatchUpTime seconds instead of a one-frame flip.
         public float VisualTurnRate = 1200f;
         public float TurnCatchUpTime = 0.1f;
+        // A blend out of a spinning pose (a spin kick chained on the beat) keeps turning the way it was going instead of
+        // unwinding the short way round, when the short way would reverse the spin by more than SpinCarryMinReverse
+        // degrees and the body was turning faster than SpinCarryMinSpeed (degrees per second) (J3-02).
+        public float SpinCarryMinSpeed = 360f;
+        public float SpinCarryMinReverse = 90f;
 
         // ---- Secondary motion (spring-damped: the body lags a little behind sudden changes and settles)
         public float AccelLeanPerMs2 = 0.9f;         // degrees of forward lean per m/s^2 of acceleration (lean into a sprint start)
@@ -65,6 +70,16 @@ namespace VaatusRevenge.Core
         public float StepMaxLift = 0.12f;
         public float ReleaseRate = 16f;              // how quickly a released foot catches up with the pose (1/s)
         public float LeapSpeed = 6f;                 // a grounded action moving faster than this (m/s) leaps: both feet leave the floor
+        // Lunge strides (J3-03): a strike rushing along the ground between StrideMinSpeed and StrideMaxSpeed (a gap-closing
+        // opener, a circle walk) runs there in real steps (the walk/run cycle at its speed, starting from the rear foot
+        // pushing off) instead of hovering both feet in one frozen pose; only a faster, committed rush leaps. A clip that
+        // Glides (a surf) is left alone.
+        public bool LungeStrides = true;
+        public float StrideMinSpeed = 2.5f;
+        public float StrideMaxSpeed = 12f;
+        public float StrideBlendSpeed = 1.5f;        // m/s over which the strides fade in above the min (and out above the max)
+        public float StrideBlendRate = 30f;          // how quickly the strides take over and hand back (1/s)
+        public float StrideRearFootStance = 0.6f;    // 0..1 through its stance the rear foot is when a lunge starts (pushing off)
         public float LeapLiftPerSpeed = 0.03f;       // metres of leap per m/s above LeapSpeed
         public float MaxLeapLift = 0.16f;
         public float JumpKeyMinRise = 0.5f;          // airborne: the "jump" key while rising faster than this (m/s), else "fall"

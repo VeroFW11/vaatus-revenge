@@ -15,6 +15,7 @@ namespace VaatusRevenge
     public sealed class ElementMoveEffects
     {
         FireVfxHandle whip;
+        const float AirVortexChestHeight = 1.2f;   // metres above the feet when there's no rig to take the chest from
 
         // The strike went active. limb: the striking fist or foot (the body when there's no rig). burstMultiplier: extra
         // size for the burst-like parts (the dodge strike's burst is a little bigger), 1 = as data says.
@@ -87,8 +88,14 @@ namespace VaatusRevenge
                     ElementVfx.Dome(element, body.position, move.Range, direction, scale);
                     return false;
                 case EffectKeys.Vortex:
-                    ElementVfx.Vortex(element, body.position, move.Range, direction, scale);
+                {
+                    // An air-string spin (Air's Spiral Kick, Water's Fair Lady) swirls round the body up there, not on the
+                    // floor metres under the juggle (J3-05); the grounded ones (Cloud Hands, Tide Ring, Whirlwind) on the floor.
+                    bool airborne = ElementFxRules.IsAirborne(in e);
+                    Vector3 center = airborne ? (rig != null ? rig.ChestAnchor.position : body.position + Vector3.up * AirVortexChestHeight) : body.position;
+                    ElementVfx.Vortex(element, center, move.Range, direction, scale, !airborne);
                     return false;
+                }
                 case EffectKeys.Shards:
                     ElementVfx.Shards(element, origin, direction, move.Range, scale);
                     return false;

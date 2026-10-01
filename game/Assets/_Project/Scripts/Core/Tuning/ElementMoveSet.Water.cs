@@ -219,7 +219,7 @@ namespace VaatusRevenge.Core
                 Startup = 0.16f, Active = 0.12f, Recovery = 0.34f,
                 Damage = 11f, PoiseDamage = 18f, GuardStaminaDamage = 11f, Knockback = 0.5f, Hitstop = 0.07f,
                 Range = 2.8f, ArcDegrees = 120f, VerticalReach = 2.2f, LungeDistance = 0.2f,
-                SlamSpeed = 16f, SelfLift = 1.5f, HealOnHit = 2f,
+                SlamSpeed = 16f, SelfLift = 0f, HealOnHit = 2f,   // J3-S05: a slam does not lift you over the foe
                 ComboWindowStart = 0f, ComboWindowEnd = 0f, ChainCancelAt = 0.40f, DodgeCancelAt = 0.30f,
                 StaminaCost = 9f, MomentumGain = 0f
             };

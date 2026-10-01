@@ -71,6 +71,9 @@ namespace VaatusRevenge.Core
         readonly PoseSpec blended = new PoseSpec();
         readonly PoseSpec output = new PoseSpec();
         readonly PoseSpec lastShown = new PoseSpec();
+        float shownYawSpeed;           // degrees per second the drawn body is turning (smoothed over hitstop's held frames)
+        bool fadeYawPending;           // a new blend: decide on its first frame whether it carries the spin on (J3-02)
+        float fadeYawShift;            // 0, or +-360: the blend's whole-body turn goes the long way round, with the spin
         readonly PoseSpec locoFrom = new PoseSpec();
         float locoFadeTime = float.MaxValue;
         bool wasAirborne;
@@ -140,6 +143,8 @@ namespace VaatusRevenge.Core
             if (!showingAction || !showingFrameData)
             {
                 fadeFrom.CopyFrom(lastShown);
+                fadeYawPending = true;
+                fadeYawShift = 0f;
                 fadeTime = 0f;
                 fadeDuration = AnimMath.Clamp(settings.StyleFade, settings.MinFade, Math.Max(settings.MaxFade, settings.StyleFade));
             }
@@ -195,6 +200,7 @@ namespace VaatusRevenge.Core
             locoKeyTime = 0f;
             leanPitch = leanRoll = headLag = flinchPitch = flinchRoll = flinchYaw = default;
             leapLift = 0f;
+            strideWeight = stridePhase = 0f;
             handBackToLocomotion = false;
             lastVelocity = Vector3.Zero;
             footLocks[0] = footLocks[1] = default;
@@ -202,6 +208,8 @@ namespace VaatusRevenge.Core
             fadeFromAir = false;
             groundSpeed = 0f;
             turnCarry = turnCarryFrom = turnCarryTime = turnExcess = 0f;
+            shownYawSpeed = fadeYawShift = 0f;
+            fadeYawPending = false;
             clock = 0f;
             EvaluateClip(AnimationKeys.Idle, 0f, default, false, 0f, output);
             fadeFrom.CopyFrom(output);
@@ -260,6 +268,12 @@ namespace VaatusRevenge.Core
                 fadeTime += dt;
                 weight = AnimMath.SmoothStep(fadeTime / fadeDuration);
                 UnwrapTurnsToward(fadeFrom, targetSpec);
+                if (fadeYawPending)
+                {
+                    fadeYawPending = false;
+                    fadeYawShift = SpinCarryShift(fadeFrom[PoseChannel.RootYaw] - targetSpec[PoseChannel.RootYaw], shownYawSpeed, settings);
+                }
+                fadeFrom[PoseChannel.RootYaw] += fadeYawShift;
                 PoseSpec.Lerp(fadeFrom, targetSpec, weight, blended);
             }
             else
@@ -267,12 +281,18 @@ namespace VaatusRevenge.Core
                 blended.CopyFrom(targetSpec);
             }
 
+            if (dt > 0f)
+            {
+                float speed = Wrap180(blended[PoseChannel.RootYaw] - lastShown[PoseChannel.RootYaw]) / dt;
+                shownYawSpeed += (speed - shownYawSpeed) * Math.Min(1f, dt / SpinSpeedSmoothing);
+            }
             lastShown.CopyFrom(blended);
 
             // ---- 4. secondary motion
             output.CopyFrom(blended);
             ApplyTurnCarry(in input, dt, settings);
             ApplySecondary(in input, velocity, dt, settings);
+            ApplyLungeStride(in input, velocity, action, dt, settings);
             ApplyLeap(in input, velocity, action, dt, settings);
             UpdateFootLocks(in input, velocity, dt, settings);
 
@@ -356,7 +376,9 @@ namespace VaatusRevenge.Core
             EvaluateClip(AnimationKeys.Idle, idleTime, default, false, 0f, stanceSpec);
 
             // Switching between the air poses and the ground ones blends too (a landing never snaps).
-            bool airborne = !input.Grounded && airTime > 0.05f;
+            // (A step off a ledge waits a moment before the air pose, so a bump isn't a fall; a real jump, rising fast,
+            // takes the jump pose at once instead of hovering a few frames in the stance: J3-S07.)
+            bool airborne = !input.Grounded && (airTime > 0.05f || velocity.Y > Math.Max(0f, settings.JumpKeyMinRise));
             if (airborne != wasAirborne)
             {
                 locoFrom.CopyFrom(locoSpec);
@@ -501,6 +523,8 @@ namespace VaatusRevenge.Core
         {
             // Blend from exactly what was on screen last frame (before secondary motion, which carries on by itself).
             fadeFrom.CopyFrom(lastShown);
+            fadeYawPending = true;
+            fadeYawShift = 0f;
             aimValid = false;
             float fade = settings.DefaultFade;
             if (action)
@@ -522,6 +546,19 @@ namespace VaatusRevenge.Core
             showingAction = action;
             showingFrameData = action && input.HasFrameData;
             travel = 0f;
+        }
+
+        const float SpinSpeedSmoothing = 0.05f;   // seconds: hitstop holds a spin for a frame or two without stopping it
+
+        // J3-02: the blend from 'from' to 'to' (unwrapped within half a turn, so 'offset' = from - to is in [-180, 180])
+        // would turn the body against the way it is spinning: when that reversal is bigger than SpinCarryMinReverse, go
+        // the long way instead (+-360), carrying the spin on to the new pose.
+        static float SpinCarryShift(float offset, float spinSpeed, AnimatorSettings s)
+        {
+            if (Math.Abs(spinSpeed) < s.SpinCarryMinSpeed || Math.Abs(offset) < s.SpinCarryMinReverse) return 0f;
+            float spin = Math.Sign(spinSpeed);
+            float blendDirection = -Math.Sign(offset);      // the blend moves the yaw from 'from' towards 'to'
+            return blendDirection == spin ? 0f : -spin * 360f;
         }
 
         // Whole-body turns are blended the short way round: the pose we blend from is re-expressed within half a
@@ -693,7 +730,7 @@ namespace VaatusRevenge.Core
         {
             float speed = new Vector2(velocity.X, velocity.Z).Length();
             float wanted = action && input.Grounded && !input.Dead
-                ? AnimMath.Clamp((speed - s.LeapSpeed) * s.LeapLiftPerSpeed, 0f, s.MaxLeapLift) : 0f;
+                ? AnimMath.Clamp((speed - s.LeapSpeed) * s.LeapLiftPerSpeed, 0f, s.MaxLeapLift) * (1f - strideWeight) : 0f;
             float rate = wanted > leapLift ? s.LeapLiftRiseRate : s.LeapLiftFallRate;
             leapLift = rate > 0f ? leapLift + (wanted - leapLift) * AnimMath.ExpBlend(rate, dt) : wanted;
             if (wanted <= 0f && leapLift < 1e-3f) leapLift = 0f;
@@ -717,6 +754,65 @@ namespace VaatusRevenge.Core
                     y = Math.Max(y, 0.08f + PoseSolver.FootTipRise(pitch));
                 output[PoseSpec.Leg(side, 1)] = y + lift * k;
             }
+        }
+
+        // ------------------------------------------------------------------ lunge strides (J3-03)
+
+        float strideWeight;            // 0..1: how much a grounded rush's legs are running steps
+        float stridePhase;             // the steps' walk/run cycle (left foot; the right is half a cycle on)
+        readonly PoseSpec strideSpec = new PoseSpec();
+
+        // A strike rushing along the ground (a gap-closing opener, Air's circle walk) used to slide both feet in its frozen
+        // stance a few centimetres off the floor. Between StrideMinSpeed and StrideMaxSpeed its legs run there instead:
+        // the walk/run cycle at the body's real speed and direction (stride matched to speed, so a planted foot holds its
+        // spot and the foot locks keep it there), started with the rear foot pushing off and the lead foot swinging
+        // through. The strike's stance comes back as the rush ends (the feet step into it). Upper body untouched.
+        void ApplyLungeStride(in FighterAnimInput input, Vector3 velocity, bool action, float dt, AnimatorSettings s)
+        {
+            var horizontal = new Vector2(velocity.X, velocity.Z);
+            float speed = horizontal.Length();
+            PoseClip clip = action ? Clip(showingKey) : null;
+            bool eligible = s.LungeStrides && action && input.Grounded && !input.Dead && input.HasFrameData && clip != null
+                            && !clip.Glides && output[PoseSpec.Leg(BodySide.Left, 7)] < 0.5f && output[PoseSpec.Leg(BodySide.Right, 7)] < 0.5f;
+            float blend = Math.Max(0.1f, s.StrideBlendSpeed);
+            float wanted = eligible
+                ? AnimMath.SmoothStep((speed - s.StrideMinSpeed) / blend) * (1f - AnimMath.SmoothStep((speed - s.StrideMaxSpeed) / blend))
+                : 0f;
+            GaitSettings gait = library.Gait ?? fallbackGait;
+            float rootYaw = output[PoseChannel.RootYaw];
+            Vector2 dir = speed > 0.05f ? RotateXZ(horizontal / speed, -rootYaw) : new Vector2(0f, 1f);
+            if (wanted > 0f && strideWeight < 0.02f)
+            {
+                // A new rush: the foot further back along the travel is the rear one, part-way through its stance.
+                float stride = speed / gait.Cadence(speed);
+                float share = gait.StanceShare(speed);
+                if (stride > 1e-4f) share = Math.Min(share, 2f * gait.MaxStanceReach / stride);
+                float left = LegAlong(BodySide.Left, dir), right = LegAlong(BodySide.Right, dir);
+                float rearPhase = AnimMath.Clamp01(s.StrideRearFootStance) * share;
+                stridePhase = left <= right ? rearPhase : Wrap01(rearPhase - 0.5f);
+            }
+            float rate = s.StrideBlendRate > 0f ? AnimMath.ExpBlend(s.StrideBlendRate, dt) : 1f;
+            strideWeight += (wanted - strideWeight) * rate;
+            if (wanted <= 0f && strideWeight < 1e-3f) strideWeight = 0f;
+            if (!(strideWeight > 0f)) return;
+            if (speed > 0.05f) stridePhase = Wrap01(stridePhase + gait.Cadence(speed) * dt);
+            GaitGenerator.Evaluate(stridePhase, Math.Max(speed, gait.MoveThreshold), dir, gait, output, strideSpec, 1f, speed);
+            for (int side = 0; side < 2; side++)
+            {
+                BodySide b = side == 0 ? BodySide.Left : BodySide.Right;
+                for (int c = 0; c < PoseSpec.LegChannels; c++)
+                {
+                    PoseChannel channel = PoseSpec.Leg(b, c);
+                    output[channel] = AnimMath.Lerp(output[channel], strideSpec[channel], strideWeight);
+                }
+            }
+        }
+
+        // How far along 'dir' (root frame) a foot of the current output stands.
+        float LegAlong(BodySide side, Vector2 dir)
+        {
+            float x = (float)side * output[PoseSpec.Leg(side, 0)];
+            return x * dir.X + output[PoseSpec.Leg(side, 2)] * dir.Y;
         }
 
         // Planted feet stay where they touched down while the body moves and turns over them; when the pose wants a

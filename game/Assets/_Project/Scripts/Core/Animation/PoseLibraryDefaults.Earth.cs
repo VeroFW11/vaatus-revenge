@@ -446,7 +446,9 @@ namespace VaatusRevenge.Core
 
             // Earth Surf Charge (zip): ride a wave of earth across the ground, crouched side-on with the arms out, then
             //    square up and land a rooted punch.
-            clips.Add(Strike(AnimationKeys.EarthSurf, earth)
+            var earthSurf = Strike(AnimationKeys.EarthSurf, earth);
+            earthSurf.Glides = true;
+            clips.Add(earthSurf
                 .K(KeyPhase.Startup, 0.3f, PoseEase.Out, s =>
                 {
                     s.Set(PoseChannel.ArmFollow, 0.3f);

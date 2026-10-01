@@ -25,6 +25,14 @@ namespace VaatusRevenge
             float size = s.BurstSize * scale;
             float life = s.BurstLifetime;
             float floor = FloorBelow(position);
+            if (ElementFxRules.StoneFromFloor(element))
+            {
+                // Earth (J3-07, spec 7): stone is drawn from the ground, never out of a fist or a chest. Dust bursts from
+                // the strike; the rock rises out of the floor under it, thrown up and along the strike.
+                ElementDust(element, position, dir, scale);
+                FloorStone(s, position, dir, scale, floor, Mathf.Clamp(s.BurstPieces, 0, 12), life);
+                return;
+            }
             Cloud(s, position, dir * (s.BurstSpeed * scale * 0.3f), 8f, size, life * 0.8f);
             int count = Mathf.Clamp(s.BurstPieces, 0, 12);
             for (int i = 0; i < count; i++)
@@ -36,6 +44,25 @@ namespace VaatusRevenge
             if (element != ElementId.Earth)
             {
                 Shockwave(s, position + dir * (size * 0.4f), dir, size * 0.3f, size * 1.6f, life * 0.6f);
+            }
+        }
+
+        // Earth's rock for an effect at 'position' (J3-07): pieces thrown up out of the floor under it (leaning along the
+        // strike's direction when it has one along the floor), with a kick of dust there. Nothing when the point is too
+        // high above the floor for the floor to be its source (a juggled foe): the dust at the point is all there is.
+        void FloorStone(ElementVfxStyle s, Vector3 position, Vector3 direction, float scale, float floor, int count, float life)
+        {
+            if (count <= 0 || !ElementFxRules.FloorStoneUnder(s.Element, position.y - floor)) return;
+            Vector3 along = new Vector3(direction.x, 0f, direction.z);
+            along = along.sqrMagnitude > 0.01f ? along.normalized : Vector3.zero;
+            Vector3 ground = new Vector3(position.x, floor + 0.1f, position.z) + along * 0.3f;
+            Cloud(s, ground + Vector3.up * 0.1f, Vector3.up * 0.6f, 3f, s.BurstSize * Mathf.Max(0.5f, scale) * 0.8f, life);
+            for (int i = 0; i < count; i++)
+            {
+                Vector3 velocity = (Vector3.up * 1.4f + along * 0.8f + Random.insideUnitSphere * 0.35f).normalized
+                                   * (s.BurstSpeed * Mathf.Max(0.6f, scale) * Random.Range(0.8f, 1.2f));
+                Bit(s, ground + Random.insideUnitSphere * 0.15f, velocity, s.ChunkSize * Mathf.Sqrt(Mathf.Max(0.3f, scale)) * Random.Range(0.7f, 1.2f), life,
+                    floor);
             }
         }
 
@@ -62,7 +89,7 @@ namespace VaatusRevenge
             Cloud(s, position, Vector3.zero, 0f, radius * 2f, life);
             if (element == ElementId.Water) Mist(s, position, radius * 2.6f, life * 1.4f);
             Band(s, VfxSlot.Ring, new Vector3(position.x, Mathf.Max(floor, position.y - radius * 0.5f), position.z), Quaternion.identity,
-                radius * 0.3f, radius * 2f, radius * 2.3f, s.RingHeight, life * 0.8f, s.CoreColor, s.FadeColor, 0.55f);
+                radius * 0.15f, radius * 1f, radius * 1.15f, s.RingHeight, life * 0.8f, s.CoreColor, s.FadeColor, 0.55f);
             int count = element == ElementId.Earth ? 10 : 8;
             float speed = s.ChunkSpeed * Mathf.Sqrt(radius);
             for (int i = 0; i < count; i++)
@@ -81,10 +108,10 @@ namespace VaatusRevenge
             float life = s.RingLifetime;
             Vector3 ground = center + Vector3.up * GroundOffset;
             Color start = element == ElementId.Earth ? s.CloudColor : s.CoreColor;
-            Band(s, VfxSlot.Ring, ground, Quaternion.identity, radius * 0.3f, radius * 2f, radius * 2.2f, s.RingHeight, life, start, s.FadeColor, 0.6f);
+            Band(s, VfxSlot.Ring, ground, Quaternion.identity, radius * 0.15f, radius * 1f, radius * 1.1f, s.RingHeight, life, start, s.FadeColor, 0.6f);
             // A ripple on the floor under it: foam for water, a pale flash for air; earth cracks instead.
             if (element == ElementId.Earth) Crack(s, ground, radius * 1.4f, life * 2f);
-            else FlatRing(s, ground, Quaternion.identity, radius * 0.4f, radius * 1.8f, life * 0.8f, s.CoreColor, s.FadeColor, false);
+            else FlatRing(s, ground, Quaternion.identity, radius * 0.2f, radius * 0.9f, life * 0.8f, s.CoreColor, s.FadeColor, false);
             for (int i = 0; i < 6; i++)
             {
                 float angle = (i + Random.value * 0.5f) * TwoPi / 6f;
@@ -123,6 +150,21 @@ namespace VaatusRevenge
             }
             float floor = FloorBelow(position);
             int count = Mathf.Clamp(s.SparkCount, 0, 12);
+            if (ElementFxRules.StoneFromFloor(element))
+            {
+                // Earth (J3-07): grit never flies out of the body that was hit. Dust there; chips kick up from the floor
+                // under it.
+                Cloud(s, position, Vector3.up * 0.3f, 4f, s.SparkSize * 0.8f, life * 1.5f);
+                if (!ElementFxRules.FloorStoneUnder(element, position.y - floor)) return;
+                Vector3 ground = new Vector3(position.x, floor + 0.08f, position.z);
+                for (int i = 0; i < count; i++)
+                {
+                    Vector3 d = Random.insideUnitSphere * 0.6f + Vector3.up;
+                    Bit(s, ground + Random.insideUnitSphere * 0.2f, d.normalized * (s.ChunkSpeed * 0.5f * Random.Range(0.8f, 1.3f)), s.ChunkSize * 0.6f,
+                        life * 2f, floor);
+                }
+                return;
+            }
             for (int i = 0; i < count; i++)
             {
                 Vector3 d = Random.onUnitSphere;
@@ -435,14 +477,21 @@ namespace VaatusRevenge
                     // A tent of stone: slabs thrust up round the body, leaning in.
                     int slabs = 8;
                     float tall = radius * 1.1f;
+                    // J3-08: a full-height slab between the camera and the player would hide the player for a second: the
+                    // slab(s) facing the camera rise only to a low wall.
+                    Vector3 toCamera = hasCameraPosition ? new Vector3(cameraPosition.x - center.x, 0f, cameraPosition.z - center.z) : Vector3.zero;
+                    bool cameraKnown = toCamera.sqrMagnitude > 0.01f;
+                    if (cameraKnown) toCamera.Normalize();
+                    float lowWallCos = Mathf.Cos(s.TentCameraSideAngle * Mathf.Deg2Rad);
                     for (int i = 0; i < slabs; i++)
                     {
                         float a = i * TwoPi / slabs;
                         var outward = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
                         Vector3 at = ground + outward * (radius * 0.7f);
-                        Vector3 size = new Vector3(radius * 0.75f, tall, 0.25f);
+                        float slabTall = cameraKnown && Vector3.Dot(outward, toCamera) > lowWallCos ? tall * s.TentCameraSideHeight : tall;
+                        Vector3 size = new Vector3(radius * 0.75f, slabTall, 0.25f);
                         const float drag = 14f;
-                        FireVfxPiece slab = Chunk(s, VfxSlot.Rock, at - Vector3.up * (tall * 0.5f), Vector3.up * (tall * drag), drag,
+                        FireVfxPiece slab = Chunk(s, VfxSlot.Rock, at - Vector3.up * (slabTall * 0.5f), Vector3.up * (slabTall * drag), drag,
                             size, size, size * 0.4f, 0.75f, life * 1.6f);
                         if (slab == null) continue;
                         slab.Rotation = Quaternion.LookRotation(outward) * Quaternion.AngleAxis(-22f, Vector3.right);
@@ -456,14 +505,22 @@ namespace VaatusRevenge
                 }
                 default:
                 {
-                    // A shell of air (light) or water (see-through) round the body, with rings spinning round it.
+                    // A shell of air (light) or water (see-through) round the body, with rings spinning round it. J3-08: the
+                    // shell is a faint inner glow (DomeShellShare of the reach, DomeShellAlpha), never a sphere the size of
+                    // the reach, which the camera 3-4 m away would sit inside or right against (it washed out the frame);
+                    // the spinning rings show the real reach.
                     Vector3 middle = ground + Vector3.up * (radius * 0.45f);
-                    SpawnPiece(VfxShape.Sphere, s.BlobKind, null, middle, Vector3.zero, 0f, Uniform(radius * 0.8f), Uniform(radius * 2f),
-                        Uniform(radius * 2.2f), 0.3f, life, Faded(s.MainColor, 0.5f), s.FadeColor);
+                    float shell = radius * Mathf.Clamp01(s.DomeShellShare);
+                    if (hasCameraPosition && Vector3.Distance(cameraPosition, middle) < shell * 1.5f) shell = 0f;   // never round the camera
+                    if (shell > 0f)
+                    {
+                        SpawnPiece(VfxShape.Sphere, s.BlobKind, null, middle, Vector3.zero, 0f, Uniform(shell * 0.7f), Uniform(shell * 2f),
+                            Uniform(shell * 2.1f), 0.3f, life, Faded(s.MainColor, Mathf.Clamp01(s.DomeShellAlpha)), s.FadeColor);
+                    }
                     for (int i = 0; i < 2; i++)
                     {
                         FireVfxPiece ring = Band(s, VfxSlot.Swirl, middle, Quaternion.AngleAxis(i == 0 ? 25f : -25f, Vector3.right),
-                            radius * 0.8f, radius * 2f, radius * 2.1f, s.RingHeight * 0.5f, life, s.CoreColor, s.FadeColor, 0.3f);
+                            radius * 0.4f, radius * 1f, radius * 1.05f, s.RingHeight * 0.5f, life, s.CoreColor, s.FadeColor, 0.3f);
                         if (ring == null) continue;
                         ring.SpinAxis = Vector3.up;
                         ring.SpinSpeed = i == 0 ? s.SpinSpeed : -s.SpinSpeed;
@@ -484,18 +541,27 @@ namespace VaatusRevenge
         }
 
         // A swirl round the body out to radius: pieces orbit, widening and climbing, with a spinning ring for Water and Air.
+        // onFloor false (J3-05: the air string's spiral kick, high above the floor): the swirl turns round 'center' itself
+        // (the chest), with no floor ring, instead of being dropped to the floor metres under the juggle.
         internal void ElementVortex(ElementId element, Vector3 center, float radius)
+        {
+            ElementVortex(element, center, radius, true);
+        }
+
+        internal void ElementVortex(ElementId element, Vector3 center, float radius, bool onFloor)
         {
             ElementVfxStyle s = ElementVfx.StyleOf(element);
             radius = Mathf.Max(0.5f, radius);
             float life = Mathf.Max(0.05f, s.VortexLifetime);
-            float floor = FloorBelow(center + Vector3.up * 0.5f);
+            float floor = onFloor ? FloorBelow(center + Vector3.up * 0.5f) : center.y - 0.7f;
             Vector3 middle = new Vector3(center.x, floor + 0.7f, center.z);
             int count = 12;
             for (int i = 0; i < count; i++)
             {
-                FireVfxPiece piece = element == ElementId.Earth
+                FireVfxPiece piece = element == ElementId.Earth && onFloor
                     ? Bit(s, middle, Vector3.zero, s.ChunkSize * Random.Range(0.8f, 1.3f), life, floor)
+                    : element == ElementId.Earth
+                        ? Cloud(s, middle, Vector3.zero, 0f, s.BurstSize * 0.7f, life)   // off the floor: Earth swirls dust only
                     : element == ElementId.Air
                         ? Streak(s, middle, Vector3.zero, 0f, 0.08f, 3f, life, s.AccentColor)
                         : Cloud(s, middle, Vector3.zero, 0f, s.BurstSize * 0.7f, life);
@@ -523,10 +589,10 @@ namespace VaatusRevenge
             }
             if (element == ElementId.Earth)
             {
-                ElementRing(element, new Vector3(center.x, floor, center.z), radius * 0.8f);
+                if (onFloor) ElementRing(element, new Vector3(center.x, floor, center.z), radius * 0.8f);
                 return;
             }
-            FireVfxPiece ring = Band(s, VfxSlot.Swirl, middle, Quaternion.identity, radius * 0.5f, radius * 2f, radius * 2.1f, s.RingHeight,
+            FireVfxPiece ring = Band(s, VfxSlot.Swirl, middle, Quaternion.identity, radius * 0.25f, radius * 1f, radius * 1.05f, s.RingHeight,
                 life, s.CoreColor, s.FadeColor, 0.4f);
             if (ring != null)
             {
@@ -671,8 +737,10 @@ namespace VaatusRevenge
                     {
                         // What trails a launched enemy: droplets raining off it, dust and grit, wisps of air.
                         Vector3 v = Random.insideUnitSphere * 0.8f + Vector3.up * 0.3f;
+                        // Earth (J3-07): dust and grit only, never rock shed by a body in the air.
                         if (e.Element == ElementId.Air) Streak(s, at + Random.insideUnitSphere * 0.2f, v, 1f, 0.05f, 3f, s.LimbLifetime * 2f, s.AccentColor);
-                        else if (Random.value < 0.5f) Cloud(s, at + Random.insideUnitSphere * 0.15f, v, 2f, s.LimbSize * 2.5f, s.LimbLifetime * 2f);
+                        else if (ElementFxRules.StoneFromFloor(e.Element) || Random.value < 0.5f)
+                            Cloud(s, at + Random.insideUnitSphere * 0.15f, v, 2f, s.LimbSize * 2.5f, s.LimbLifetime * 2f);
                         else Bit(s, at, v, s.ChunkSize * 0.6f, s.LimbLifetime * 3f, at.y - 3f);
                         break;
                     }
@@ -708,7 +776,8 @@ namespace VaatusRevenge
                 s.AfterimageLifetime, color, Faded(color, 0f));
         }
 
-        // The charge glow of Water (a ball of water that wobbles), Earth (a stone that spins) and Air (a swirling ball).
+        // The charge glow of Water (a ball of water that wobbles), Earth (a ball of dust gathering, churning: never a stone on
+        // the fist, J3-07) and Air (a swirling ball).
         void UpdateElementGlow(FireVfxPiece glow, float dt)
         {
             ElementVfxStyle s = ElementVfx.StyleOf(glow.Element);
@@ -731,10 +800,13 @@ namespace VaatusRevenge
             switch (glow.Element)
             {
                 case ElementId.Earth:
-                    scale = new Vector3(size, size * 0.85f, size);
-                    color = Color.Lerp(s.MainColor, s.CoreColor, glow.Level * 0.5f);
-                    color.a = 1f;
+                {
+                    float churn = 0.08f * Mathf.Sin(time * 13f);
+                    scale = new Vector3(size * (1f + churn), size * (0.9f - churn), size * (1f + churn));
+                    color = Color.Lerp(s.CloudColor, s.CoreColor, glow.Level * 0.4f);
+                    color.a = Mathf.Lerp(0.35f, 0.7f, glow.Level);
                     break;
+                }
                 case ElementId.Air:
                 {
                     float flicker = 1f + 0.1f * Mathf.Sin(time * 31f);
@@ -875,6 +947,8 @@ namespace VaatusRevenge
 
         // A ring: a band (a wall that spreads and sinks) or, with the slot's picture, that picture lying in the ring's plane.
         // rotation turns the ring's axis (up = lying on the floor). Radii as start, peak, end; height of the wall.
+        // CONTRACT (J3-04): the radii are WORLD radii (the meshes have radius 0.5 and are scaled by radius x 2 here), so a
+        // caller drawing a move's reach passes the reach itself, never reach x 2.
         FireVfxPiece Band(ElementVfxStyle s, VfxSlot slot, Vector3 center, Quaternion rotation, float startRadius, float peakRadius, float endRadius,
             float height, float life, Color startColor, Color endColor, float peakAt)
         {

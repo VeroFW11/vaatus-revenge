@@ -82,7 +82,7 @@ namespace VaatusRevenge.Core
             var tigerClaw = new MoveData
             {
                 DisplayName = "Tiger Claw Rake", Kind = HitKind.Light, Limb = Limb.RightFist,
-                AnimationKey = AnimationKeys.TigerClaw, EffectKey = EffectKeys.Line,
+                AnimationKey = AnimationKeys.TigerClaw, EffectKey = EffectKeys.Trail,   // a raking swipe, not a straight line (J3-S10)
                 Startup = 0.18f, Active = 0.12f, Recovery = 0.38f,
                 Damage = 12f, PoiseDamage = 8f, GuardStaminaDamage = 18f, Knockback = 0.35f, Hitstop = 0.05f,
                 Range = 2.8f, ArcDegrees = 100f, LungeDistance = 0.25f,
@@ -232,7 +232,7 @@ namespace VaatusRevenge.Core
                 Startup = 0.18f, Active = 0.12f, Recovery = 0.38f,
                 Damage = 15f, PoiseDamage = 22f, GuardStaminaDamage = 15f, Knockback = 0.6f, Hitstop = 0.08f,
                 Range = 2.8f, ArcDegrees = 160f, VerticalReach = 2.2f, LungeDistance = 0.2f,
-                SlamSpeed = 20f, SelfLift = 1.0f,
+                SlamSpeed = 20f, SelfLift = 0f,   // J3-S05: a slam does not lift you over the foe
                 ComboWindowStart = 0f, ComboWindowEnd = 0f, ChainCancelAt = 0.44f, DodgeCancelAt = 0.32f,
                 StaminaCost = 10f, MomentumGain = 0f
             };

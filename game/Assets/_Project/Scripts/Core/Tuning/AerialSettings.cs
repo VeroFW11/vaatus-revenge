@@ -10,6 +10,8 @@ namespace VaatusRevenge.Core
         public float LauncherHoldTime = 0.25f;       // attack held this long on the ground = launcher: the press that started any
                                                      // ground-string hit, held, turns that hit into the launcher (Spider-Man's hold-square)
         public float AirAttackGravityScale = 0.3f;   // gravity while an air attack runs: you hang in the air as you strike
+        public float FinisherGravityScale = 1f;      // ...except an air-string finisher (the slam) from its strike on: you drop
+                                                     // with the foe you slammed instead of hanging over it (J3-S05)
         public int AirAttacksPerJump = 6;            // air strikes allowed before touching the ground again (no infinite hovering)
         public float AirLiftMaxHeightAboveTarget = 0.6f; // air strikes stop lifting you once your feet are this far above the target's
                                                      // (a standing foe: you don't float over its head; a juggled one rises with you)

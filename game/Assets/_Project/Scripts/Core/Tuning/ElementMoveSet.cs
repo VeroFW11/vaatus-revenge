@@ -50,7 +50,8 @@ namespace VaatusRevenge.Core
         // Bumped when the defaults change in a way old assets must not keep (the sandbox builder offers to reset an
         // asset whose DataVersion is behind). A field missing from an old asset keeps its initialiser, so it reads 0.
         public int DataVersion = 0;
-        public const int CurrentDataVersion = 6;   // 6: Build 05 verify (dodge strike reach, Water/Air dash ease, side-slip circle)
+        public const int CurrentDataVersion = 7;   // 6: Build 05 verify (dodge strike reach, Water/Air dash ease, side-slip circle)
+                                                   // 7: verify round 3 (slam finishers drop you with the foe, Tiger Claw Rake's swipe)
 
         public static ElementMoveSet CreateFireFluid()
         {
@@ -278,7 +279,7 @@ namespace VaatusRevenge.Core
                 Startup = 0.16f, Active = 0.12f, Recovery = 0.34f,
                 Damage = 12f, PoiseDamage = 20f, GuardStaminaDamage = 12f, Knockback = 0.6f, Hitstop = 0.07f,
                 Range = 2.8f, ArcDegrees = 200f, OriginForward = 0f, VerticalReach = 2.0f, LungeDistance = 0.2f,
-                SlamSpeed = 16f, SelfLift = 1.5f,
+                SlamSpeed = 16f, SelfLift = 0f,   // J3-S05: a slam does not lift you over the foe
                 ComboWindowStart = 0f, ComboWindowEnd = 0f, ChainCancelAt = 0.40f, DodgeCancelAt = 0.30f,
                 StaminaCost = 9f, MomentumGain = 10f
             };

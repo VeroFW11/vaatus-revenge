@@ -12,12 +12,15 @@ namespace VaatusRevenge.Core
         public string DisplayTotal = "11";       // the "/ 11" after the step number (8b and 8c share step 8)
         public float SuccessPause = 1.0f;        // seconds the green flash shows before the next step
         public float QuitHoldTime = 1.0f;        // hold View this long to quit (a tap skips)
+        public ElementId StartElement = ElementId.Fire;   // the element the tutorial puts you in as it starts (the early
+                                                          // steps' timings and hints are written for it)
 
         // Bumped when the default steps change, so the sandbox builder can offer to update an old saved tutorial.
         // A field missing from an old asset keeps its initialiser, so it reads 0.
         public int DataVersion = 0;
-        public const int CurrentDataVersion = 3;   // 2: Build 05 verify (pause finisher X X wait X X, beat taught as anticipation)
+        public const int CurrentDataVersion = 4;   // 2: Build 05 verify (pause finisher X X wait X X, beat taught as anticipation)
                                                    // 3: verify round 2 (shorter step 2 hint; hints wrap and stay under HintBudget)
+                                                   // 4: verify round 3 (starts in Fire; slip-in step distance bar and hint)
         // Longest hint, in characters (a {button} counts as 3): the panel wraps hints, and this keeps any of them to two
         // or three short lines. TutorialTrackerTests checks every default hint against it.
         public const int HintBudget = 140;
@@ -46,8 +49,8 @@ namespace VaatusRevenge.Core
                     new TutorialStepData
                     {
                         Id = "2", Title = "On the beat", Goal = TutorialGoal.OnBeatFinisher, MinOnBeat = 3,
-                        Prompt = "{X} ×5, press as the ring touches the circle",
-                        Hint = "Press as the gold ring touches the circle, not after the flash (that only confirms it). On the beat, the next hit is faster and harder."
+                        Prompt = "{X} ×5, press as each ring touches the circle",
+                        Hint = "Press as each gold ring touches the circle, not after the flash (that only confirms it). On the beat, the next hit is faster and harder."
                     },
                     new TutorialStepData
                     {
@@ -64,11 +67,11 @@ namespace VaatusRevenge.Core
                     },
                     new TutorialStepData
                     {
-                        Id = "5", Title = "Slip in", Goal = TutorialGoal.SlipInStrike, Count = 2, MinStartDistance = 4f,
+                        Id = "5", Title = "Slip in", Goal = TutorialGoal.SlipInStrike, Count = 2, MinStartDistance = 3f,
                         FollowUpWindow = 0.6f,
                         Prompt = "From range, stick toward the target + {B}, then {X}",
                         KeyboardPrompt = "From range, W toward the target + {B}, then {X}",
-                        Hint = "Back off about five steps first. Dodging toward an enemy carries you in close, ready to hit."
+                        Hint = "Back off until the bar fills. Dodging toward an enemy carries you in close, ready to hit."
                     },
                     new TutorialStepData
                     {

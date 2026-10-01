@@ -40,6 +40,8 @@ namespace VaatusRevenge
         ElementId attackElement = ElementId.Fire;   // the current move's element
         int subHitsSeen;                  // active windows opened so far by the current move (multi-hit moves)
         int mixAccentInstance;            // the switch strike's MoveInstanceId: its first landed hit gets the MIX accent
+        bool mixAccentAirborne;           // ...made off the ground: Earth's accent is then dust, never rock (J3-06)
+        const float StationaryDodgeDistance = 0.3f;   // metres: a dodge travelling less than this draws no push or trails
         int finisherSoundFrame = -1;      // a perfect string and a MIX finisher in the same frame chime once
         bool charging;
         bool readyCueDone;                // the "get ready" cue has played (or been skipped) for the charge in progress
@@ -246,7 +248,11 @@ namespace VaatusRevenge
             if (move == null) return;
             attackElement = ElementOf(in e, model);
             subHitsSeen = 0;
-            if (e.IsSwitchStrike) mixAccentInstance = e.MoveInstanceId;
+            if (e.IsSwitchStrike)
+            {
+                mixAccentInstance = e.MoveInstanceId;
+                mixAccentAirborne = ElementFxRules.IsAirborne(in e) || (model != null && !model.IsGrounded);
+            }
             if (e.IsCounter) Flash(s.CounterFlashColor, s.CounterFlashTime);
             strikeLimb = move.Limb == Limb.Weapon ? Limb.RightFist : move.Limb;
             PlayerStrikePoses p = s.Poses;
@@ -378,8 +384,10 @@ namespace VaatusRevenge
             if (mixAccentInstance == 0 || e.MoveInstanceId != mixAccentInstance) return;
             mixAccentInstance = 0;
             float scale = Mathf.Max(0f, s.MixAccentScale);
-            ElementVfx.Burst(element, at, body.forward, scale * 0.6f);
-            ElementVfx.BeatAccent(at, s.BeatAccentScale * scale, Bright(ElementVfx.WorldColor(element)), s.BeatAccentTime * scale);
+            // An airborne switch strike into Earth (the air string) bursts dust, never rock (spec 8.1 item 2, J3-06).
+            if (ElementFxRules.MixAccentIsDust(element, mixAccentAirborne)) ElementVfx.Dust(element, at, body.forward, scale * 0.6f);
+            else ElementVfx.Burst(element, at, body.forward, scale * 0.6f);
+            ElementVfx.BeatAccent(at, s.BeatAccentScale * scale, Bright(ElementVfx.SwitchFlashColor(element)), s.BeatAccentTime * scale);
         }
 
         static readonly Color HealMoteColor = new Color(0.75f, 0.92f, 1f, 1f);
@@ -388,7 +396,7 @@ namespace VaatusRevenge
         {
             PlayFinisherSound(s);
             Pulse(s.MixFinisherPulse);
-            ElementVfx.BeatAccent(ChestPosition(), s.BeatAccentScale * (1f + 0.25f * e.Count), Bright(ElementVfx.WorldColor(e.Element)),
+            ElementVfx.BeatAccent(ChestPosition(), s.BeatAccentScale * (1f + 0.25f * e.Count), Bright(ElementVfx.SwitchFlashColor(e.Element)),
                 s.BeatAccentTime * 2f);
         }
 
@@ -408,7 +416,7 @@ namespace VaatusRevenge
                 rightAura = dustOnly ? ElementVfx.LimbDust(element, rig.GetAnchor(Limb.RightFist), s.SwitchAuraTime)
                                      : ElementVfx.LimbAura(element, rig.GetAnchor(Limb.RightFist), s.SwitchAuraTime);
             }
-            Flash(ElementVfx.WorldColor(element), s.SwitchFlashTime);   // the colour its effects have in the world
+            Flash(ElementVfx.SwitchFlashColor(element), s.SwitchFlashTime);   // the element's colour, every element equally bright (J3-S09)
             PlaySound(SoundKind.Switch, s);
             Pulse(s.SwitchPulse);
         }
@@ -419,13 +427,16 @@ namespace VaatusRevenge
         {
             ElementId element = ElementOf(in e, model);
             Vector3 direction = e.Direction.ToUnity();
-            // A push from the feet the other way (Flame Step's jets of fire; a splash, a scuff of dust, a gust). An Earth air
-            // dash pushes dust, not rock (ElementFxRules.DustOnly).
-            ElementVfx.BurstOrDust(element, FootPosition(s), -direction, s.DodgeBurstScale, e.InAir);
             DodgeProfile dodge = model.MoveSet != null ? model.MoveSet.Dodge : null;
             float duration = dodge != null ? dodge.Duration : 0f;
             StopDodgeTrails();
             StopAfterimage();
+            // A slip-in from contact range has no room to travel (Amount ~ 0): it's a sway in place, so no push from the
+            // feet, no trails and no afterimages streaking the wrong way (J3-S04).
+            if (!e.InAir && e.Amount < StationaryDodgeDistance) return;
+            // A push from the feet the other way (Flame Step's jets of fire; a splash, a scuff of dust, a gust). An Earth air
+            // dash pushes dust, not rock (ElementFxRules.DustOnly).
+            ElementVfx.BurstOrDust(element, FootPosition(s), -direction, s.DodgeBurstScale, e.InAir);
             if (rig == null) return;
             if (e.InAir)
             {
@@ -563,7 +574,7 @@ namespace VaatusRevenge
             return element == ElementId.Fire || element == ElementId.None ? s.HitSparkColor : ElementVfx.StyleOf(element).HitSparkColor;
         }
 
-        // A HUD colour lifted for bloom (accent rings).
+        // A colour lifted for bloom (accent rings).
         static Color Bright(Color color)
         {
             return new Color(color.r * 2.2f, color.g * 2.2f, color.b * 2.2f, 1f);

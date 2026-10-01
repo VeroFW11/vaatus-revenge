@@ -518,10 +518,24 @@ namespace VaatusRevenge
                     Box("Breastplate", BodyJoint.Chest, new Vector3(0.37f * b, 0.24f * k, 0.24f * b), new Vector3(0f, 0.1f * k, 0.01f), look.ArmourColor, PartGroup.Body, 0.3f);
                 }
 
-                // Neck and head, with a face band so the facing reads from any angle.
+                // Neck and head, with a face band (the Avatar: eyes) so the facing reads from any angle.
                 Capsule("NeckShape", BodyJoint.Neck, Vector3.up, 0.052f * b, 0.048f * b, skeleton.RestOffset(BodyJoint.Head).Y, look.Skin, PartGroup.Body);
                 Box("Skull", BodyJoint.Head, new Vector3(0.19f * k, 0.23f * k, 0.21f * k), new Vector3(0f, 0.11f * k, 0.01f * k), look.Skin, PartGroup.Body, 1f);
-                Box("FaceBand", BodyJoint.Head, new Vector3(0.16f * k, 0.035f * k, 0.05f * k), new Vector3(0f, 0.13f * k, 0.1f * k), look.Dark, PartGroup.Body, 0.4f);
+                if (tunic)
+                {
+                    // The Avatar: two small eyes under the brow instead of the grey-box band, which read as a blindfold on
+                    // the painterly look (J3-S11). They still show which way the face points.
+                    for (int e = 0; e < 2; e++)
+                    {
+                        float x = (e == 0 ? -0.045f : 0.045f) * k;
+                        Box(e == 0 ? "EyeLeft" : "EyeRight", BodyJoint.Head, new Vector3(0.04f * k, 0.022f * k, 0.03f * k), new Vector3(x, 0.13f * k, 0.105f * k),
+                            look.Dark, PartGroup.Body, 0.4f);
+                    }
+                }
+                else
+                {
+                    Box("FaceBand", BodyJoint.Head, new Vector3(0.16f * k, 0.035f * k, 0.05f * k), new Vector3(0f, 0.13f * k, 0.1f * k), look.Dark, PartGroup.Body, 0.4f);
+                }
                 switch (look.Headgear)
                 {
                     case BodyHeadgear.Topknot:
