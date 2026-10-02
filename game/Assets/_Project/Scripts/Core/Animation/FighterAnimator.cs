@@ -222,6 +222,7 @@ namespace VaatusRevenge.Core
             handBackToLocomotion = false;
             lastVelocity = Vector3.Zero;
             footLocks[0] = footLocks[1] = default;
+            feetShown = false;
             lastRootYaw = 0f;
             fadeFromAir = false;
             groundSpeed = 0f;
@@ -329,12 +330,17 @@ namespace VaatusRevenge.Core
                 EvaluateClip(AnimationKeys.Idle, 0f, default, false, 0f, output);
                 solver.Solve(output, pose);
             }
+            // (The landing fit above writes its legs into output, so solving output again keeps it.)
+            for (int pass = 0; pass < 3 && LimitFeetGlide(in input, dt, settings); pass++)
+                solver.Solve(output, pose, action ? travel : 0f, aim, input.Grounded || landingEarly);
             KeepPropAboveFloor(in input, settings);
             for (int i = 0; i < 2; i++)
             {
                 Vector3 ankle = solver.ModelPosition(i == 0 ? BodyJoint.LeftFoot : BodyJoint.RightFoot);
                 footLocks[i].Shown = new Vector2(ankle.X, ankle.Z);
+                footLocks[i].ShownHeight = ankle.Y;
             }
+            feetShown = true;
 
             UpdateCues(key, action, in input, weight);
             lastVelocity = velocity;
@@ -849,11 +855,13 @@ namespace VaatusRevenge.Core
             public float ToYaw;
             public float YawOffset;       // after a release: how far the foot's angle still is from the pose (decays)
             public Vector2 Shown;         // where the ankle was drawn last frame (fighter frame)
+            public float ShownHeight;     // ...and how high
             public bool Airborne;         // the foot was in the air: it plants where it touches down, not where the pose says
             public bool Anchored;         // last frame the lunge anchor held this (unlocked) foot behind the pose's spot
         }
 
         readonly FootLock[] footLocks = new FootLock[2];
+        bool feetShown;                // FootLock.Shown holds a solved frame (false until the first one after a reset)
         float lastRootYaw;
 
         // A grounded action covering ground faster than a person can step (a stretched lunge, a flying kick) becomes
@@ -1103,6 +1111,53 @@ namespace VaatusRevenge.Core
                 output[PoseSpec.Leg(side, 4)] = sign * Wrap180(shownYaw - rootYaw);
                 if (f.Locked) output[PoseSpec.Leg(side, 11)] = 0f;   // the lock replaces the lunge anchor
             }
+        }
+
+        // J7-02: a foot near the floor (ankle under ReleaseStepHeight this frame or the last) never moves more than
+        // MaxReleaseStep over the ground in one frame, whatever moved it (a foot lock letting go as a dodge lifts the
+        // feet, a lunge's pose, the reach limit): every dodge start used to leave the feet planted for a frame and then
+        // jump them 0.4-0.7 m. FootLock.Shown is where the ankle was drawn last frame, already moved into this frame like
+        // a spot on the ground (UpdateFootLocks), so the step measured here is the step across the floor. A foot that
+        // would go further is held back along its path, lifted over ReleaseStepHeight and the pose solved again: it steps
+        // after the body and catches up once it's in the air (there at most MaxReleaseStep more than the body moved).
+        // Kicks (a leg in reach mode) are left alone. Returns true when it changed a leg.
+        const float LiftClearance = 0.02f;   // a held-back foot is lifted this far over ReleaseStepHeight (clearly off the floor)
+
+        bool LimitFeetGlide(in FighterAnimInput input, float dt, AnimatorSettings s)
+        {
+            float k = Math.Max(0.1f, solver.Skeleton.Scale);
+            float cap = s.MaxReleaseStep * k;
+            if (!(cap > 0f) || !(dt > 0f) || !feetShown || !s.FootLocks || !input.Grounded || input.Dead) return false;
+            // A rush running on lunge strides (ApplyLungeStride) touches its feet down by the gait: a held-back foot isn't
+            // lifted there (that would keep the feet from ever coming down at 19 m/s), only held back.
+            bool striding = strideWeight > 0.5f;
+            float rootYaw = output[PoseChannel.RootYaw];
+            Vector3 v = AnimMath.IsFinite(input.LocalVelocity) ? input.LocalVelocity : Vector3.Zero;
+            float bodyStep = new Vector2(v.X, v.Z).Length() * dt;
+            bool changed = false;
+            for (int i = 0; i < 2; i++)
+            {
+                BodySide side = i == 0 ? BodySide.Left : BodySide.Right;
+                if (output[PoseSpec.Leg(side, 7)] > 0.5f) continue;
+                ref FootLock f = ref footLocks[i];
+                Vector3 ankle = solver.ModelPosition(i == 0 ? BodyJoint.LeftFoot : BodyJoint.RightFoot);
+                // Up in the air it may also keep up with the body (and no more: a foot flying 1 m in a frame is a jump too).
+                bool low = Math.Min(f.ShownHeight, ankle.Y) < s.ReleaseStepHeight * k;
+                float allowed = low ? cap : cap + bodyStep;
+                Vector2 delta = new Vector2(ankle.X, ankle.Z) - f.Shown;
+                float length = delta.Length();
+                if (length <= allowed) continue;
+                // Pull this frame's leg target back by the excess (the lock keeps its own spot: next frame the foot moves
+                // on toward it, again at most MaxReleaseStep).
+                Vector2 pull = -delta * ((length - allowed) / length);
+                Vector2 local = RotateXZ(pull, -rootYaw) / k;
+                output[PoseSpec.Leg(side, 0)] += (float)side * local.X;
+                output[PoseSpec.Leg(side, 2)] += local.Y;
+                // ...and lifted clear of the floor: it steps after the body rather than sliding along the ground.
+                if (!striding) output[PoseSpec.Leg(side, 1)] = Math.Max(output[PoseSpec.Leg(side, 1)], s.ReleaseStepHeight + LiftClearance);
+                changed = true;
+            }
+            return changed;
         }
 
         // Rotates a point on the floor (x right, y = forward) by yaw degrees (+ = to the right, like the body).

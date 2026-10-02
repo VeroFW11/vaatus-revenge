@@ -688,6 +688,84 @@ namespace VaatusRevenge.Tests
                 + impactHips + " vs standing " + standingHips + ")");
         }
 
+        // J7-02: every dodge start (evade-out, side-slips, backstep, slip-in), from standing and from a run, in every element:
+        // a foot near the floor (ankle under 0.2 m this frame or the last) never moves more than 0.3 m over the ground in one
+        // frame, in the world. The feet used to stay planted for the dash's first moving frame and then jump 0.4-0.7 m.
+        [Test]
+        public void DodgeStartsNeverJumpAFootAlongTheFloor([Values(ElementId.Fire, ElementId.Water, ElementId.Earth, ElementId.Air)] ElementId element)
+        {
+            var sticks = new[] { new Vector2(0f, -1f), new Vector2(1f, 0f), new Vector2(-1f, 0f), new Vector2(0f, 1f), Vector2.Zero };
+            float worst = 0f;
+            string worstAt = "";
+            foreach (bool running in new[] { false, true })
+            {
+                foreach (Vector2 stick in sticks)
+                {
+                    PlayerDriver d = PlayerDriver.Elements();
+                    Assert.IsTrue(d.Model.SetElementAtRest(element));
+                    d.Target(new Vector3(0f, 0f, 3.5f));
+                    var feed = new PlayerAnimationFeed();
+                    HumanoidSkeleton skeleton = HumanoidSkeleton.Create();
+                    var animator = new FighterAnimator(PoseLibrary.Default, skeleton, d.Model.MoveSet.AnimationStyle);
+                    var fk = new ForwardKinematics(skeleton);
+                    var last = new Vector3[2];
+                    bool haveLast = false;
+                    void Frame(Pad pad, Vector2 move)
+                    {
+                        d.Step(pad, move);
+                        for (int i = 0; i < d.Last.Events.Count; i++) feed.OnEvent(d.Last.Events[i]);
+                        animator.Update(feed.Build(d.Model, d.Dt, false, d.World.Position, Vector3.Zero, d.World.Position.Y));
+                        fk.Compute(animator.Pose, d.World.Position, d.Model.FacingYaw);
+                        Vector3[] now = { fk[BodyJoint.LeftFoot], fk[BodyJoint.RightFoot] };
+                        if (haveLast && d.Model.IsGrounded)
+                        {
+                            for (int f = 0; f < 2; f++)
+                            {
+                                if (Math.Min(last[f].Y, now[f].Y) - d.World.Position.Y >= 0.2f) continue;
+                                float step = new Vector2(now[f].X - last[f].X, now[f].Z - last[f].Z).Length();
+                                if (step > worst)
+                                {
+                                    worst = step;
+                                    worstAt = (running ? "running, " : "standing, ") + "stick " + stick + ", frame " + d.Frame + ", " + d.Model.State;
+                                }
+                            }
+                        }
+                        last[0] = now[0];
+                        last[1] = now[1];
+                        haveLast = true;
+                    }
+                    for (int i = 0; i < 20; i++) Frame(Pad.None, running ? new Vector2(1f, 0f) : Vector2.Zero);
+                    Frame(Pad.Dodge, stick);
+                    for (int i = 0; i < 30; i++) Frame(Pad.None, Vector2.Zero);
+                    Assert.GreaterOrEqual(d.Count(PlayerEventType.DodgeStarted), 1, element + ": dodged");
+                }
+            }
+            Assert.That(worst, Is.LessThanOrEqualTo(0.3f), element + ": a foot near the floor moved " + worst + " m in one frame (" + worstAt + ")");
+        }
+
+        // S7-06: running into a wall (the character controller doesn't move), the legs follow the real velocity, not the
+        // model's intended one, so they stop striding; in a dodge the model's velocity still drives the leap.
+        [Test]
+        public void FreeLegsFollowTheRealVelocityActionsTheModels()
+        {
+            PlayerDriver d = PlayerDriver.Elements();
+            var feed = new PlayerAnimationFeed();
+            d.Run(30, Pad.None, new Vector2(0f, 1f));
+            Assert.AreEqual(PlayerState.Locomotion, d.Model.State);
+            Assert.Greater(Directions.Flatten(d.Model.Velocity).Length(), 3f, "the model wants to run");
+            FighterAnimInput walled = feed.Build(d.Model, d.Dt, false, d.World.Position, Vector3.Zero, -1f, true, Vector3.Zero);
+            Assert.Less(new Vector2(walled.LocalVelocity.X, walled.LocalVelocity.Z).Length(), 1e-4f, "against a wall: the legs stop");
+            FighterAnimInput free = feed.Build(d.Model, d.Dt, false, d.World.Position, Vector3.Zero, -1f, true, d.Model.Velocity);
+            Assert.Greater(free.LocalVelocity.Z, 3f, "moving freely: the real velocity is the model's");
+            FighterAnimInput unknown = feed.Build(d.Model, d.Dt, false, d.World.Position, Vector3.Zero);
+            Assert.Greater(unknown.LocalVelocity.Z, 3f, "no real velocity given (CombatSim): the model's");
+            d.Step(Pad.Dodge, new Vector2(0f, 1f));
+            d.Step(Pad.None);
+            Assert.AreEqual(PlayerState.Dodging, d.Model.State);
+            FighterAnimInput dodge = feed.Build(d.Model, d.Dt, false, d.World.Position, Vector3.Zero, -1f, true, Vector3.Zero);
+            Assert.Greater(new Vector2(dodge.LocalVelocity.X, dodge.LocalVelocity.Z).Length(), 3f, "a dodge keeps the model's velocity for its leap");
+        }
+
         // J6-02: back out (an evade-out), stop, then walk and run straight back in: the gait faces the way it goes from its
         // first step. The old normalised lerp from the backward heading swept through sideways: a 'strafe' crab with the
         // feet 0.93 m apart while moving straight forward. Also a start to the side while the body turns to face it (15

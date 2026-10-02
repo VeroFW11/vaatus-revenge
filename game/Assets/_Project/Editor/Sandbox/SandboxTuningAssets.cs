@@ -114,6 +114,7 @@ namespace VaatusRevenge.EditorTools
         //   * a move set whose element doesn't match its file name (WaterMoves_* holding Fire moves, say);
         //   * the Fire move sets from before the 5-hit string and the animated fighters;
         //   * the player with the old 4 m auto-aim, the Dao Soldier with the old 3-hit-chain break-out (reports 03 / 04);
+        //   * the Dao Soldier or tutorial partner saved before EnemyTuning.DataVersion existed (round 7: the red thrust);
         //   * a tutorial saved by an older version of its steps.
         // The DataVersion Build 05 first shipped with: older is "before Build 05", newer but behind current is "before the fixes".
         const int Build05PlayerVersion = 5;
@@ -132,7 +133,8 @@ namespace VaatusRevenge.EditorTools
                 if (player.Tuning == null || player.Tuning.DataVersion < Build05PlayerVersion || SavedBefore(name))
                     Add(names, reasons, name, "saved before Build 05 (rhythm, combo, MIX, element switching, danger sense)");
                 else if (player.Tuning.DataVersion < PlayerTuning.CurrentDataVersion)
-                    Add(names, reasons, name, "saved before the Build 05 fixes (shorter element switch cooldown, dashes that arrive as they strike)");
+                    Add(names, reasons, name, "saved before the Build 05 fixes (shorter element switch cooldown, dashes that arrive as they strike, "
+                                              + "a dodge from a run keeps its heading so holding B to sprint never swings you round a foe)");
                 else if (name == PlayerFluidName && player.Tuning.SoftLockRange == 4f)
                     Add(names, reasons, name, "still has the old 4 m auto-aim range");
             }
@@ -171,6 +173,17 @@ namespace VaatusRevenge.EditorTools
             {
                 // Both old values together: someone tuning just one of them back on purpose isn't nagged (report 04, X-01).
                 Add(names, reasons, DaoSoldierName, "still has the old 3-hit-chain break-out");
+            }
+
+            // The soldiers saved before round 7 have no must-dodge attack (danger sense's red never showed) and glow red on
+            // attacks that can be parried (J7-03). Updating also brings the new telegraph colours (EnemyFeedbackSettings).
+            foreach (string name in new[] { DaoSoldierName, TutorialPartnerName })
+            {
+                EnemyTuningAsset enemy = AssetDatabase.LoadAssetAtPath<EnemyTuningAsset>(PathFor(name));
+                if (enemy == null || enemy.Tuning == null) continue;
+                if (enemy.Tuning.DataVersion < EnemyTuning.CurrentDataVersion)
+                    Add(names, reasons, name, "saved before the Build 05 round 7 fixes (the Delayed Thrust can't be parried, so danger "
+                                              + "sense shows red for it; parryable heavies glow amber, only must-dodge attacks glow red)");
             }
 
             TutorialScriptAsset tutorial = AssetDatabase.LoadAssetAtPath<TutorialScriptAsset>(PathFor(TutorialName));

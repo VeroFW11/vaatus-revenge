@@ -454,7 +454,8 @@ namespace VaatusRevenge
             PlayerInputReader reader = PlayerInputReader.Instance;
             bool gamepad = reader != null && reader.UsingGamepad;
             float quitHold = viewCounting ? Mathf.Clamp01(viewHeldTime / QuitHoldTime) : 0f;
-            panel.Draw(painter, tracker, gamepad, quitHold, accentColor);
+            CombatHud hud = CombatHud.Instance;
+            panel.Draw(painter, tracker, gamepad, quitHold, accentColor, hud != null ? hud.PlayerBarsRect : Rect.zero);
             GUI.color = previous;
         }
     }

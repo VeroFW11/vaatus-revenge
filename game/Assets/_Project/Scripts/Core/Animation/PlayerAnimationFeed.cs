@@ -132,6 +132,16 @@ namespace VaatusRevenge.Core
             }
         }
 
+        // The velocity the legs follow (see Build): the real one while free on the ground, else the model's.
+        static Vector3 LocomotionVelocity(PlayerCombatModel model, bool hasReal, Vector3 real)
+        {
+            Vector3 v = model.Velocity;
+            PlayerState state = model.State;
+            bool free = state == PlayerState.Locomotion || state == PlayerState.Sprinting || state == PlayerState.Guarding;
+            if (!hasReal || !free || !model.IsGrounded || !AnimMath.IsFinite(real)) return v;
+            return new Vector3(real.X, v.Y, real.Z);
+        }
+
         // dt: this frame's scaled delta time (0 during hitstop: everything holds).
         public FighterAnimInput Build(PlayerCombatModel model, float dt)
         {
@@ -144,6 +154,16 @@ namespace VaatusRevenge.Core
         // plunge starts its landing in time (J6-01).
         public FighterAnimInput Build(PlayerCombatModel model, float dt, bool hasTarget, Vector3 feet, Vector3 targetChest,
             float floorBelow = -1f)
+        {
+            return Build(model, dt, hasTarget, feet, targetChest, floorBelow, false, Vector3.Zero);
+        }
+
+        // realVelocity (hasRealVelocity): how fast the body really moved this frame (the character controller's step / dt).
+        // Walking, running, sprinting or guarding, the legs and planted feet follow it, not the model's intended velocity,
+        // so a player pushed against a wall or an enemy stops striding and the planted feet don't skate (round 7, S7-06).
+        // During actions (dashes, lunges) the model's velocity still sizes the leaps and strides.
+        public FighterAnimInput Build(PlayerCombatModel model, float dt, bool hasTarget, Vector3 feet, Vector3 targetChest,
+            float floorBelow, bool hasRealVelocity, Vector3 realVelocity)
         {
             if (model == null) return default;
             this.floorBelow = AnimMath.IsFinite(floorBelow) ? floorBelow : -1f;
@@ -168,7 +188,7 @@ namespace VaatusRevenge.Core
             {
                 DeltaTime = dt,
                 Grounded = model.IsGrounded,
-                LocalVelocity = ToLocal(model.Velocity, facing),
+                LocalVelocity = ToLocal(LocomotionVelocity(model, hasRealVelocity, realVelocity), facing),
                 YawDelta = yawDelta,
                 Sprinting = state == PlayerState.Sprinting,
                 DashIn = model.CurrentAttackKind == PlayerAttackKind.DodgeStrike,

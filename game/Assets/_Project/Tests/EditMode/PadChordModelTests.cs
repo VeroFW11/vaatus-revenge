@@ -32,7 +32,7 @@ namespace VaatusRevenge.Tests
                 D.Target(new Vector3(0f, 0f, 1.6f));
             }
 
-            public void Step(int face = -1, bool rb = false, Vector2 move = default, int face2 = -1)
+            public void Step(int face = -1, bool rb = false, Vector2 move = default, int face2 = -1, bool lb = false)
             {
                 var now = new bool[4];
                 if (face >= 0) now[face] = true;
@@ -42,10 +42,10 @@ namespace VaatusRevenge.Tests
                 ButtonState south = ButtonState.From(now[2], faceWas[2]);
                 ButtonState west = ButtonState.From(now[3], faceWas[3]);
                 ButtonState rbState = ButtonState.From(rb, rbWas);
-                ButtonState lbState = ButtonState.From(false, lbWas);
+                ButtonState lbState = ButtonState.From(lb, lbWas);
                 for (int i = 0; i < 4; i++) faceWas[i] = now[i];
                 rbWas = rb;
-                lbWas = false;
+                lbWas = lb;
                 PadChordReader.Result chord = Reader.Read(ref north, ref east, ref south, ref west, rbState, lbState, D.Dt, Layout);
                 var frame = new PlayerInputFrame
                 {
@@ -392,6 +392,75 @@ namespace VaatusRevenge.Tests
             // took the buffer's place.)
             if (!punishing) Assert.GreaterOrEqual(d.Count(PlayerEventType.DodgeStarted), 1, "the dodge went out");
             Assert.AreEqual(ElementId.Water, d.Model.ActiveElement, "the pick still switched");
+        }
+
+        // J7-01: RB held (going for a switch), the gold mark shows, so LB instead, then RB let go while LB is still down.
+        // RB was a modifier, so its release fires no ranged skill and the parry still deflects.
+        [Test]
+        public void ParryWithRbHeldStillDeflects([Values(false, true)] bool punishing)
+        {
+            var p = new PadProbe(punishing);
+            p.Run(10);
+            int started = p.D.Started;
+            p.Step(-1, true);
+            p.Step(-1, true);
+            p.Step(-1, true, default, -1, true);       // LB pressed while RB is held
+            p.Step(-1, true, default, -1, true);
+            p.Step(-1, true, default, -1, true);
+            p.Step(-1, false, default, -1, true);      // RB let go, LB still down
+            Assert.AreEqual(started, p.D.Started, "no ranged skill on the RB release");
+            Assert.AreEqual(PlayerState.Guarding, p.D.Model.State, "the guard is still up");
+            Assert.AreEqual(HitOutcome.Parried, p.D.HitFromFront(20f).Outcome, "the parry deflects");
+        }
+
+        // J7-01, Earth: a held block with RB released mid-hold stays up and blocks.
+        [Test]
+        public void EarthBlockWithRbReleasedMidHoldStaysUp([Values(false, true)] bool punishing)
+        {
+            var p = new PadProbe(punishing);
+            p.D.Select = ElementId.Earth;
+            p.D.Step();
+            p.Run(30);
+            Assert.AreEqual(ElementId.Earth, p.D.Model.ActiveElement);
+            int started = p.D.Started;
+            p.Step(-1, true);
+            p.Step(-1, true, default, -1, true);
+            p.Step(-1, true, default, -1, true);
+            p.Step(-1, false, default, -1, true);      // RB let go mid-block
+            for (int i = 0; i < 30; i++) p.Step(-1, false, default, -1, true);
+            Assert.AreEqual(started, p.D.Started, "no ranged skill on the RB release");
+            Assert.AreEqual(PlayerState.Guarding, p.D.Model.State, "the block is still up");
+            HitOutcome outcome = p.D.HitFromFront(20f, 0f, true, 5f).Outcome;
+            Assert.IsTrue(outcome == HitOutcome.Blocked || outcome == HitOutcome.Parried, "the block holds: " + outcome);
+        }
+
+        // S7-01: on the keyboard, the number key of the element you're already in, pressed mid-string, is a pick that isn't
+        // the attack button: the wheel shakes, no attack comes out (like RB + B in Fire on the pad).
+        [Test]
+        public void KeyboardSameElementNumberKeyMidStringIsNoAttack([Values(false, true)] bool punishing)
+        {
+            Assert.IsTrue(PadChordReader.PickIsOffAttack(ElementId.None, false, ElementId.Fire), "a number key is never the attack button");
+            Assert.IsFalse(PadChordReader.PickIsOffAttack(ElementId.Water, false, ElementId.None), "RB + X stays the attack button");
+            Assert.IsTrue(PadChordReader.PickIsOffAttack(ElementId.Fire, true, ElementId.None), "RB + B");
+            Assert.IsFalse(PadChordReader.PickIsOffAttack(ElementId.None, false, ElementId.None), "no pick");
+
+            PlayerDriver d = punishing ? PlayerDriver.Elements(PlayerTuning.CreatePunishing(), ElementLoadout.CreatePunishing()) : PlayerDriver.Elements();
+            d.Target(new Vector3(0f, 0f, 1.6f));
+            d.Step(Pad.Light);
+            d.RunUntilStarted(1);
+            d.Run(6);
+            int from = d.Log.Count;
+            d.StepFrame(new PlayerInputFrame
+            {
+                ElementSelect = ElementId.Fire,
+                ElementSelectOffAttack = PadChordReader.PickIsOffAttack(ElementId.None, false, ElementId.Fire)
+            });
+            d.Run(90);
+            Assert.AreEqual(1, d.Started, "no attack from the '1' key in Fire: " + Describe(d, from));
+            int denied = 0;
+            for (int i = from; i < d.Log.Count; i++)
+                if (d.Log[i].Type == PlayerEventType.ElementSwitchDenied && d.Log[i].DenyReason == SwitchDeniedReason.SameElement) denied++;
+            Assert.AreEqual(1, denied, "the wheel shakes once");
         }
 
         static PlayerAttackKind FirstAttack(PlayerDriver d, int from)

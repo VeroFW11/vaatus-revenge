@@ -1118,7 +1118,7 @@ namespace VaatusRevenge.Core
                     if (activeOpen) CloseActive();
                     EmitMoveEvent(PlayerEventType.AttackEnded);
                     buffer.Unlock();
-                    if (IsStringKind(attackKind)) RememberString();
+                    if (IsStringKind(attackKind)) RememberString(interrupted);
                     beatActive = false;
                     break;
                 case PlayerState.Charging:

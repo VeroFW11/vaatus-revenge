@@ -220,6 +220,24 @@ namespace VaatusRevenge.Tests
             Assert.IsEmpty(SwitchOrderFailures(true, 2), "Punishing, two X between: the second switch was denied");
         }
 
+        // Round 7, J7-04: and one X is NOT enough on Punishing (the 0.45 s cooldown outlasts Fire's and Air's on-beat gap
+        // after a switch strike), which is why How-To-Play and the spec say two X. If this starts passing with one X (a
+        // shorter Punishing cooldown), update How-To-Play's MIX section and spec 8.2 item 3 to match.
+        [Test]
+        public void PunishingOneXBetweenSwitchesIsRefusedWithFireOrAirInTheMiddle()
+        {
+            var failures = SwitchOrderFailures(true, 1);
+            bool fireMiddle = false, airMiddle = false;
+            foreach (string f in failures)
+            {
+                string middle = f.Split('>')[1];
+                if (middle == ElementId.Fire.ToString()) fireMiddle = true;
+                if (middle == ElementId.Air.ToString()) airMiddle = true;
+            }
+            Assert.IsTrue(fireMiddle && airMiddle, "Punishing, one X between, Fire or Air in the middle is refused (docs say two X): "
+                + string.Join(", ", failures));
+        }
+
         static System.Collections.Generic.List<string> SwitchOrderFailures(bool punishing, int xBetween)
         {
             var failures = new System.Collections.Generic.List<string>();

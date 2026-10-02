@@ -4,7 +4,7 @@ namespace VaatusRevenge.Core
     // damage that breaks blocks, hyper armour on the later string hits (rooting, never stone on the body), a real held
     // block, and the strictest beat window of the four. The forms are Hung Gar's: the horse-stance punch, the tiger claw,
     // the butterfly palms. Earth's air string is pure martial strikes with dust (canon earthbenders need rock underfoot or
-    // in hand to bend), the Meteor Drop's spikes rise only on landing (Build 05 spec, 7 and 8.1).
+    // in hand to bend), the Meteor Drop's stone comes only on landing, a ring of stone and dust (Build 05 spec, 7 and 8.1).
     //
     // Fluid values; Punishing = ApplyPunishing (the same rules for every element). Numbers from the Build 05 spec, 3.3.
     // Light-chain DodgeCancelAt follows the Fluid rule every element shares (C13): hits 1-4 can be dodged out of from

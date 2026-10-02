@@ -6,10 +6,21 @@ namespace VaatusRevenge.Core
     public enum TelegraphKind
     {
         Normal,   // e.g. yellow weapon glow
-        Heavy,    // big hit: e.g. red glow. Usually hyper-armoured, so dodge or deflect it
+        Heavy,    // big hit: e.g. a deep amber glow. Usually hyper-armoured, so dodge or deflect it
         Delayed,  // a long, held wind-up that punishes panic dodging
         Aimed,    // ranged: taking aim
         BreakOut  // the armoured anti-mash counter (EnemyBreakOutRule): its own colour, so players learn "stop pressing, dodge"
+    }
+
+    // One colour language for the wind-up glow and danger sense's mark (round 7, J7-03): RED always means "this one must
+    // be dodged" (MoveData.MustDodge), on the enemy and above your head alike; every parryable attack glows in the gold
+    // family (its kind picks the shade). The break-out keeps its own violet ("stop pressing").
+    public static class TelegraphLook
+    {
+        public static bool GlowsMustDodgeRed(TelegraphKind kind, MoveData move)
+        {
+            return kind != TelegraphKind.BreakOut && move != null && move.MustDodge;
+        }
     }
 
     // One attack in an enemy's list. The AI picks among the attacks that are off cooldown, weighted by

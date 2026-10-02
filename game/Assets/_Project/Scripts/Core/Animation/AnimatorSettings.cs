@@ -69,6 +69,12 @@ namespace VaatusRevenge.Core
         public float StepMinLift = 0.045f;           // even a short step clears the floor (it's a step, not a shuffle)
         public float StepMaxLift = 0.12f;
         public float ReleaseRate = 16f;              // how quickly a released foot catches up with the pose (1/s)
+        // A foot that isn't planted but is still near the floor (ankle under ReleaseStepHeight) moves at most this far
+        // over the ground in one frame: it glides after the body instead of jumping 0.4-0.7 m (every dodge start used to
+        // leave the feet planted for a frame and then teleport them, J7-02). Higher up it's in the air and moves freely.
+        // 0 = no limit.
+        public float MaxReleaseStep = 0.25f;
+        public float ReleaseStepHeight = 0.2f;
         public float LeapSpeed = 6f;                 // a grounded action moving faster than this (m/s) leaps: both feet leave the floor
         // Lunge strides (J3-03): a strike rushing along the ground between StrideMinSpeed and StrideMaxSpeed (a gap-closing
         // opener, a circle walk) runs there in real steps (the walk/run cycle at its speed, starting from the rear foot

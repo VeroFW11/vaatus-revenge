@@ -135,12 +135,21 @@ namespace VaatusRevenge
             Color faded = color;
             faded.a = 0f;
             float life = s.SparkLifetime;
-            // The pop itself is light (additive) whatever the element, so a hit always reads; the element is in the bits.
+            // The pop is light (additive) for Fire, Water and Air, so a hit always reads; Earth's (HitPopGlows off) is a
+            // burst of sunlit dust, alpha-blended with no bloom, because Earth has no glow and no lights (round 7, S7-13).
+            if (!s.HitPopGlows)
+            {
+                bright = s.CoreColor;
+                bright.a = Mathf.Clamp01(s.CoreColor.a);
+                faded = s.CoreColor;
+                faded.a = 0f;
+            }
             VfxSlot slot = VfxSlot.Spark;
             Texture2D picture = null;
             bool hasAlpha = false;
             bool pictured = ElementVfx.TryGetTexture(ElementId.None, slot, out picture, out hasAlpha);
-            FireVfxPiece pop = SpawnPiece(pictured ? VfxShape.Quad : VfxShape.Sphere, pictured && hasAlpha ? VfxMaterialKind.AlphaBlend : VfxMaterialKind.Additive,
+            VfxMaterialKind popKind = !s.HitPopGlows || (pictured && hasAlpha) ? VfxMaterialKind.AlphaBlend : VfxMaterialKind.Additive;
+            FireVfxPiece pop = SpawnPiece(pictured ? VfxShape.Quad : VfxShape.Sphere, popKind,
                 picture, position, Vector3.zero, 0f, Uniform(s.SparkSize * 0.15f), Uniform(s.SparkSize), Vector3.zero, 0.3f, life, bright, faded);
             if (pop != null) pop.Billboard = pictured;
             if (dustOnly)

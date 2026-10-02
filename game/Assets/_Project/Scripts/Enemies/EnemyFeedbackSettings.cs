@@ -13,10 +13,12 @@ namespace VaatusRevenge
         [Header("Telegraphs (the wind-up glow players learn to read)")]
         [Tooltip("Normal attacks: yellow.")]
         public Color NormalTelegraphColor = new Color(1f, 0.78f, 0.12f);
-        [Tooltip("Heavy attacks (usually hyper-armoured: dodge or deflect them): red.")]
-        public Color HeavyTelegraphColor = new Color(1f, 0.12f, 0.06f);
-        [Tooltip("Delayed attacks (a held wind-up that punishes panic dodging): red.")]
-        public Color DelayedTelegraphColor = new Color(1f, 0.12f, 0.06f);
+        [Tooltip("Heavy attacks that can still be parried (usually hyper-armoured: dodge or deflect them): deep amber, in the gold family, because danger sense marks them gold. Red is kept for must-dodge attacks.")]
+        public Color HeavyTelegraphColor = new Color(1f, 0.5f, 0.04f);
+        [Tooltip("Delayed attacks that can still be parried (a held wind-up that punishes panic dodging): deep amber.")]
+        public Color DelayedTelegraphColor = new Color(1f, 0.5f, 0.04f);
+        [Tooltip("Any attack that can't be parried or blocked (MoveData.MustDodge), whatever its kind: red, the same as danger sense's red 'dodge it' mark, so the glow and the mark never disagree.")]
+        public Color MustDodgeTelegraphColor = new Color(1f, 0.12f, 0.06f);
         [Tooltip("Ranged attacks while taking aim: yellow.")]
         public Color AimedTelegraphColor = new Color(1f, 0.78f, 0.12f);
         [Tooltip("The break-out counter (hit it too many times in a row and it shoves back, armoured): violet, unlike any other attack, so it reads as 'stop pressing, dodge now'.")]
@@ -88,6 +90,12 @@ namespace VaatusRevenge
 
         [Header("Poses")]
         public EnemyPoseSettings Poses = new EnemyPoseSettings();
+
+        // The glow for this attack: red when it must be dodged (TelegraphLook), otherwise its kind's colour.
+        public Color TelegraphColor(TelegraphKind kind, MoveData move)
+        {
+            return TelegraphLook.GlowsMustDodgeRed(kind, move) ? MustDodgeTelegraphColor : TelegraphColor(kind);
+        }
 
         public Color TelegraphColor(TelegraphKind kind)
         {

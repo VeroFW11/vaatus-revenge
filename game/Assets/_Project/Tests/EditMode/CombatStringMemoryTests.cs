@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using NUnit.Framework;
 using VaatusRevenge.Core;
@@ -138,6 +139,33 @@ namespace VaatusRevenge.Tests
             Assert.AreEqual(-1, d.Model.StringNextIndex);
             d.Step(Pad.Light);
             Assert.AreEqual(0, d.LastStarted.ChainIndex);
+        }
+        // Round 7, S7-02: a late X pressed anywhere from the end of hit 1's combo window to 3 frames after the move ends gets
+        // one answer (the string starts again), never a one-frame island on the move's last frame that continues it.
+        [Test]
+        public void LatePressesPastTheWindowAllRestartTheString([Values(ElementId.Fire, ElementId.Water, ElementId.Earth, ElementId.Air)] ElementId element,
+            [Values(false, true)] bool punishing)
+        {
+            PlayerDriver probe = punishing ? PlayerDriver.Elements(PlayerTuning.CreatePunishing(), ElementLoadout.CreatePunishing()) : PlayerDriver.Elements();
+            Assert.IsTrue(probe.Model.SetElementAtRest(element));
+            MoveData jab = probe.Model.MoveSet.LightChain[0];
+            if (jab.ComboWindowEnd >= jab.TotalDuration) Assert.Pass(element + ": its window reaches past the move's end (memory, not this case)");
+            int windowEnd = (int)Math.Ceiling(jab.ComboWindowEnd / probe.Dt) + 1;
+            int moveEnd = (int)Math.Ceiling(jab.TotalDuration / probe.Dt);
+            var slots = new System.Collections.Generic.List<string>();
+            for (int wait = windowEnd; wait <= moveEnd + 3; wait++)
+            {
+                PlayerDriver d = punishing ? PlayerDriver.Elements(PlayerTuning.CreatePunishing(), ElementLoadout.CreatePunishing()) : PlayerDriver.Elements();
+                Assert.IsTrue(d.Model.SetElementAtRest(element));
+                d.Step(Pad.Light);
+                d.RunUntilStarted(1);
+                d.Run(wait - 1);
+                d.Step(Pad.Light);
+                d.RunUntilStarted(2, 60);
+                slots.Add(wait + "f:" + d.LastStarted.Branch + d.LastStarted.ChainIndex);
+            }
+            string all = string.Join(", ", slots);
+            foreach (string slot in slots) Assert.IsTrue(slot.EndsWith("Main0"), element + ": every late press restarts the string: " + all);
         }
     }
 }

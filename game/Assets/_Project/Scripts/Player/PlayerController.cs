@@ -439,7 +439,10 @@ namespace VaatusRevenge
             PlayerTickResult result = model.Tick(dt, in input, in world);
 
             // 3. Move once, then face where the model says. Nothing else turns the body, so the two never fight.
+            Vector3 positionBeforeMove = transform.position;
             if (dt > 0f) MoveBody(result.Velocity, dt);
+            // What the body really did (a wall or an enemy can stop it): the legs follow this while walking (S7-06).
+            Vector3 realVelocity = dt > 0f ? (transform.position - positionBeforeMove) / dt : Vector3.zero;
             transform.rotation = Quaternion.Euler(0f, result.FacingYaw, 0f);
 
             // 4. Events, in order: gameplay side first (hit checks, projectiles, time effects), then the visuals.
@@ -472,7 +475,8 @@ namespace VaatusRevenge
                 float floorBelow = -1f;
                 if (!model.IsGrounded && CombatPhysics.FloorBelow(transform.position, FloorProbeDistance, out float below)) floorBelow = below;
                 animatorDriver.SetInput(animationFeed.Build(model, dt, aimAt != null, transform.position.ToNumerics(),
-                    aimAt != null ? aimAt.AimPoint.position.ToNumerics() : System.Numerics.Vector3.Zero, floorBelow));
+                    aimAt != null ? aimAt.AimPoint.position.ToNumerics() : System.Numerics.Vector3.Zero, floorBelow,
+                    dt > 0f, realVelocity.ToNumerics()));
             }
         }
 

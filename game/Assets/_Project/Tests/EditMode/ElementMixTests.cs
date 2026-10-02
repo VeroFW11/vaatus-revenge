@@ -161,5 +161,25 @@ namespace VaatusRevenge.Tests
             d.Step(Pad.Light);
             Assert.AreEqual(d.Model.CurrentMove.PoiseDamage, d.Model.BuildCurrentDamage().PoiseDamage, 1e-5f);
         }
+        // Round 7, S7-12: the switch flash / MIX ring colours are equally bright and at least MinHueGap degrees apart in
+        // hue (Fire and Earth were 12 apart, Water and Air 14).
+        [Test]
+        public void SwitchFlashColoursAreDistinctAndEquallyBright()
+        {
+            var elements = new[] { ElementId.Fire, ElementId.Water, ElementId.Earth, ElementId.Air };
+            for (int a = 0; a < elements.Length; a++)
+            {
+                System.Numerics.Vector3 ca = ElementSwitchPalette.For(elements[a]);
+                Assert.That(ElementSwitchPalette.Luminance(ca), Is.InRange(0.55f, 0.7f), elements[a] + " brightness");
+                for (int b = a + 1; b < elements.Length; b++)
+                {
+                    float gap = ElementSwitchPalette.HueGap(ElementSwitchPalette.Hue(ca), ElementSwitchPalette.Hue(ElementSwitchPalette.For(elements[b])));
+                    Assert.GreaterOrEqual(gap, ElementSwitchPalette.MinHueGap, elements[a] + " vs " + elements[b] + " hue gap");
+                }
+            }
+            Assert.AreEqual(0f, ElementSwitchPalette.Hue(new System.Numerics.Vector3(1f, 0f, 0f)), 1e-3f);
+            Assert.AreEqual(120f, ElementSwitchPalette.Hue(new System.Numerics.Vector3(0f, 1f, 0f)), 1e-3f);
+            Assert.AreEqual(240f, ElementSwitchPalette.Hue(new System.Numerics.Vector3(0f, 0f, 1f)), 1e-3f);
+        }
     }
 }

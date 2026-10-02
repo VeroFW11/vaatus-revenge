@@ -134,5 +134,43 @@ namespace VaatusRevenge.Tests
             CheckStrikesWarned(f);
             Assert.IsFalse(f.Player.LastOf(PlayerEventType.DangerWarning).MustDodge, "the shove can be parried: gold");
         }
+        // Round 7, J7-03: the sandbox's soldiers show BOTH colours of the mark (the Delayed Thrust can't be parried: red;
+        // the rest gold), and every attack's wind-up glow agrees with the mark it raises (red glow <=> red mark).
+        [Test]
+        public void SandboxSoldiersShowRedAndGoldAndTheGlowAgrees([Values(false, true)] bool partner)
+        {
+            EnemyTuning tuning = partner ? EnemyTuning.CreateTutorialPartner() : EnemyTuning.CreateDaoSoldier();
+            var f = new Fight(tuning, new Vector3(0f, 0f, 1.8f));
+            f.Run(60 * 40);
+            int red = 0, gold = 0;
+            for (int i = 0; i < f.Player.Log.Count; i++)
+            {
+                PlayerEvent warning = f.Player.Log[i];
+                if (warning.Type != PlayerEventType.DangerWarning) continue;
+                int frame = f.Player.LogFrames[i];
+                EnemyEvent telegraph = default(EnemyEvent);
+                bool found = false;
+                foreach (var entry in f.EnemyLog)
+                {
+                    if (entry.frame > frame) break;
+                    if (entry.e.Type == EnemyEventType.TelegraphStarted)
+                    {
+                        telegraph = entry.e;
+                        found = true;
+                    }
+                }
+                Assert.IsTrue(found, "a wind-up came before the warning on frame " + frame);
+                Assert.AreEqual(TelegraphLook.GlowsMustDodgeRed(telegraph.Telegraph, telegraph.Move), warning.MustDodge,
+                    telegraph.Move.DisplayName + ": the glow and the mark agree");
+                if (warning.MustDodge)
+                {
+                    red++;
+                    Assert.AreEqual("Delayed Thrust", telegraph.Move.DisplayName, "only the thrust is red");
+                }
+                else gold++;
+            }
+            Assert.Greater(red, 0, "a red (must-dodge) mark appeared");
+            Assert.Greater(gold, 0, "gold marks appeared");
+        }
     }
 }

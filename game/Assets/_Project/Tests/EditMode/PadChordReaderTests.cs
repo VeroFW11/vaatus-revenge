@@ -189,6 +189,28 @@ namespace VaatusRevenge.Tests
             Assert.AreEqual(1, rig.Skills);
         }
 
+        // J7-01: RB down frames 0-4, LB pressed on frame 2 and held, RB let go on frame 5: RB was a modifier (the player
+        // went for a parry instead of the switch), so its release fires no skill.
+        [Test]
+        public void RbHeldThenLbTapThenReleaseFiresNoSkill()
+        {
+            var rig = new Rig();
+            rig.Step(rbNow: true);
+            rig.Step(rbNow: true);
+            rig.Step(rbNow: true, lbNow: true);
+            rig.Step(rbNow: true, lbNow: true);
+            rig.Step(rbNow: true, lbNow: true);
+            rig.Step(lbNow: true);
+            rig.Step(lbNow: true);
+            rig.Step();
+            Assert.AreEqual(0, rig.Skills, "RB was the modifier, not a tap");
+            // A later lone RB tap is still the skill.
+            rig.Step(rbNow: true);
+            rig.Step(rbNow: true);
+            rig.Step();
+            Assert.AreEqual(1, rig.Skills);
+        }
+
         [Test]
         public void LongRbHoldFiresNothing()
         {

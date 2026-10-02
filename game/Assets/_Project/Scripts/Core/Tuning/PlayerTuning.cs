@@ -55,6 +55,15 @@ namespace VaatusRevenge.Core
         public float QueuedPressMaxAge = 0.35f;      // a light press queued as the next chain move is dropped if it gets older than
                                                      // this before it can fire (e.g. waiting for stamina), so it never fires late
         public DodgeTrigger DodgeTrigger = DodgeTrigger.OnPress;
+        // Fluid dodges the moment B goes down and a hold then sprints, so every sprint starts with a dodge. A dodge pressed
+        // while RUNNING (at least RunDodgeMinSpeed), with nobody locked on and no strike about to land, is a plain dash
+        // along the stick (facing the dash) instead of a slip-in / circle round the nearest enemy, so 'hold B to sprint'
+        // never swings you round a foe you were running past. Only a stick pointed within RunDodgeSlipInAngle of that foe
+        // still slips in. Locked on, or with a strike coming, the dodge works as always (round 7, J7-05). An asset saved
+        // before these fields existed reads false / 0: the old behaviour.
+        public bool RunDodgeKeepsHeading = true;
+        public float RunDodgeMinSpeed = 3.5f;        // m/s of locomotion when B goes down (walk 2.0, run 4.8, sprint 7.2)
+        public float RunDodgeSlipInAngle = 20f;      // degrees between the stick and the foe that still mean "slip in"
         public bool DefensivePressesWin = true;      // a buffered dodge or guard survives later attack presses (attacks still replace
                                                      // attacks), so a nervous extra light press can't cancel your escape.
                                                      // false = the last press always wins (Elden Ring). Pending David (CTRL-01)
@@ -108,7 +117,8 @@ namespace VaatusRevenge.Core
         // Bumped when the defaults change in a way old assets must not keep (the sandbox builder offers to reset an
         // asset whose DataVersion is behind). New fields read 0 in an asset saved before they existed.
         public int DataVersion = 0;
-        public const int CurrentDataVersion = 7;   // 6: Build 05 verify (switch cooldown, arriving lunges); 7: eased arrivals (J4-02)
+        public const int CurrentDataVersion = 8;   // 6: Build 05 verify (switch cooldown, arriving lunges); 7: eased arrivals (J4-02)
+                                                   // 8: round 7 (a dodge from a run keeps its heading: RunDodgeKeepsHeading)
 
         public static PlayerTuning CreateFluid()
         {
@@ -129,6 +139,7 @@ namespace VaatusRevenge.Core
             t.SprintStaminaDrain = 6f;
             t.InputBufferWindow = 0.2f;
             t.DodgeTrigger = DodgeTrigger.OnRelease;
+            t.RunDodgeKeepsHeading = false;          // a dodge here is a deliberate tap (a hold sprints without one)
             t.Rhythm = RhythmTuning.CreatePunishing();
             t.Combo = ComboTuning.CreatePunishing();
             t.Mix = MixTuning.CreatePunishing();

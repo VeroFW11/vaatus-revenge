@@ -59,7 +59,7 @@ Every number lives in `Assets/_Project/Tuning/` (ScriptableObject assets). Selec
 
 The human checklist is in [Playtest Report 01, section 6](Playtest-Report-01.md), with updates in [Report 02](Playtest-Report-02.md). The big questions for Jeremy:
 
-- The [feel checklist in the Build 05 spec](Build-05-Spec.md#65-feel-checklist-for-david-and-jeremy-fluid-gamepad): ten things to try on the gamepad. (Item 3 was written before the colour-matched layout: Water is now RB + X, so it reads X X, RB + X, X X.)
+- The [feel checklist in the Build 05 spec](Build-05-Spec.md#65-feel-checklist-for-david-and-jeremy-fluid-gamepad): ten things to try on the gamepad.
 - Fluid vs Punishing (F5/F6): which dodge feel is right? (Fluid dodges are free now; stamina pressure comes from attacking and mashing.)
 - Is fa jin (hold heavy, let go in the gold band) satisfying as the timing reward?
 - Does the over-the-shoulder camera feel like Spider-Man? Shoulder offset 0 in `Camera.asset` gives the centred Elden Ring view.

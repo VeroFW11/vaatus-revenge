@@ -906,6 +906,13 @@ namespace VaatusRevenge.CombatSim
                 AnimationKeys.Launched, AnimationKeys.Knockdown, AnimationKeys.Death, AnimationKeys.GetUp,
             };
             int footAirRun, touchdownLeft;
+            // Build 05 verify round 7 (J7-02): a foot near the floor never jumps across it. Grounded, not lying, not a
+            // kick, a foot below TeleportHeight in this frame or the last may move at most TeleportStep horizontally
+            // (world) in one frame (every dodge start used to leave both feet planted, then move them 0.4-0.7 m in the next frame).
+            const float TeleportHeight = 0.2f, TeleportStep = 0.3f;
+            readonly Vector3[] prevFootWorld = new Vector3[2];
+            readonly float[] prevFootHeight = new float[2];
+            int teleportChecked;
 
             void CheckFeet(AnimRig rig, string key)
             {
@@ -954,6 +961,14 @@ namespace VaatusRevenge.CombatSim
                             footIssues.Add((scene, dragStart[i], dragKey[i], "rear foot dragged " + dragRun[i] + " frames", dragMax[i]));
                         dragRun[i] = 0;
                     }
+                    if (sameScene && grounded && !lying && !kick && Math.Min(prevFootHeight[i], height) < TeleportHeight)
+                    {
+                        teleportChecked++;
+                        float step = new Vector2(foot.X - prevFootWorld[i].X, foot.Z - prevFootWorld[i].Z).Length();
+                        if (step > TeleportStep) footIssues.Add((scene, FrameCount, key, "foot slid along the floor in one frame", step));
+                    }
+                    prevFootWorld[i] = foot;
+                    prevFootHeight[i] = grounded && !lying ? height : 10f;
                     if (sameScene && grounded && !lying && prevFootY[i] - height > (landing ? LandingDrop : SnapDrop))
                         footIssues.Add((scene, FrameCount, key, landing ? "foot dropped in one frame landing" : "foot dropped in one frame",
                             prevFootY[i] - height));
@@ -1416,9 +1431,11 @@ namespace VaatusRevenge.CombatSim
                         break;
                     case PlayerEventType.PlungeImpact:
                     {
-                        string plunge = e.Move != null && !string.IsNullOrEmpty(e.Move.EffectKey) ? e.Move.EffectKey : EffectKeys.Slam;
-                        fx.Add(Fx(plunge == EffectKeys.Slam || plunge == EffectKeys.Stomp || plunge == EffectKeys.Wave ? plunge : EffectKeys.Slam,
-                            e.Origin, -Vector3.UnitY, e.Radius, 360f, 0.45f, (int)BodyJoint.RightFoot, rig.Id, ElementName(((SimPlayer)rig.Fighter).Model.ActiveElement)));
+                        // As PlayerFeedback.PlungeImpact (round 7, S7-18): a ring and an explosion at the feet (drawn as the
+                        // slam: ring + ball) and a burst down from the right foot, whatever the move's EffectKey says.
+                        string el = ElementName(e.Element != ElementId.None ? e.Element : ((SimPlayer)rig.Fighter).Model.ActiveElement);
+                        fx.Add(Fx(EffectKeys.Slam, e.Origin, -Vector3.UnitY, e.Radius, 360f, 0.45f, (int)BodyJoint.RightFoot, rig.Id, el));
+                        fx.Add(Fx(EffectKeys.Burst, e.Origin, -Vector3.UnitY, Math.Max(0.5f, e.Radius * 0.3f), 0f, 0.3f, (int)BodyJoint.RightFoot, rig.Id, el));
                         break;
                     }
                     case PlayerEventType.DodgeStarted:
@@ -1773,9 +1790,12 @@ namespace VaatusRevenge.CombatSim
                         + " m root-relative at a touchdown, in a plunge or a landing; J6-01)");
                 var t3 = new Table("Check", "Frames checked", "Problems", "Result");
                 int drags = footIssues.Count(x => x.what.StartsWith("rear"));
-                int drops = footIssues.Count - drags;
+                int teleports = footIssues.Count(x => x.what.StartsWith("foot slid"));
+                int drops = footIssues.Count - drags - teleports;
                 t3.Row("Rear foot dragged", footFrames, drags, Out.Target(drags == 0));
                 t3.Row("Foot snapped down", footFrames, drops, Out.Target(drops == 0));
+                t3.Row("Foot below " + Out.N(TeleportHeight, 1) + " m moving over " + Out.N(TeleportStep, 1) + " m along the floor in one frame (J7-02)",
+                    teleportChecked + " foot-frames", teleports, Out.Target(teleports == 0));
                 t3.Row("Earth rock effects in the air (R2-03)", earthAirFx + " Earth fx in the air", earthAirRockFx, Out.Target(earthAirRockFx == 0));
                 int jumps = motionIssues.Count(x => x.what.StartsWith("joint"));
                 int spins = motionIssues.Count(x => x.what.StartsWith("spin"));
@@ -1805,6 +1825,9 @@ namespace VaatusRevenge.CombatSim
                 t3.Row("Earth boulders drawn bigger than their hit (J4-03)", boulderSizes.Count + " throws ("
                     + string.Join(", ", boulderSizes.Select(b => b.move).Distinct()) + ")", oversize, Out.Target(oversize == 0));
                 t3.Print();
+                if (teleports > 0)
+                    Out.Line("Feet slid along the floor, by key: " + string.Join(", ", footIssues.Where(x => x.what.StartsWith("foot slid"))
+                        .GroupBy(x => x.key).Select(g => g.Key + " " + g.Count())));
                 foreach (var issue in footIssues.Take(20))
                     Out.Line("- frame " + issue.frame + " (" + issue.scene + ", " + issue.key + "): " + issue.what + ", " + Out.N(issue.amount, 2) + " m");
                 foreach (var issue in motionIssues.Take(20))

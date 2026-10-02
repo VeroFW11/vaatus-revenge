@@ -34,6 +34,8 @@ namespace VaatusRevenge
         public Color ChargeFistColor = new Color(1f, 0.45f, 0.1f, 1f);
         [Tooltip("The pop where this element's hits connect (LDR; brightened for bloom like Fire's hit sparks).")]
         public Color HitSparkColor = Color.white;
+        [Tooltip("On: the pop where a hit connects is light (additive, bloomed). Off: a burst of dust in CoreColor, alpha-blended, no bloom (Earth: no glow, no lights).")]
+        public bool HitPopGlows = true;
         [Tooltip("Limb trails: colour at the limb and at the tail (alpha fades along it).")]
         public Color TrailHeadColor = Color.white;
         public Color TrailTailColor = new Color(1f, 1f, 1f, 0f);
@@ -126,7 +128,7 @@ namespace VaatusRevenge
                 CloudColor = new Color(0.75f, 0.9f, 1f, 0.45f),
                 AccentColor = new Color(0.8f, 0.97f, 1.3f, 0.95f),
                 HitSparkColor = new Color(0.55f, 0.85f, 1f),
-                SwitchFlashColor = new Color(0.35f, 0.66f, 1f, 1f),        // relative luminance ~0.62
+                SwitchFlashColor = Flash(ElementId.Water),                 // blue (ElementSwitchPalette)
                 ChargeFistColor = new Color(0.4f, 0.65f, 1f, 1f),          // pale blue
                 TrailHeadColor = new Color(0.8f, 0.95f, 1f, 0.95f),
                 TrailTailColor = new Color(0.15f, 0.45f, 1f, 0f),
@@ -158,7 +160,8 @@ namespace VaatusRevenge
                 CloudColor = new Color(0.42f, 0.36f, 0.3f, 0.6f),    // darker than the duel-ring floor (0.62, 0.52, 0.38) so dust reads on it
                 AccentColor = new Color(0.1f, 0.08f, 0.06f, 0.85f),
                 HitSparkColor = new Color(0.9f, 0.72f, 0.45f),
-                SwitchFlashColor = new Color(0.85f, 0.6f, 0.25f, 1f),      // warm ochre, ~0.63
+                HitPopGlows = false,                                       // a dust burst, not a light (S7-13)
+                SwitchFlashColor = Flash(ElementId.Earth),                 // olive green, A's colour (ElementSwitchPalette)
                 ChargeFistColor = Color.black,                             // no glowing fists for Earth
                 TrailHeadColor = new Color(0.7f, 0.6f, 0.45f, 0.7f),
                 TrailTailColor = new Color(0.5f, 0.42f, 0.32f, 0f),
@@ -190,7 +193,7 @@ namespace VaatusRevenge
                 CloudColor = new Color(0.92f, 0.95f, 1f, 0.3f),
                 AccentColor = new Color(1.4f, 1.45f, 1.5f, 0.85f),
                 HitSparkColor = new Color(0.92f, 0.96f, 1f),
-                SwitchFlashColor = new Color(0.4f, 0.72f, 0.85f, 1f),      // pale cyan (not a heal's or perfect dodge's white), ~0.66
+                SwitchFlashColor = Flash(ElementId.Air),                   // pale lavender (not a heal's or perfect dodge's white)
                 ChargeFistColor = new Color(0.45f, 0.48f, 0.52f, 1f),      // a faint white
                 TrailHeadColor = new Color(1f, 1f, 1f, 0.75f),
                 TrailTailColor = new Color(0.85f, 0.92f, 1f, 0f),
@@ -221,7 +224,7 @@ namespace VaatusRevenge
                 CloudColor = new Color(0.25f, 0.2f, 0.18f, 0.4f),
                 AccentColor = new Color(4f, 2.2f, 0.6f, 1f),
                 HitSparkColor = new Color(1f, 0.55f, 0.15f),
-                SwitchFlashColor = new Color(1f, 0.5f, 0.18f, 1f),         // ~0.58
+                SwitchFlashColor = Flash(ElementId.Fire),                  // orange-red (ElementSwitchPalette)
                 ChargeFistColor = new Color(1f, 0.45f, 0.1f, 1f),          // fire orange (BodyLook's old shared charge colour)
                 TrailHeadColor = new Color(1f, 0.95f, 0.7f, 1f),
                 TrailTailColor = new Color(0.8f, 0.15f, 0.02f, 0f),
@@ -232,6 +235,13 @@ namespace VaatusRevenge
                 Gravity = 0f, Bounce = 0f, SpinSpeed = 0f,
                 AfterimageRate = 26f, AfterimageLifetime = 0.2f, AfterimageAlpha = 0.3f
             };
+        }
+
+        // The switch flash default for an element (pure-C# palette, tested for hue gaps and brightness).
+        static Color Flash(ElementId element)
+        {
+            System.Numerics.Vector3 c = ElementSwitchPalette.For(element);
+            return new Color(c.X, c.Y, c.Z, 1f);
         }
 
         public static ElementVfxStyle CreateFor(ElementId element)

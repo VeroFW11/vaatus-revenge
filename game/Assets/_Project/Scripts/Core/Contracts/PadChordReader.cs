@@ -15,6 +15,7 @@ namespace VaatusRevenge.Core
     //     face is swallowed and the RB hold that starts this frame is marked as used, so its release fires no skill.
     //   * a face held at most ChordSkillGuard when RB goes down: RB was meant as the chord modifier, so its release fires
     //     no skill (a slow chord is never a stray Ice Dart). Held longer (sprinting on B), an RB tap is the skill.
+    //   * LB pressed while RB is held (parry / block instead of the switch): the RB release fires no skill either.
     public sealed class PadChordReader
     {
         // Face buttons, in element-slot order (Up, Right, Down, Left): Y/Triangle, B/Circle, A/Cross, X/Square.
@@ -51,6 +52,14 @@ namespace VaatusRevenge.Core
             public ButtonState Heavy;           // LB + X
             public ButtonState AbilityNorth;    // LB + Y
             public ButtonState AbilityEast;     // LB + B
+        }
+
+        // PlayerInputFrame.ElementSelectOffAttack for this frame's pick: a pad pick says itself (RB + a face other than X);
+        // a number key (1-4) is never the attack button, so a key pick is always off-attack: pressing the element you're
+        // already in mid-string shakes the wheel and never throws a hit (round 7, S7-01).
+        public static bool PickIsOffAttack(ElementId padPick, bool padPickOffAttack, ElementId keyPick)
+        {
+            return padPick != ElementId.None ? padPickOffAttack : keyPick != ElementId.None;
         }
 
         public void Reset()
@@ -107,7 +116,10 @@ namespace VaatusRevenge.Core
             result.ElementSelect = picked;
             result.ElementSelectOffAttack = picked != ElementId.None && pickedFace != FaceWest;
 
-            // 3. The RB tap: fires on release when nothing was picked during this hold.
+            // 3. The RB tap: fires on release when nothing was picked during this hold. LB pressed during the hold
+            //    (a parry or Earth block with RB still down, say after reading the gold mark mid-switch) also means RB
+            //    was a modifier, not a tap: its release must not fire the skill and cancel the guard (round 7, J7-01).
+            if (skillPadDown && lb.Pressed) skillPadChordUsed = true;
             if (skillPadDown)
             {
                 skillPadHeldTime += dt;

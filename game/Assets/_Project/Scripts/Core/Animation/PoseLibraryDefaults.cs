@@ -191,14 +191,16 @@ namespace VaatusRevenge.Core
                 .K(KeyPhase.Startup, 1f, PoseEase.Snap, s =>
                 {
                     s.Hips(0f, -0.24f, 0.06f).Pelvis(0f, 5f).Torso(30f, 0f).Head(-20f, 0f);
-                    // fire-propelled: both feet skim just off the floor for the dash (no skating on a planted foot)
-                    s.Foot(L, 0.13f, Ground + 0.045f, 0.38f, 5f, -10f).Foot(R, 0.15f, 0.16f, -0.4f, 20f, 35f);
+                    // fire-propelled: both feet skim just off the floor for the dash (no skating on a planted foot); the
+                    // leap lift raises them further at dash speed, so the clip keeps them low (round 7: a 4 m dash from a
+                    // run hovered both feet over 0.2 m for 5 frames)
+                    s.Foot(L, 0.13f, Ground + 0.01f, 0.38f, 5f, -10f).Foot(R, 0.15f, 0.1f, -0.4f, 20f, 35f);
                     s.Arm(L, 25f, -45f, 0.95f, 10f).Arm(R, 20f, -50f, 0.95f, 10f).Set(PoseChannel.ArmFollow, 0.2f);
                 })
                 .K(KeyPhase.Active, 1f, PoseEase.Linear, s =>
                 {
                     s.Torso(22f, 0f).Hips(0f, -0.2f, 0.04f);
-                    s.Foot(R, 0.15f, 0.2f, -0.35f, 20f, 40f);
+                    s.Foot(R, 0.15f, 0.12f, -0.35f, 20f, 40f);
                 })
                 .K(KeyPhase.Recovery, 1f, PoseEase.InOut, guard)
                 .Build());

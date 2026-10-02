@@ -64,7 +64,7 @@ namespace VaatusRevenge
             attackTime = 0f;
             telegraphing = true;
             telegraphDuration = Mathf.Max(MinSeconds, e.Duration);
-            telegraphColor = feedback.TelegraphColor(e.Telegraph);
+            telegraphColor = feedback.TelegraphColor(e.Telegraph, e.Move);
             telegraphPeak = Mathf.Max(0f, feedback.TelegraphIntensity(e.Telegraph));
             if (body != null) body.SetWeaponLength(PosesOf(feedback).WeaponLength);   // picks up live edits
             ApplyTelegraphGlow(feedback);

@@ -18,11 +18,13 @@ namespace VaatusRevenge.Core
         // Bumped when the default steps change, so the sandbox builder can offer to update an old saved tutorial.
         // A field missing from an old asset keeps its initialiser, so it reads 0.
         public int DataVersion = 0;
-        public const int CurrentDataVersion = 6;   // 2: Build 05 verify (pause finisher X X wait X X, beat taught as anticipation)
+        public const int CurrentDataVersion = 7;   // 2: Build 05 verify (pause finisher X X wait X X, beat taught as anticipation)
                                                    // 3: verify round 2 (shorter step 2 hint; hints wrap and stay under HintBudget)
                                                    // 4: verify round 3 (starts in Fire; slip-in step distance bar and hint)
                                                    // 5: verify round 5 (modifier first: "hold RB, then press" in every switch step)
                                                    // 6: verify round 6 (step 4: press X soon after the dodge, J6-S07)
+                                                   // 7: verify round 7 (step 10: one parry and one dodge; 8/8b/8c: let go
+                                                   //    of RB before the next X; step 6: the finisher comes after hit 4)
         // Longest hint, in characters (a {button} counts as 3): the panel wraps hints, and this keeps any of them to two
         // or three short lines. TutorialTrackerTests checks every default hint against it.
         public const int HintBudget = 140;
@@ -79,7 +81,7 @@ namespace VaatusRevenge.Core
                     {
                         Id = "6", Title = "Dodge strike", Goal = TutorialGoal.DodgeStrike, Count = 2,
                         Prompt = "{X} late in a dodge",
-                        Hint = "Dodge with {B}, then press {X} as the dodge ends: you dash back in with a counter."
+                        Hint = "Dodge with {B}, then press {X} as the dodge ends: you dash back in with a counter. (After hit 4 the finisher comes instead.)"
                     },
                     new TutorialStepData
                     {
@@ -90,7 +92,7 @@ namespace VaatusRevenge.Core
                     new TutorialStepData
                     {
                         Id = "8", Title = "Switch mid-combo: Water", Goal = TutorialGoal.SwitchStrikeTo, Element = ElementId.Water,
-                        Prompt = "{X}{X}, hold {RB} then {X} (Water), keep going",
+                        Prompt = "{X}{X}, hold {RB} then {X} (Water), let go, {X}",
                         KeyboardPrompt = "{X}{X}, then 2 (Water), keep going",
                         Hint = "RB first, then the button: its colour is the element, blue X is Water. The string carries on in Water with its next hit.",
                         KeyboardHint = "The string carries on in Water with its next hit.",
@@ -100,7 +102,7 @@ namespace VaatusRevenge.Core
                     new TutorialStepData
                     {
                         Id = "8b", Title = "Switch mid-combo: Earth", Goal = TutorialGoal.SwitchStrikeTo, Element = ElementId.Earth,
-                        Prompt = "{X}{X}, hold {RB} then {A} (Earth), keep going",
+                        Prompt = "{X}{X}, hold {RB} then {A} (Earth), let go, {X}",
                         KeyboardPrompt = "{X}{X}, then 3 (Earth), keep going",
                         Hint = "RB first, then green A: Earth, slow, heavy and rooted. Its hits push through enemy attacks.",
                         KeyboardHint = "Earth is slow, heavy and rooted. Its hits push through enemy attacks.",
@@ -110,7 +112,7 @@ namespace VaatusRevenge.Core
                     new TutorialStepData
                     {
                         Id = "8c", Title = "Switch mid-combo: Air", Goal = TutorialGoal.SwitchStrikeTo, Element = ElementId.Air,
-                        Prompt = "{X}{X}, hold {RB} then {Y} (Air), keep going",
+                        Prompt = "{X}{X}, hold {RB} then {Y} (Air), let go, {X}",
                         KeyboardPrompt = "{X}{X}, then 4 (Air), keep going",
                         Hint = "RB first, then yellow Y: Air, the fastest, many little hits that circle round the enemy.",
                         KeyboardHint = "Air is the fastest: many little hits that circle round the enemy.",
@@ -127,9 +129,9 @@ namespace VaatusRevenge.Core
                     new TutorialStepData
                     {
                         Id = "10", Title = "Danger sense", Goal = TutorialGoal.DangerResponse, Count = 2, FollowUpWindow = 0.35f,
-                        PartnerAttacks = true,
+                        NeedsParryAndDodge = true, PartnerAttacks = true,
                         Prompt = "Gold = {LB} parry, red = {B} dodge, press when it turns white",
-                        Hint = "Your partner attacks now. The mark above your head points at the attacker."
+                        Hint = "Parry one attack and dodge one. Red is the long, held thrust: it can't be parried. The mark points at the attacker."
                     },
                     new TutorialStepData
                     {

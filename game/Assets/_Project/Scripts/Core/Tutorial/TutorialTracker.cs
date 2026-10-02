@@ -44,6 +44,7 @@ namespace VaatusRevenge.Core
         int armedCount = -1;           // DodgeKeepsCombo: the combo count when the dodge started
         int armedSerial;
         double armedUntil = -1.0;      // SlipInStrike / DangerResponse: the follow-up must come by then
+        bool respondedParry, respondedDodge; // DangerResponse with NeedsParryAndDodge: which kinds have counted
         bool launched;                 // LaunchAndJuggle: the launcher landed in combo 'launchSerial'
         int launchSerial;
         bool switched;                 // SwitchStrikeTo: switched into the step's element in combo 'switchSerial'
@@ -229,6 +230,10 @@ namespace VaatusRevenge.Core
                     else if ((e.Type == PlayerEventType.Deflected || e.Type == PlayerEventType.PerfectDodge)
                              && armedUntil >= 0.0 && clock <= armedUntil + WindowSlack)
                     {
+                        bool parry = e.Type == PlayerEventType.Deflected;
+                        if (step.NeedsParryAndDodge && (parry ? respondedParry : respondedDodge)) break;   // already have one of those
+                        if (parry) respondedParry = true;
+                        else respondedDodge = true;
                         armedUntil = -1.0;
                         Pass(1);
                     }
@@ -316,6 +321,8 @@ namespace VaatusRevenge.Core
             successPauseLeft = 0f;
             armedCount = -1;
             armedUntil = -1.0;
+            respondedParry = false;
+            respondedDodge = false;
             launched = false;
             switched = false;
             lastCountedInstance = 0;

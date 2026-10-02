@@ -613,5 +613,54 @@ namespace VaatusRevenge.Tests
             d.Step(Pad.Dodge, Right);
             Assert.AreEqual(ElementId.Water, d.LastOf(PlayerEventType.DodgeStarted).Element, "the next one is Water's");
         }
+        // Round 7, J7-05: on Fluid B dodges on the press and a hold sprints, so every sprint starts with a dodge. Running
+        // past an enemy (45 or 90 degrees off, nobody locked, nothing incoming) and holding B is a plain dash along the
+        // stick into the sprint: it never slips in to or circles round that enemy.
+        [Test]
+        public void HoldBWhileRunningPastAnEnemyKeepsTheHeading([Values(45f, 90f, 135f)] float enemyAngle, [Values(-1f, 1f)] float side)
+        {
+            PlayerDriver d = PlayerDriver.Elements();
+            d.Run(30, Pad.None, Up);                                     // up to run speed, heading +Z
+            Assert.GreaterOrEqual(Directions.Flatten(d.Model.Velocity).Length(), d.Model.Tuning.RunDodgeMinSpeed, "running");
+            Vector3 start = d.World.Position;
+            float yaw = side * enemyAngle;
+            d.Target(start + Directions.FromYaw(yaw) * 3f);
+            d.Run(40, Pad.Dodge, Up);                                    // hold B: the dodge, then the sprint
+            PlayerEvent dodge = d.LastOf(PlayerEventType.DodgeStarted);
+            Assert.AreEqual(DodgeKind.Traverse, dodge.DodgeKind, "a plain dash along the stick");
+            Vector3 moved = Directions.Flatten(d.World.Position - start);
+            Assert.LessOrEqual(Math.Abs(moved.X), 0.5f, "sideways pull toward / round the enemy");
+            Assert.Greater(moved.Z, 4f, "carried on the way it was running");
+            Assert.AreEqual(PlayerState.Sprinting, d.Model.State, "then sprinting");
+        }
+
+        // ...but the stick pointed at the enemy still slips in, from a standstill the soft-target dodge is unchanged
+        // (tutorial step 5), and locked on the dodge from a run still circles the foe.
+        [Test]
+        public void RunDodgeStillSlipsInAtTheEnemyAndLockOnKeepsTheCircle()
+        {
+            PlayerDriver run = PlayerDriver.Elements();
+            run.Run(30, Pad.None, Up);
+            run.Target(run.World.Position + Directions.FromYaw(10f) * 4f);
+            run.Step(Pad.Dodge, Up);
+            Assert.AreEqual(DodgeKind.SlipIn, run.LastOf(PlayerEventType.DodgeStarted).DodgeKind, "stick within 20 degrees of the foe");
+
+            PlayerDriver still = PlayerDriver.Elements();
+            still.Run(5);
+            still.Target(still.World.Position + Directions.FromYaw(45f) * 4f);
+            still.Step(Pad.Dodge, Up);
+            Assert.AreEqual(DodgeKind.SlipIn, still.LastOf(PlayerEventType.DodgeStarted).DodgeKind, "from a standstill: the slip-in");
+
+            PlayerDriver locked = PlayerDriver.Elements();
+            locked.Run(30, Pad.None, Up);
+            Vector3 foe = locked.World.Position + Directions.FromYaw(-90f) * 3f;
+            locked.Target(foe);
+            locked.LockOn(foe);
+            locked.Step(Pad.Dodge, Up);
+            Assert.AreEqual(DodgeKind.SideSlip, locked.LastOf(PlayerEventType.DodgeStarted).DodgeKind, "locked on: round the foe");
+
+            PlayerDriver punishing = PlayerDriver.Elements(PlayerTuning.CreatePunishing(), ElementLoadout.CreatePunishing());
+            Assert.IsFalse(punishing.Model.Tuning.RunDodgeKeepsHeading, "Punishing dodges on the tap only: unchanged");
+        }
     }
 }

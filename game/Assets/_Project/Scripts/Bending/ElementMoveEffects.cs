@@ -32,7 +32,7 @@ namespace VaatusRevenge
             if (IsAirborneEarth(in e, element))
             {
                 // Earth in the air throws no rock (canon, spec 8.1): every air strike is a push of dust from the limb. Meteor
-                // Drop's spikes rise only where the foe lands (EnemyRigPresenter.OnKnockedDown).
+                // Drop's stone comes only where the foe lands: a ring of stone and dust (EnemyRigPresenter.OnKnockedDown).
                 ElementVfx.Dust(element, limb.position, direction, IsFirstSubHit(in e) ? half : half * s.SubHitBurstShare * 2f);
                 return false;
             }

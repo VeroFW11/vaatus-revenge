@@ -22,7 +22,7 @@ dotnet run --project tools/CombatSim -- help
 |---|---|---|
 | `framedata` | Startup, active, recovery and cancel points of every move, both presets; input to action (and the dodge's i-frames) on the keyboard vs the Xbox pad path: 0 frames added on the pad | < 1 s |
 | `buffer` | When buffered presses fire, which press wins, stale presses, heavy-during-jab charge | < 1 s |
-| `controls` | Dodge tap vs hold, stick dead zone, camera turning during a dodge, sprint attack and plunge conditions, guard/deflect windows, heal | < 1 s |
+| `controls` | Dodge tap vs hold, holding B while running past an enemy at 45 and 90 degrees (round 7: sideways pull <= 0.5 m, MISS otherwise), stick dead zone, camera turning during a dodge, sprint attack and plunge conditions, guard/deflect windows, heal | < 1 s |
 | `abilities` | Fa jin timing (with human timing noise), fa jin after a perfect dodge, damage loops, stamina at zero, Fire Blast vs a strafing target, Momentum, perfect-dodge windows, stagger immunity | ~2 s |
 | `fairness` | Telegraph length vs human reaction, reaction dodges/deflects, unavoidable damage (oracle bot), attack-token release, the platform crossbowman | ~5 min (40 seeds; `--seeds 20` ≈ 2.5 min) |
 | `duels` | Nine bot styles (six from before Build 05 plus `rhythm`, `switcher`, `sense`) vs five enemy groups, both presets, many seeds; then the Xbox pad vs the keyboard for `react`, `anticipate`, `rhythm`, `sense` and `switcher` against one and two soldiers (every press through the game's `PadChordReader`: perfect-dodge rate and damage must match) | ~9 min (40 seeds) |

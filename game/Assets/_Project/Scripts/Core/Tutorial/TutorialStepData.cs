@@ -27,6 +27,8 @@ namespace VaatusRevenge.Core
         public int MinMixLevel;                    // MixFinisher, BigMixedCombo: distinct elements landed
         public float MinStartDistance;             // SlipInStrike: metres to the partner when the dodge starts
         public float FollowUpWindow;               // SlipInStrike, DangerResponse: seconds allowed for the follow-up
+        public bool NeedsParryAndDodge;            // DangerResponse: at least one deflect AND one perfect dodge (a second of the
+                                                   // same kind doesn't light a pip), so both colours of the mark get used
 
         // SwitchStrikeTo only: shown instead of Hint while the player is already in Element (a switch to the element you
         // are in does nothing, so they need to leave it first).

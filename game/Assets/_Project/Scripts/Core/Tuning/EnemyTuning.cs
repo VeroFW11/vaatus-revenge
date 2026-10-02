@@ -11,6 +11,11 @@ namespace VaatusRevenge.Core
     [Serializable]
     public class EnemyTuning
     {
+        // Which version of the game's enemy numbers this was saved with (the sandbox builder offers to update an asset
+        // whose DataVersion is behind). A field missing from an old asset keeps its initialiser, so it reads 0.
+        public int DataVersion = 0;
+        public const int CurrentDataVersion = 1;     // 1: Build 05 verify round 7 (Delayed Thrust can't be parried: danger sense's red)
+
         public string DisplayName = "Dao Soldier";   // shown on health bars; lore names live here, never in code
         public EnemyArchetype Archetype = EnemyArchetype.Melee;
 
@@ -82,7 +87,7 @@ namespace VaatusRevenge.Core
 
         public static EnemyTuning CreateDaoSoldier()
         {
-            return new EnemyTuning();
+            return new EnemyTuning { DataVersion = CurrentDataVersion };
         }
 
         // The tutorial's sparring partner: a Dao Soldier who can't die and can be launched. The tutorial switches its
@@ -98,7 +103,7 @@ namespace VaatusRevenge.Core
 
         public static EnemyTuning CreateCrossbowman()
         {
-            var t = new EnemyTuning();
+            var t = new EnemyTuning { DataVersion = CurrentDataVersion };
             t.DisplayName = "Crossbowman";
             t.Archetype = EnemyArchetype.Ranged;
             t.MaxHealth = 70f;
@@ -130,7 +135,7 @@ namespace VaatusRevenge.Core
 
         public static EnemyTuning CreateSparringDummy()
         {
-            var t = new EnemyTuning();
+            var t = new EnemyTuning { DataVersion = CurrentDataVersion };
             t.DisplayName = "Sparring Dummy";
             t.Archetype = EnemyArchetype.Dummy;
             t.MaxHealth = 200f;
@@ -181,6 +186,10 @@ namespace VaatusRevenge.Core
             thrust.AnimationKey = AnimationKeys.SwordThrust;
             thrust.HyperArmor = true;
             thrust.HyperArmorFrom = thrust.Startup * 0.5f;
+            // A perilous thrust: it can't be parried (Earth's block still soaks it), so danger sense shows RED and the
+            // wind-up glows red: dodge it. Its held wind-up punishes a panic dodge on the glow, while a dodge on the
+            // white "now" cue beats it (round 7, J7-03: before this nothing in the game was red).
+            thrust.Parryable = false;
             return new[]
             {
                 new EnemyAttackData

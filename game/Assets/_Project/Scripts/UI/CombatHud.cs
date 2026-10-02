@@ -269,6 +269,10 @@ namespace VaatusRevenge
 
         // ---- Top-left: the player ----
 
+        // Where the health / stamina / Momentum bars (and the multiplier beside them) were drawn last frame, in GUI pixels:
+        // the tutorial panel at the top centre keeps clear of it on narrow screens (4:3, 16:10; round 7, S7-17).
+        public Rect PlayerBarsRect { get; private set; }
+
         void DrawPlayerPanel(PlayerController player)
         {
             float x = Margin;
@@ -336,6 +340,7 @@ namespace VaatusRevenge
                 y += painter.U(5f);
             }
 
+            PlayerBarsRect = new Rect(x, Margin, painter.U(450f), y - Margin);   // 320 bar + 10 gap + 120 label (health is 380)
             DrawHealCharges(x, y, player.HealCharges, player.MaxHealCharges);
             y += painter.U(26f);
 

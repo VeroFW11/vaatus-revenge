@@ -253,6 +253,7 @@ namespace VaatusRevenge
 
             // One look source per frame: the mouse when it moved, unless the stick is clearly tilted. A stick
             // resting just past its dead zone (worn or drifting) must not block the mouse.
+            ElementId keyPick = elementPick != ElementId.None ? ElementId.None : ReadElementSelect();
             bool stickTilted = stickLook.sqrMagnitude > GamepadActivityTilt * GamepadActivityTilt;
             bool useMouse = mouseLook.sqrMagnitude > 0f && !stickTilted;
             frame = new PlayerInputFrame
@@ -273,8 +274,8 @@ namespace VaatusRevenge
                 LockOn = lockOnButton,
                 SwapShoulder = swapShoulderButton,
                 SwitchTargetDelta = ReadSwitchDelta(scroll),
-                ElementSelect = elementPick != ElementId.None ? elementPick : ReadElementSelect(),
-                ElementSelectOffAttack = elementPick != ElementId.None && chord.ElementSelectOffAttack,
+                ElementSelect = elementPick != ElementId.None ? elementPick : keyPick,
+                ElementSelectOffAttack = PadChordReader.PickIsOffAttack(elementPick, chord.ElementSelectOffAttack, keyPick),
             };
         }
 

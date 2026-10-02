@@ -50,7 +50,7 @@ Each step shows the buttons as pictures, counts your progress, and chimes when y
 | **X** | Attack. Tap in rhythm for the 5-hit string. **X X (wait) X X** = pause finisher (NEW). In the air: air string |
 | Hold **X** | Launcher (throws the enemy up, you follow); keep holding any string press before the finisher for LauncherHoldTime (timed from when that hit starts) and the launcher follows that hit. Holding the finisher's press does nothing extra: the finisher always plays (J6-03) |
 | **Y** | Zip strike to a far enemy (keeps your combo going) |
-| **B** | Tap: dodge (stick decides slip-in, evade-out or side-step; NEW). Hold: sprint. **X late in a dodge = dodge strike** (NEW) |
+| **B** | Tap: dodge (stick decides slip-in, evade-out or side-step; NEW). Hold: sprint (on Fluid the press dodges at once, so a sprint starts with a dash; from a run, with nobody locked and nothing incoming, that dash keeps your heading instead of slipping in or circling round a nearby enemy: round 7). **X late in a dodge = dodge strike** (NEW) |
 | **A** | Jump |
 | Tap **LB** | Parry. Earth only: hold LB to block |
 | Tap **RB** | Ranged skill of the current element |
@@ -338,7 +338,9 @@ preset's lead times.
   `clock > Impact + ClearAfterImpact` or cancelled → drop, `DangerCleared` if warned. A strike registered with less time left than a
   lead fires that event immediately.
 - Warnings track the **strike**, not the wind-up: the Dao Soldier's Delayed Thrust warns late, so reacting to the sense beats it while
-  panicking on the glow is still punished.
+  panicking on the glow is still punished. Since round 7 the Delayed Thrust is **unparryable** (`Parryable = false`, Earth's block
+  still soaks it), so it is the sandbox's red mark, and the enemy's wind-up glow follows the same rule (`TelegraphLook`: red only for
+  must-dodge attacks, parryable heavies glow amber).
 - Danger events never touch the string; dodging on Now keeps string memory and the counter window gives an `Auto` follow-up.
 
 | `PlayerTuning.DangerSense` | Fluid | Punishing |
@@ -442,7 +444,7 @@ gravity .28 / dash 3.6.
 | Launcher | Rising Pillar | `pillar_uppercut` / `pillar` | .20/.12/.40 | — | .32/.32 | 10 | 14 | 2.8/90, VR 1.6 | .2 | L 11, SL 9.5 | 13 | HyperArmor from .08 |
 | Air 1 | Hammer Fist | `air_hammer` / `burst` | .10/.10/.26 | .14-.40 | .20/.18 | 8 | 7 | 2.4/80, VR 1.8 | .3 | AL 3.0, SL 3.0 | 7 | martial strike, dust VFX only (§7) |
 | Air 2 | Tiger Tail Kick | `air_back_kick` / `trail` | .14/.10/.30 | .18-.46 | .26/.22 | 10 | 9 | 2.6/120, VR 1.8 | .3 | AL 3.0, SL 3.0 | 8 | dust only |
-| Air 3 | Meteor Drop | `air_meteor` / `slam` | .18/.12/.38 | — | .44/.32 | 15 | 22 | 2.8/160, VR 2.2 | .2 | Sl 20, SL 1.0 | 10 | spikes appear on landing only |
+| Air 3 | Meteor Drop | `air_meteor` / `slam` | .18/.12/.38 | — | .44/.32 | 15 | 22 | 2.8/160, VR 2.2 | .2 | Sl 20, SL 1.0 | 10 | stone only where the foe lands: a ring of stone and dust (the knockdown slam) |
 | Plunge | Earthquake Drop | `quake_drop` / `stomp` | R .60 | — | .60/.40 | 22 | 30 | ring 2.6 | — | Hang .06, Fall 22 | 18 | HyperArmor, KB 1.2 |
 | LB+X heavy | Mountain Fa Jin | `root_fajin` / `line` | .30/.16/.60 | — | 1.0/.44 | 24 | 34 | 6.0/30 | .2 | — | 24 | HyperArmor, GSD 40, KB 1.8. Charge: Max 1.5, sweet .90-1.15, FaJin ×2.0 / poise ×2.0 |
 | LB+Y | Stone Spike Line | `spike_line` / `line` | .26/.20/.44 | — | .62/.40 | 14 | 16 | 8.0/18 | 0 | L 7 | 18 | GSD 18 |
@@ -867,9 +869,9 @@ Active 0 with `PoseEase.Snap`; dodge clips facing the fight; the multi-hit moves
   | 5 | Slip in: "from range, stick toward the target + {B}, then {X}" | `DodgeStarted` SlipIn starting ≥ 4 m away, `ComboHit` within 0.6 s | 2 |
   | 6 | Dodge strike: "{X} late in a dodge" | `ComboHit` Branch DodgeStrike | 2 |
   | 7 | Launch & juggle: "hold {X}, then {X}{X}{X} in the air" (partner) | Launcher `ComboHit`, then air-chain last index `ComboHit` with InAir | 1 |
-  | 8 / 8b / 8c | Switch mid-combo: "{X}{X}, {RB}+{X} (Water), keep going"; then {RB}+{A} Earth; {RB}+{Y} Air | `ElementSwitched` IsSwitchStrike to that element, then a `ComboHit` in it, same combo | 1 each |
+  | 8 / 8b / 8c | Switch mid-combo: "{X}{X}, hold {RB} then {X} (Water), let go, {X}"; then {RB} then {A} Earth; {RB} then {Y} Air | `ElementSwitched` IsSwitchStrike to that element, then a `ComboHit` in it, same combo | 1 each |
   | 9 | MIX finisher: "finish a string after mixing two elements" | `MixFinisher` with Count ≥ 2 | 1 |
-  | 10 | Danger sense: "gold = {LB} parry, red = {B} dodge, press when it turns white" (partner attacks) | `Deflected` or `PerfectDodge` within 0.35 s after a `DangerNow` | 2 |
+  | 10 | Danger sense: "gold = {LB} parry, red = {B} dodge, press when it turns white" (partner attacks) | one `Deflected` and one `PerfectDodge` (`NeedsParryAndDodge`), each within 0.35 s after a `DangerNow` | 2 |
   | 11 | Graduation: "20-hit combo using 3 elements" | ComboCount ≥ 20 with MixLevel ≥ 3 | 1 |
 
 - **F1 overlay**: F1 cycles closed → page 1 "Rhythm & Mixing" (glyph strings: `X·X·X·X·X` press as the ring touches; `X·X·(wait)·X·X`;
@@ -1002,7 +1004,7 @@ playback rate in `[Min, Max]`; every `DangerWarning` followed by impact or `Dang
 ### 6.5 Feel checklist for David and Jeremy (Fluid, gamepad)
 1. X X, B away, X: the next hit is hit 3 (the hit counter reads 3 as the dodge strike lands), and the dodge strike dashes back in.
 2. Dodge in the middle of a hit's wind-up, then X: the same hit comes out again (not skipped).
-3. X X RB+X X X: two Fire hits, three Water hits ending on Water's finisher; the combo count never resets.
+3. X X, hold RB then X, let go, X X: two Fire hits, three Water hits ending on Water's finisher; the combo count never resets.
 4. Pressing X as the gold ring touches the circle makes the string visibly faster than mashing; mashing still finishes the string.
 5. X X (wait for the blue circle) X X gives the pause finisher every time, in every element, and never by accident while mashing.
 6. Dodging next to an enemy never turns your back to it; with no enemy nearby the dodge goes where you push.
@@ -1022,7 +1024,7 @@ playback rate in `[Min, Max]`; every `DangerWarning` followed by impact or `Dang
 | Water counter named "Return the Tide"; Tai Chi yielding | OK. Never use the word "redirect" in UI, names or code identifiers (lightning redirection is Iroh's, much later) |
 | Earth: columns, spikes, earth wave, surfing, boulders, tent / dome | OK, basic earthbending. **Decision (verify round 4):** a thrown boulder (Boulder Toss, Boulder Hurl) is drawn up out of the ground under its launch point over the throw's wind-up and thrown from there; it is never conjured in the air or at chest height from nothing, and in the air Earth throws nothing but dust (§8.4 item 5) |
 | Water's source | **Open for David:** Water bends water and ice from nothing (even mid-air) and the Avatar carries no water skin. Record one: a water skin on the sash, water in every arena, or an accepted game abstraction |
-| Earth air string | Canon earthbenders can't bend airborne without rock in hand: Earth's air hits are **pure Hung Gar strikes with dust only**; Meteor Drop spikes appear on landing. FLAG for David (alternative: chunks torn off by Rising Pillar) |
+| Earth air string | Canon earthbenders can't bend airborne without rock in hand: Earth's air hits are **pure Hung Gar strikes with dust only**; Meteor Drop's stone appears only where the foe lands (a ring of stone and dust). FLAG for David (alternative: chunks torn off by Rising Pillar) |
 | Earth hyper armour | OK as stance / rooting, **not** earth armour (no rock on the body). Earth gloves (Dai Li), lavabending, sandbending, seismic sense: not used |
 | Air: blasts, swipes, shield, vortex, gust leaps, soft landing | OK, ancient (taught by sky bison) |
 | Air Blade | Low risk (seen in the original series, not a Zaheer invention); FLAG for David |
@@ -1087,7 +1089,8 @@ brief is about. These calls were made to fix it (Jeremy and David: please try th
    ring at the player's feet is on by default (CombatHud). **Open for Jeremy:** Fluid `BeatLate` 0.10 → 0.15 would forgive
    reaction presses; not changed.
 3. **Element switch cooldown 0.30 → 0.20 s (Fluid), 0.60 → 0.45 s (Punishing).** "One X between two switches" now holds in every
-   element order on Fluid (Air's quick hit in the middle used to be refused); Punishing needs two X. A refused switch, and an RB pick
+   element order on Fluid (Air's quick hit in the middle used to be refused); Punishing needs two X (one X is refused whenever
+   Fire or Air is the element in the middle; tested by `PunishingOneXBetweenSwitchesIsRefusedWithFireOrAirInTheMiddle`). A refused switch, and an RB pick
    of the element already in hand, **shake the element wheel** (cooldown: its dots flash amber); a same-element pick mid-string now
    carries the string on (it used to be swallowed).
 4. **Arriving lunges.** A stretched (gap-closing) lunge, including the dodge strike dashing back in after an evade-out, and any own
@@ -1300,3 +1303,41 @@ Still open:
    skate (S03), a reduced-speed turn after an evade-out with the stick held (S04: the sideways sprint is down from 1.08 m to 0.92 m
    apart with the world-space heading), the side-slip and zip-strike polish (S05), CombatSim's sticky-RB pad (S09) and the colour
    polish (S10).
+
+### 8.8 Build 05 verify round 7 (2 Oct): a parry with RB held, feet that never jump, a real red mark, honest switch advice
+
+1. **Hold RB, then parry: the parry still works** (J7-01). LB pressed while RB is held means RB was a modifier, so letting
+   go of RB no longer fires the ranged skill (which used to cancel the guard and let the hit land). `PadChordReader`;
+   `PadChordReaderTests.RbHeldThenLbTapThenReleaseFiresNoSkill`, `PadChordModelTests.ParryWithRbHeldStillDeflects` and
+   `EarthBlockWithRbReleasedMidHoldStaysUp`.
+2. **No foot jumps along the floor** (J7-02). A foot near the floor (ankle under `AnimatorSettings.ReleaseStepHeight`, 0.2 m,
+   this frame or the last) moves at most `MaxReleaseStep` (0.25 m) over the ground in one frame; one that would go further is
+   held back, lifted clear and catches up in the air (`FighterAnimator.LimitFeetGlide`, after the solve, kicks and lunge
+   strides aside). Every dodge start used to leave the feet planted for a frame, then jump them 0.4-0.7 m. The `anim`
+   scenario now fails a foot below 0.2 m moving over 0.3 m in one frame (about 90 such frames in the round 6 trace, 0 now);
+   `AnimationTests.DodgeStartsNeverJumpAFootAlongTheFloor`. The plain dodge clip (Traverse) keeps its feet lower, so a 4 m
+   dash from a run no longer hovers both feet over 0.2 m.
+3. **Red is real** (J7-03; **Jeremy, please confirm** option (a) of the review): the Dao Soldier's **Delayed Thrust can't be
+   parried** (Earth's block still soaks it), so danger sense shows a red mark for it, and the enemy's wind-up glow follows the
+   same rule (`TelegraphLook`): red only for a must-dodge attack, parryable heavies now glow **amber** (gold family). Tutorial
+   step 10 needs one parry and one dodge (`NeedsParryAndDodge`); How-To-Play and the step 10 hint name the thrust.
+   `EnemyTuning.DataVersion` 1 (new): the sandbox builder offers to update the soldier and tutorial partner assets.
+   (Option (b), keeping every attack parryable and recolouring the red glows gold, is a revert of `thrust.Parryable = false`.)
+4. **Punishing switch advice** (J7-04): How-To-Play says two X between switches on Punishing (or the pause), as this spec
+   always did; one X is refused whenever Fire or Air is in the middle (`PunishingOneXBetweenSwitchesIsRefusedWithFireOrAirInTheMiddle`).
+5. **Hold B to sprint keeps your heading** (J7-05; **Jeremy, please confirm**): on Fluid the press still dodges at once, but
+   from a run (`PlayerTuning.RunDodgeMinSpeed` 3.5 m/s), with nobody locked and no strike coming, the dodge is a plain dash
+   along the stick, unless the stick points within `RunDodgeSlipInAngle` (20 degrees) of the enemy. Locked on, under attack or
+   from a standstill the dodge works as before (slip-in, circle, evade-out, auto-evade; tutorial step 5 unchanged). This
+   narrows the review's option (a) so the unlocked slip-in still works. `PlayerTuning.CurrentDataVersion` 8. `controls` has a
+   "hold B while running past an enemy" table (sideways pull <= 0.5 m).
+6. Should-fix: number keys are never the attack button (S7-01: the key of the element you're in, mid-string, shakes the wheel);
+   no one-frame "continue" island after the combo window (S7-02); the legs follow the character controller's real velocity
+   while walking (S7-06, Unity); tutorial 8/8b/8c say "let go" of RB and step 6's hint says the finisher comes after hit 4
+   (S7-09, S7-10; `TutorialScript.CurrentDataVersion` 7); switch flash colours at least 40 degrees apart in hue
+   (`ElementSwitchPalette`, S7-12: Earth olive green, Air pale lavender); Earth's hit pop is dust, not light (S7-13); the
+   tutorial panel keeps clear of the player's bars on 4:3 and 16:10 (S7-17); the `anim` trace draws plunge landings as
+   Unity does (S7-18); Meteor Drop's "spikes" are described as the ring of stone and dust it really makes (S7-16); the
+   character README says the generated model's source is lost and recommends Blender (S7-14); the flame-pendant lore
+   question is in 01-Lore (S7-15). Left for Jeremy or later: S7-03 (one-frame dead stop at action starts), S7-04
+   (point-blank slip-in), S7-05 (trailing foot slide on stops), S7-07 (launched enemy pop), S7-08 (MIX 3 launch on Fluid).

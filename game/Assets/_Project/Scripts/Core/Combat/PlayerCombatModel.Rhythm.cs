@@ -142,7 +142,9 @@ namespace VaatusRevenge.Core
         // ---------------------------------------------------------------- string memory
 
         // On the way out of a string move (finished or cut short): note where the string goes next.
-        void RememberString()
+        // interrupted: the move was cut short by another action (a dodge, zip, ability, jump, switch strike) that may hold
+        // the string this same tick; false when it ran its course.
+        void RememberString(bool interrupted)
         {
             MoveData move = currentMove;
             if (move == null || chainIndex < 0) return;
@@ -155,9 +157,12 @@ namespace VaatusRevenge.Core
             {
                 NextSlot(chainBranch, chainIndex, moveIsChainFinisher, out stringBranch, out stringNext);
             }
-            // A move that runs its course keeps the string for its old grace: a combo window reaching past its end.
+            // A move that runs its course keeps the string for its old grace: a combo window reaching past its end. A window
+            // that closed before the move ran its course leaves no memory at all: 'clock + 0' kept the string for the one
+            // frame the move ended on, an island where a late X continued while the frames either side restarted (round 7,
+            // S7-02). A move cut short by another action keeps it for this tick, so that action can hold the string.
             float grace = Math.Max(0f, move.ComboWindowEnd - move.TotalDuration) / Math.Max(attackPlaybackRate, Epsilon);
-            stringMemoryUntil = clock + grace;
+            stringMemoryUntil = grace > 0f || interrupted ? clock + grace : double.NegativeInfinity;
             stringHeld = false;
         }
 

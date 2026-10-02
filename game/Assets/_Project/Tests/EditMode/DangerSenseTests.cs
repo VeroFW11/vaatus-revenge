@@ -267,5 +267,30 @@ namespace VaatusRevenge.Tests
             Assert.AreEqual(3, second.AttackerId, "once it has landed, the next one");
             Assert.AreEqual(2, d.Model.PendingThreatCount);
         }
+        // Round 7, J7-03: the sandbox roster (soldier, crossbowman, tutorial partner) has at least one must-dodge attack,
+        // so the red mark tutorial step 10, F1 and How-To-Play teach can really appear; and only a must-dodge attack glows
+        // the red the mark uses (TelegraphLook), so the glow and the mark never disagree.
+        [Test]
+        public void SandboxRosterHasAMustDodgeAttackAndOnlyItGlowsRed()
+        {
+            int mustDodge = 0;
+            foreach (EnemyTuning t in new[] { EnemyTuning.CreateDaoSoldier(), EnemyTuning.CreateCrossbowman(), EnemyTuning.CreateTutorialPartner() })
+            {
+                foreach (EnemyAttackData a in t.Attacks)
+                {
+                    if (a.Move.MustDodge) mustDodge++;
+                    Assert.AreEqual(a.Move.MustDodge, TelegraphLook.GlowsMustDodgeRed(a.Telegraph, a.Move), t.DisplayName + " " + a.Move.DisplayName);
+                }
+                Assert.IsFalse(TelegraphLook.GlowsMustDodgeRed(t.BreakOut.Attack.Telegraph, t.BreakOut.Attack.Move), "the break-out keeps its violet");
+                Assert.AreEqual(EnemyTuning.CurrentDataVersion, t.DataVersion, t.DisplayName + " seeds the current DataVersion");
+            }
+            Assert.GreaterOrEqual(mustDodge, 2, "the soldier's and the partner's Delayed Thrust");
+            // IncomingStrike's and MoveData's rule are the same rule.
+            var move = new MoveData { Parryable = false };
+            Assert.IsTrue(move.MustDodge);
+            Assert.IsTrue(new IncomingStrike { Parryable = move.Parryable, Unblockable = move.Unblockable }.MustDodge);
+            Assert.IsTrue(new MoveData { Unblockable = true }.MustDodge);
+            Assert.IsFalse(new MoveData().MustDodge);
+        }
     }
 }

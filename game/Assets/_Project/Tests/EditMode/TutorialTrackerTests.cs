@@ -816,6 +816,31 @@ namespace VaatusRevenge.Tests
             AssertStepPassed(r, "10");
         }
 
+        // Round 7, J7-03: step 10 needs one parry AND one dodge: a second parry doesn't light the second pip.
+        [Test]
+        public void Step10NeedsOneParryAndOneDodge()
+        {
+            var r = new Rig("10");
+            const float Reaction = 0.22f;
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                IncomingStrike strike = DangerSenseTests.Strike(r.D, 7, 1.0f, attempt, true);
+                r.D.Model.NotifyIncomingStrike(strike);
+                int nows = r.D.Count(PlayerEventType.DangerNow);
+                r.RunUntil(x => x.D.Count(PlayerEventType.DangerNow) > nows, 90);
+                r.Run(Reaction);
+                r.Frame(Pad.Guard);
+                r.RunUntil(x => x.D.Model.Clock >= strike.ImpactClock - 1e-6, 30);
+                r.D.Model.ReceiveHit(PlayerDriver.EnemyHit(10f, 5f, r.D.Model.Forward, true), r.D.Model.Forward);
+                r.Frame();
+                Assert.AreEqual(attempt + 1, r.D.Count(PlayerEventType.Deflected), "deflected");
+                Assert.AreEqual(1, r.T.Progress, "only the first parry counts");
+                r.SettleToLocomotion();
+                r.Run(0.5f);
+            }
+            Assert.AreEqual("10", r.StepId, "still on step 10: it needs a dodge too");
+        }
+
         // ---------------------------------------------------------------- docs/Prototype/How-To-Play.md recipes
 
         // Presses X, then each follow-up on the beat: None = X, an element = RB + its button. Ends with the last move started.

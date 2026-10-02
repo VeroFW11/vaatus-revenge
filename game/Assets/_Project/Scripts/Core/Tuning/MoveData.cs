@@ -34,6 +34,8 @@ namespace VaatusRevenge.Core
         public float Hitstop = 0.035f;               // freeze-frame on impact; sells the weight of the hit
         public bool Parryable = true;                // can be deflected
         public bool Unblockable = false;             // ignores guard (can still be dodged)
+        // Danger sense's red mark (and the enemy's red wind-up glow): this one has to be dodged. Gold otherwise.
+        public bool MustDodge => !Parryable || Unblockable;
 
         // --- Reach (the strike is an arc in front of the attacker) ---
         public float Range = 2.6f;                   // metres from the strike origin to the target's body

@@ -24,6 +24,8 @@ namespace VaatusRevenge
 
         // Layout in 1080p reference pixels.
         const float Width = 820f;
+        const float MinWidth = 560f;     // narrower than this, the panel goes below the player's bars instead
+        const float AvoidGap = 12f;
         const float TopMargin = 22f;
         const float Pad = 18f;
         const float HeaderHeight = 38f;
@@ -91,6 +93,13 @@ namespace VaatusRevenge
 
         public void Draw(HudPainter p, TutorialTracker tracker, bool gamepad, float quitHold01, Color accent)
         {
+            Draw(p, tracker, gamepad, quitHold01, accent, Rect.zero);
+        }
+
+        // avoid: the player's bars at the top left (CombatHud.PlayerBarsRect). On a narrow screen (4:3, 16:10) the panel
+        // narrows to stay clear of them, or, if that would make it too narrow, goes below them (round 7, S7-17).
+        public void Draw(HudPainter p, TutorialTracker tracker, bool gamepad, float quitHold01, Color accent, Rect avoid)
+        {
             if (p == null || tracker == null || !tracker.IsRunning) return;
             Bind(tracker.Script);
             int index = tracker.StepIndex;
@@ -104,12 +113,19 @@ namespace VaatusRevenge
             bool hasHint = hint.Source.Length > 0;
 
             float width = Mathf.Min(p.U(Width), Screen.width - p.U(TopMargin) * 2f);
+            float top = p.U(TopMargin);
+            if (avoid.width > 0f && (Screen.width - width) * 0.5f < avoid.xMax + p.U(AvoidGap) && top < avoid.yMax)
+            {
+                float clear = Screen.width - 2f * (avoid.xMax + p.U(AvoidGap));
+                if (clear >= p.U(MinWidth)) width = clear;
+                else top = avoid.yMax + p.U(AvoidGap);
+            }
             float inner = width - p.U(Pad) * 2f;
             float hintLine = p.U(HintLineHeight);
             float hintHeight = hasHint ? hint.WrappedHeight(p, hintLine, gamepad, inner) + p.U(HintPad) * 2f : 0f;
             float height = p.U(Pad * 2f + HeaderHeight + PromptHeight + RowGap + PipSize + RowGap + FooterHeight)
                            + (hasHint ? hintHeight + p.U(RowGap) : 0f);
-            var panel = new Rect((Screen.width - width) * 0.5f, p.U(TopMargin), width, height);
+            var panel = new Rect((Screen.width - width) * 0.5f, top, width, height);
             Bottom = panel.yMax;
             p.Fill(panel, PanelColor);
             p.Outline(panel, Mathf.Max(1f, p.U(1.5f)), OutlineColor);

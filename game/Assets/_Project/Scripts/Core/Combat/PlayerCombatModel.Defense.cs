@@ -11,7 +11,8 @@ namespace VaatusRevenge.Core
     //   stick against the direction to it picks the kind (DodgeKind): toward = SlipIn (stops SlipInStopGap from its body),
     //   away = EvadeOut, sideways = SideSlip (round it), neutral = AutoEvade (a strike about to land: a side-step across
     //   its path, away from the other enemies) or Backstep. With nobody near, you dash along the stick facing the dash
-    //   (Traverse). A stick held as the dodge ends carries you on at RunSpeed x ExitSpeedCarry. ChainMax dodges in a row
+    //   (Traverse); the same from a run (Fluid's hold-B sprint starts with a dodge) when nobody is locked, no strike is
+    //   coming and the stick isn't pointed at the foe (PlayerTuning.RunDodgeKeepsHeading). A stick held as the dodge ends carries you on at RunSpeed x ExitSpeedCarry. ChainMax dodges in a row
     //   (each starting within ChainLink of the last one ending) are followed by ChainCooldown with no dodge
     //   (DodgeChainLimited). Dodging never drops the string (see .Rhythm): X late in a dodge is the dodge strike.
     // I-FRAMES: during part of a dodge, hits pass through you ("invincibility frames"). A new dodge's
@@ -45,6 +46,7 @@ namespace VaatusRevenge.Core
         bool lastDodgeWasAir;
         float sideSlipRadius;         // a side-slip circles its focus at this distance (centre to centre)...
         float sideSlipSign;           // ...this way round (+1 = the offset's yaw grows)
+        bool dodgeFromRun;            // B went down while running (PlayerTuning.RunDodgeKeepsHeading)
 
         // Whom a dodge faces (see the top of the file). Kept by source, so a dodge keeps tracking the same enemy.
         enum FocusSource { None, Lock, Threat, Soft, Nearest }
@@ -152,6 +154,9 @@ namespace VaatusRevenge.Core
         void StartDodge(in PlayerWorldState world, bool inAir)
         {
             bool chained = state == PlayerState.Dodging || clock - lastDodgeEndClock <= NextDodge.ChainLink + 1e-6;
+            // Running when B went down (see PlayerTuning.RunDodgeKeepsHeading): read before the action resets anything.
+            dodgeFromRun = !inAir && (state == PlayerState.Locomotion || state == PlayerState.Sprinting) && grounded
+                           && Directions.Flatten(moveVelocity).Length() >= Math.Max(0f, tuning.RunDodgeMinSpeed);
             ExitAction(true);
             state = PlayerState.Dodging;
             DodgeProfile dodge = Dodge;                      // the active element's (actionSet was just set to it)
@@ -190,6 +195,14 @@ namespace VaatusRevenge.Core
             bool hasStick = stickLength > Math.Max(tuning.StickDeadzone, Epsilon);
             Vector3 stickDir = hasStick ? stick / stickLength : Vector3.Zero;
             dodgeHasFocus = TryGetFocusTarget(world, out dodgeFocus);
+            // A dodge from a run, with nobody locked and no strike coming (the focus is only the soft / nearest target) and
+            // the stick not pointed at that foe: a plain dash along the stick, as with nobody near (round 7, J7-05).
+            if (dodgeHasFocus && dodgeFromRun && hasStick && tuning.RunDodgeKeepsHeading
+                && (dodgeFocus.Source == FocusSource.Soft || dodgeFocus.Source == FocusSource.Nearest)
+                && AngleBetween(stickDir, Directions.Flatten(dodgeFocus.Position - world.Position)) > tuning.RunDodgeSlipInAngle)
+            {
+                dodgeHasFocus = false;
+            }
             Vector3 toFocus = Vector3.Zero;
             if (dodgeHasFocus)
             {

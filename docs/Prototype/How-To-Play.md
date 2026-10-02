@@ -6,7 +6,7 @@ A one-page guide for the combat sandbox. Xbox buttons. The fastest way to learn 
 
 1. **Press X so it lands with each hit.** Every element has a five-hit string on X. Gold rings close on a circle (under the hit counter, and on the floor at your feet): press each time a ring touches, so your press lands *with* the hit. The ring for the next hit is already on its way (fainter, further out) while the current one closes, so you can see the rhythm coming instead of reacting to it; only the very first press after the opening X comes quickly. Don't wait for the flash and the chime: they only confirm a hit on the beat (they come as that hit starts, so a press that a second, mashed press spoils never chimes), and reacting to them is too late. On the beat, the next hit comes out faster and harder. Mashing still works, but it's a little slower and weaker, and it burns stamina so fast your string stalls. On Fluid, keep the beat for all five and the last hit knocks them up.
 2. **Wait for a different ending.** X, X, then wait until your hands are back in guard and **the circle glows blue**, then X X. That's the **pause finisher**: a different two-hit ending. (The wait is a little different in each element, so go by the blue circle, not by counting. On Punishing the blue lasts only about a quarter of a second: press as it turns blue.)
-3. **Dodging doesn't break your combo.** Tap B. Push the stick toward the enemy and you slip in close; push away and you hop back; push sideways and you circle. If you were on hit 3, your next X is hit 4, as long as you press it soon after the dodge ends (within about half a second; a third of a second on Punishing). Press **X near the end of a dodge** and you dash back in with a counter (the **dodge strike**), which counts as the next hit. You get **a few dodges in a row** (Earth two, Fire and Water three, Air four; two in every element on Punishing), then a short breath (the stamina bar's outline flashes and the pad gives a light thud) before the next one.
+3. **Dodging doesn't break your combo.** Tap B. Push the stick toward the enemy and you slip in close; push away and you hop back; push sideways and you circle. (Hold B to sprint. On Fluid a sprint starts with a quick dash; when you're already running, not locked on and nothing is coming at you, that dash keeps going the way you run instead of swinging round an enemy you pass, unless you point the stick right at them.) If you were on hit 3, your next X is hit 4, as long as you press it soon after the dodge ends (within about half a second; a third of a second on Punishing). Press **X near the end of a dodge** and you dash back in with a counter (the **dodge strike**), which counts as the next hit. You get **a few dodges in a row** (Earth two, Fire and Water three, Air four; two in every element on Punishing), then a short breath (the stamina bar's outline flashes and the pad gives a light thud) before the next one.
 4. **Switch element mid-string.** **Hold RB first, then press** a face button (like Spider-Man 2's L1 + a button for a gadget). **The button's colour is the element:**
 
 | Hold RB, then | Element | Plays like |
@@ -26,7 +26,7 @@ Every element that **lands a hit** in one combo adds to MIX (shown next to the h
 - **3 elements:** the finisher throws them in the air.
 - **4 elements:** the finisher launches them too and tops up Fire's Momentum. A foe too heavy to launch has its guard broken instead (it staggers).
 
-Switching on its own earns nothing: the new element has to land a hit. Switching has a short cooldown, so put at least one X between two switches. On Punishing one X is usually enough too, except after switching into Air (its hits are quick): then put two X before the next switch, or use the pause. If a switch doesn't happen, the element wheel shakes and its cooldown dots flash amber: the X still counts, in the element you were in.
+Switching on its own earns nothing: the new element has to land a hit. Switching has a short cooldown, so put at least one X between two switches. On Punishing the cooldown is longer: put two X between switches, or use the pause (wait for the blue circle) to make room. If a switch doesn't happen, the element wheel shakes and its cooldown dots flash amber: the X still counts, in the element you were in.
 
 ## Other buttons
 
@@ -41,7 +41,7 @@ Switching on its own earns nothing: the new element has to land a hit. Switching
 | D-pad down | Heal |
 | Menu (Esc) | Pause / resume. On the pause screen, Y pages through the combos and controls (the F1 pages) |
 
-**The mark above your head** is danger sense: an enemy is about to hit you. **Gold** = you can parry it (LB). **Red** = dodge it (B). On Fluid it **turns white** at the moment to press; on Punishing there is no white flash, so read the swing.
+**The mark above your head** is danger sense: an enemy is about to hit you. **Gold** = you can parry it (LB). **Red** = dodge it (B). On Fluid it **turns white** at the moment to press; on Punishing there is no white flash, so read the swing. The enemy's wind-up glow uses the same colours: yellow or amber can be parried, **red can't**. For now the only red attack is the soldier's **Delayed Thrust** (a long, held wind-up, then a lunge): don't dodge on the glow, dodge on the white. (In Earth your block still soaks it.)
 
 ## Try this
 

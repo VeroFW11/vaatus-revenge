@@ -21,12 +21,14 @@ other person doesn't change it at the same time:
 
 Who: **David** (the art owner) fetches the file; nothing in the game waits on it.
 
-- **The generated model:** the session that made it could not download from the image host. Either allow the host in the
-  Claude environment's network policy (Build 05 spec, §8 open question 3) and ask Claude to fetch it again, or download it
-  by hand from the generation page and put it at the path above.
-- **Or make one in Blender:** any humanoid character works if its bones use humanoid names (hips, spine, chest, neck,
-  head, upper/lower arm, hand, upper/lower leg, foot for left and right). Export with **File > Export > glTF 2.0**, format
-  **glTF Binary (.glb)**, and keep the `.blend` source in `art/` (lock it with `git lfs lock` before editing).
+- **Recommended: make one in Blender.** Any humanoid character works if its bones use humanoid names (hips, spine, chest,
+  neck, head, upper/lower arm, hand, upper/lower leg, foot for left and right). Export with **File > Export > glTF 2.0**,
+  format **glTF Binary (.glb)**, and keep the `.blend` source in `art/` (lock it with `git lfs lock` before editing).
+- **The generated model is, honestly, lost:** the Build 05 session that generated it couldn't download it, and it didn't
+  record which generator, account, job or host it came from, so there is no page to fetch it from by hand. If you
+  generate a new one from the chosen character sheet, write the service, account, date and download link here, and if
+  Claude should fetch it, allow that host in the Claude environment's network policy first. (Before texturing one, see
+  the lore question about the sheet's flame pendant in `docs/David's Plans/01-Lore-and-Universe.md`.)
 
 ## Putting the painted Avatar in the game
 
