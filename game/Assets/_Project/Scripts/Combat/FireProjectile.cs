@@ -403,7 +403,10 @@ namespace VaatusRevenge
         {
             reports.Clear();
             ElementId element = ProjectileVisuals.ElementOf(slot.Visual);
-            if (element != ElementId.None) ElementVfx.Burst(element, slot.Position, slot.Velocity, 0.4f * slot.VisualScale);
+            // A thrown boulder at the end of its flight breaks apart into falling chunks, like its impact does (V5-06: a
+            // dust puff alone made the rock vanish in mid-air). Water and air just spray.
+            if (slot.Visual == ProjectileVisual.Rock) ElementVfx.Explosion(element, slot.Position, slot.Radius * slot.VisualScale);
+            else if (element != ElementId.None) ElementVfx.Burst(element, slot.Position, slot.Velocity, 0.4f * slot.VisualScale);
             Finish(slot);
         }
 

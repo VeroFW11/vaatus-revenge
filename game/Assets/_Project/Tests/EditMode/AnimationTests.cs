@@ -577,6 +577,67 @@ namespace VaatusRevenge.Tests
             }
         }
 
+        // J5-04: an air finisher still in its air pose as the body lands (FinisherGravityScale gets it down early) stands
+        // on the floor from the first grounded frame: the legs take the landing pose and the pelvis sits onto them, no
+        // feet hanging 0.3 m up. A flying kick that leaves the ground on purpose (Leaps) keeps its own legs.
+        [Test]
+        public void AirFinisherLandsWithItsFeetOnTheFloor()
+        {
+            ElementMoveSet earth = ElementMoveSet.CreateEarthFluid();
+            MoveData meteor = earth.AirChain[earth.AirChain.Length - 1];
+            Assert.AreEqual(AnimationKeys.AirMeteor, meteor.AnimationKey);
+            HumanoidSkeleton skeleton = HumanoidSkeleton.Create();
+            var animator = new FighterAnimator(PoseLibrary.Default, skeleton, earth.AnimationStyle);
+            var fk = new ForwardKinematics(skeleton);
+            for (int i = 0; i < 20; i++) animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "" });
+            for (int i = 0; i < 30; i++)
+                animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = false, ActionKey = "", LocalVelocity = new Vector3(0f, 4f - i * 0.4f, 0f) });
+            float t = 0f;
+            for (int i = 0; i < 4; i++, t += Dt)
+            {
+                FighterAnimInput air = ActionInput(AnimationKeys.AirMeteor, t, meteor);
+                air.Grounded = false;
+                air.LocalVelocity = new Vector3(0f, -12f, 0f);
+                animator.Update(air);
+            }
+            for (int i = 0; i < 20; i++, t += Dt)
+            {
+                animator.Update(ActionInput(AnimationKeys.AirMeteor, t, meteor));
+                fk.Compute(animator.Pose, Vector3.Zero, 0f);
+                float lowest = Math.Min(Math.Min(fk[BodyJoint.LeftToes].Y, fk[BodyJoint.RightToes].Y), Math.Min(fk[BodyJoint.LeftFoot].Y, fk[BodyJoint.RightFoot].Y));
+                Assert.That(lowest, Is.LessThan(0.08f), "both feet off the floor " + i + " frames after landing: " + lowest + " m");
+            }
+        }
+
+        // MV-03: Earth's horse stance sits 0.2 m under its walk; stopping (or starting) eases the pelvis there instead of
+        // dropping it 10 cm in one frame.
+        [Test]
+        public void EarthStanceHipsEaseOnStopAndStart()
+        {
+            HumanoidSkeleton skeleton = HumanoidSkeleton.Create();
+            var animator = new FighterAnimator(PoseLibrary.Default, skeleton, ElementMoveSet.CreateEarthFluid().AnimationStyle);
+            var fk = new ForwardKinematics(skeleton);
+            float last = float.NaN, worst = 0f;
+            for (int i = 0; i < 150; i++)
+            {
+                bool walking = i >= 30 && i < 90;
+                animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "", LocalVelocity = walking ? new Vector3(0f, 0f, 1.8f) : Vector3.Zero });
+                fk.Compute(animator.Pose, Vector3.Zero, 0f);
+                float hips = fk[BodyJoint.Hips].Y;
+                if (!float.IsNaN(last)) worst = Math.Max(worst, Math.Abs(hips - last));
+                last = hips;
+            }
+            Assert.That(worst, Is.LessThan(0.05f), "the hips moved " + worst + " m in one frame");
+        }
+
+        [Test]
+        public void LeapingClipsAreMarked()
+        {
+            foreach (string key in new[] { AnimationKeys.ZipKick, AnimationKeys.SprintKick, AnimationKeys.WindLeap, AnimationKeys.WindRunnerKick })
+                Assert.IsTrue(PoseLibrary.Default.Get(key).Leaps, key);
+            Assert.IsFalse(PoseLibrary.Default.Get(AnimationKeys.AirMeteor).Leaps);
+        }
+
         // The combat rules snap the facing round at an attack's start (a jab at a foe behind you): the body whips round
         // over a few frames on its planted feet instead of flipping 180 degrees in one.
         [Test]

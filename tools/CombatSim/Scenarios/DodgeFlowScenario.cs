@@ -30,14 +30,36 @@ namespace VaatusRevenge.CombatSim
             ExitDrop(o);
             SideSlipCircle(o);
             StringAcross(o);
+
+            // The same dodge measurements on the Xbox path (J5-01): every press through the game's PadChordReader, the
+            // element picked with hold RB, then its face button. No added latency, so the targets are the same.
+            Out.Heading("Dodge flow on the Xbox pad (real PadChordReader path): facing, slip-in, spam, the string across a dodge");
+            realPad = true;
+            try
+            {
+                Facing(o);
+                SlipIn(o);
+                Spam(o);
+                StringAcross(o);
+            }
+            finally
+            {
+                realPad = false;
+            }
         }
 
-        // A session with all four elements, switched to 'element' (a plain switch while free is instant).
+        static bool realPad;
+        static int padSeed;
+
+        // A session with all four elements, switched to 'element' (a plain switch while free is instant; on the pad the
+        // chord takes a few frames).
         static Session Start(Preset p, ElementId element, float fps, Vector3 playerAt, float playerYaw = 0f)
         {
             var s = new Session(p, fps, SimLevel.Empty(), camera: true, playerAt: playerAt, playerYaw: playerYaw);
+            if (realPad) s.Input.UseRealPad(++padSeed * 7 + 3);
             if (element != ElementId.Fire) s.Step(new Pad { Element = element });
             s.Step(new Pad());
+            for (int i = 0; i < 30 && s.Input.ChordInFlight; i++) s.Step(new Pad());
             if (s.Model.ActiveElement != element) throw new InvalidOperationException("couldn't switch to " + element);
             return s;
         }

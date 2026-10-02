@@ -58,7 +58,7 @@ namespace VaatusRevenge.EditorTools
                 Debug.Log("Player avatar model added to '" + playerRoot.name + "': " + report);
                 return true;
             }
-            Debug.LogWarning("The player avatar model (" + ModelPath + ") can't be used, so the player keeps the procedural body: "
+            Debug.LogWarning("Player avatar model (" + ModelPath + ") can't be used, so the player keeps the procedural body: "
                              + report);
             return false;
         }

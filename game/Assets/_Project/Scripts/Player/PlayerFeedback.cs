@@ -342,7 +342,7 @@ namespace VaatusRevenge
                 chargeGlow.SetLevel(level);
                 UpdateReadyCue(model, s);
                 // The body flashes white-gold the moment InSweetSpot turns true: the sweet spot is open.
-                if (rig != null) rig.SetCharge(level, model.InSweetSpot);
+                if (rig != null) rig.SetCharge(level, model.InSweetSpot, ElementVfx.ChargeFistColor(model.ActiveElement));
             }
             else if (charging)
             {

@@ -39,7 +39,7 @@ namespace VaatusRevenge.Core
     // the game counts as on the beat by itself (a counter after a perfect dodge).
     public enum BeatGrade { None, OnBeat, Late, Early, Mashed, Pause, Auto }
 
-    // Which branch of the string a move belongs to: the main chain, the pause chain (X X, wait, X), the dodge strike,
+    // Which branch of the string a move belongs to: the main chain, the pause chain (X X, wait, X X), the dodge strike,
     // the air chain, the launcher, or anything else (heavy, skill, ability, zip, sprint, plunge).
     public enum ComboBranch { Main, Pause, DodgeStrike, Air, Launcher, Other }
 

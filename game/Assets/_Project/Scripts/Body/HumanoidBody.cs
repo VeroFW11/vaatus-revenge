@@ -49,6 +49,7 @@ namespace VaatusRevenge
         bool invulnerable, staggered, dead;
         float chargeLevel;
         bool chargeSweetSpot;
+        Color chargeColor = new Color(1f, 0.45f, 0.1f);   // the fists' colour for the running charge (per element)
         bool coloursDirty = true;
         bool anyOverride;
         Color lastBodyEmission, lastLimbEmission, lastFistExtra;
@@ -308,7 +309,19 @@ namespace VaatusRevenge
         // entering it flashes the whole body (the release cue).
         public void SetCharge(float level01, bool sweetSpot)
         {
+            SetCharge(level01, sweetSpot, glow.ChargeColor);
+        }
+
+        // The same with the fists' colour for this charge (the player's element: ElementVfx.ChargeFistColor). Black = no
+        // fist glow below the sweet spot.
+        public void SetCharge(float level01, bool sweetSpot, Color fistColor)
+        {
             if (dead) return;
+            if (fistColor != chargeColor)
+            {
+                chargeColor = fistColor;
+                coloursDirty = true;
+            }
             if (sweetSpot && !chargeSweetSpot) Flash(glow.SweetSpotColor, glow.SweetSpotFlashTime);
             level01 = Mathf.Clamp01(level01);
             if (level01 == chargeLevel && sweetSpot == chargeSweetSpot) return;
@@ -382,7 +395,7 @@ namespace VaatusRevenge
                 }
                 else if (chargeLevel > 0f)
                 {
-                    fist = glow.ChargeColor * (glow.ChargeIntensity * chargeLevel);
+                    fist = chargeColor * (glow.ChargeIntensity * chargeLevel);
                 }
             }
             if (flashRemaining > 0f && flashDuration > 0f)

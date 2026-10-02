@@ -18,7 +18,7 @@ namespace VaatusRevenge
     {
         public enum Page { Closed, RhythmAndMixing, Controls }
 
-        const int GameplayRows = 18;
+        const int GameplayRows = 19;
         const int SandboxRows = 8;
         const int PatternRows = 8;
         const int ElementCount = 4;
@@ -64,7 +64,7 @@ namespace VaatusRevenge
         readonly ElementId[] builtSlots = new ElementId[ElementButtonLayout.SlotCount];
         string builtDangerName;
         bool rhythmBuilt;
-        string switchPad = "Hold RB + a face button", switchKeys = "1 - 4";   // page 2's switch row, built with page 1
+        string switchPad = "Hold RB, then a face button", switchKeys = "1 - 4";   // page 2's switch row, built with page 1
 
         public Page CurrentPage => page;
         public bool IsOpen => page != Page.Closed;
@@ -141,7 +141,7 @@ namespace VaatusRevenge
             }
 
             y += sectionGap;
-            y = SectionHeader(p, x, y, inner, rowHeight, "The four elements (hold RB + the button of the same colour)", accent);
+            y = SectionHeader(p, x, y, inner, rowHeight, "The four elements (hold RB, then the button of the same colour)", accent);
             float elementGlyphLine = Mathf.Min(glyphLine, elementRowHeight * 0.5f);
             float line = elementRowHeight * 0.5f;
             for (int i = 0; i < ElementCount; i++)
@@ -184,7 +184,7 @@ namespace VaatusRevenge
             string sense = string.IsNullOrEmpty(dangerName) ? "Danger sense" : dangerName;
             var chords = new StringBuilder();
             var keys = new StringBuilder();
-            var padRow = new StringBuilder("Hold RB + ");
+            var padRow = new StringBuilder("Hold RB, then ");
             var keyRow = new StringBuilder();
             for (int i = 0; i < ElementCount; i++)
             {
@@ -200,7 +200,7 @@ namespace VaatusRevenge
                 elementKeys[i] = HudGlyphText.Parse(key + "  " + name);
                 Join(chords, " ", chord);
                 Join(keys, "  ", key);
-                if (slot >= 0) Join(padRow, padRow.Length > "Hold RB + ".Length ? ", " : "", FaceName(slot) + " " + name);
+                if (slot >= 0) Join(padRow, padRow.Length > "Hold RB, then ".Length ? ", " : "", FaceName(slot) + " " + name);
                 if (key != "-") Join(keyRow, ", ", key + " " + name);
 
                 string finisher = LastName(set != null ? set.LightChain : null);
@@ -211,7 +211,7 @@ namespace VaatusRevenge
                                       + "   ·   Pause finisher: " + (string.IsNullOrEmpty(pause) ? "X X (wait) X X" : pause);
             }
 
-            switchPad = layout != null ? padRow.ToString() : "Hold RB + a face button";
+            switchPad = layout != null ? padRow.ToString() : "Hold RB, then a face button";
             switchKeys = keyRow.Length > 0 ? keyRow.ToString() : "1 - 4";
 
             int r = 0;
@@ -222,8 +222,8 @@ namespace VaatusRevenge
             Pattern(ref r, "{B} toward  /  {B} away", "Dodge: slip in close / evade out of reach. Your combo keeps going");
             Pattern(ref r, "{B}, then {X} late", "Dodge strike: a counter that dashes back in and counts as the next hit");
             Pattern(ref r, chords.ToString(), keys.ToString(),
-                "Switch element. Mid-string it's a switch strike: the next hit is in that element, and harder");
-            Pattern(ref r, "MIX", "Elements landed in a combo: 2 hit harder, 3 launch, 4 also top up Fire's Momentum (a heavy foe staggers)");
+                "Switch element: hold RB first, then the button. Mid-string the next hit is in that element, and harder");
+            Pattern(ref r, "MIX", "Elements landed in one combo: 2 hit harder, 3 launch, 4 also top up Momentum");
             Pattern(ref r, "gold: {LB}   red: {B}", sense + ": the mark above you. Gold = parry, red = dodge, white (Fluid) = now");
         }
 
@@ -422,6 +422,7 @@ namespace VaatusRevenge
             Row(ref r, Named("Heal", healName), "D-pad down", "R");
             Row(ref r, "Lock on (optional)  /  swap camera shoulder", "R3  /  hold L3", "Tab or middle mouse  /  hold V");
             Row(ref r, "Tutorial: start  /  skip a step  /  quit", "View  /  tap View  /  hold View", "F7  /  F8  /  F7");
+            Row(ref r, "Pause  /  resume (Y pages this overlay while paused)", "Menu", "Esc");
 
             string slow = slowMotionScale > 0f && slowMotionScale < 1f
                 ? "Slow motion (" + slowMotionScale.ToString("0.##", CultureInfo.InvariantCulture) + "x) for studying moves"

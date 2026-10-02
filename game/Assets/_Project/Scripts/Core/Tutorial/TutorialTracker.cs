@@ -208,7 +208,9 @@ namespace VaatusRevenge.Core
                     }
                     break;
                 case TutorialGoal.SwitchStrikeTo:
-                    if (e.Type == PlayerEventType.ElementSwitched && e.IsSwitchStrike && e.Element == step.Element)
+                    // The switch strike, or a plain switch made while the combo is still going (a switch strike that waited
+                    // too long in a dodge, J3-S03): either way the string carries on in the new element with the next hit.
+                    if (e.Type == PlayerEventType.ElementSwitched && e.Element == step.Element && (e.IsSwitchStrike || comboCount > 0))
                     {
                         switched = true;
                         switchSerial = comboSerial;

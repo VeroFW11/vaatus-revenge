@@ -319,37 +319,6 @@ namespace VaatusRevenge.Tests
             Assert.AreEqual(EffectKeys.Trail, rake.EffectKey);
         }
 
-        // J3-S02: X a frame before RB from neutral: the X's hit runs (it can't be taken back), and RB makes a plain switch.
-        // One press is one attack: no automatic Water switch strike follows, and the next X is hit 2 in Water.
-        [Test]
-        public void FacePressJustBeforeRbIsOneAttack()
-        {
-            PlayerDriver d = PlayerDriver.Elements();
-            d.Step(Pad.Light);
-            Assert.AreEqual(1, d.Started);
-            d.Select = ElementId.Water;
-            d.Retract = PlayerCommand.Light;
-            d.Step();
-            Assert.AreEqual(ElementId.Water, d.Model.ActiveElement, "the switch happened");
-            Assert.AreNotEqual(PlayerCommand.SwitchStrike, d.Model.BufferedCommand);
-            d.Run(30);
-            Assert.AreEqual(1, d.Started, "no second attack from the same press");
-            Assert.AreEqual(ElementId.Fire, d.LastStarted.Element, "the hit that ran keeps its element");
-
-            // The same again, and this time X on the jab's beat: the string goes on, hit 2, in the new element.
-            PlayerDriver e = PlayerDriver.Elements();
-            e.Step(Pad.Light);
-            e.Select = ElementId.Water;
-            e.Retract = PlayerCommand.Light;
-            e.Step();
-            e.PressOnBeat();
-            e.RunUntilStarted(2);
-            Assert.AreEqual(ElementId.Water, e.LastStarted.Element);
-            Assert.AreEqual(1, e.LastStarted.ChainIndex, "hit 2, in Water");
-            e.RunUntil(x => x.Model.State == PlayerState.Locomotion, 120);
-            Assert.AreEqual(2, e.Started, "two presses, two attacks");
-        }
-
         // J3-S03: on Punishing a switch strike pressed early in a mid-string dodge outlives its short buffer: the switch
         // still happens (a plain switch) instead of the press vanishing, and the next X carries the string on in it.
         [Test]

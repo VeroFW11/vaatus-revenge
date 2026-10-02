@@ -18,7 +18,7 @@ namespace VaatusRevenge.CombatSim
         {
             int framesPer = o.Quick ? 60000 : 150000;
             Out.Heading("Fuzz: random input, " + framesPer + " frames per run");
-            var t = new Table("Preset", "Frame timing", "Input", "Game time", "Violations", "Longest i-frames", "Invulnerable share", "Oldest buffered press run",
+            var t = new Table("Preset", "Frame timing", "Input", "Game time", "Violations", "Longest i-frames", "Invulnerable share", "Oldest press still waiting in the buffer",
                 "Dodges started/ended", "Player hitboxes opened/closed", "Enemy hitboxes opened/closed", "Deaths / resets", "Max token holders");
             var allViolations = new List<string>();
             foreach (Preset p in o.Presets)

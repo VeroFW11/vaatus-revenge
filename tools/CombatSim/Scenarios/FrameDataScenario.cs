@@ -33,6 +33,7 @@ namespace VaatusRevenge.CombatSim
                 d.Row(MeasureDodge(p, false, o.Fps));
                 d.Row(MeasureChainedDodges(p, o.Fps));
                 d.Print();
+                PadLatency(p, o.Fps);
 
                 var m = new Table("Other", "Measured");
                 foreach (var row in MeasureMisc(p, o.Fps)) m.Row(row.Item1, row.Item2);
@@ -266,6 +267,44 @@ namespace VaatusRevenge.CombatSim
             string iframes = span.start >= 0 ? "frames " + (span.start - start) + "–" + (span.end - start) + " (" + (span.end - span.start + 1) + " f)" : "none";
             DodgeProfile d = t.Session.Model.MoveSet.Dodge;
             return new object[] { withStick ? d.DisplayName + " (stick)" : "Backstep (no stick)", F(start, fps) + (start > 0 ? " (on release)" : ""), iframes, F(ended - start, fps), F(next, fps), F(attack, fps), Out.N(dist, 2) + " m", d.StaminaCost };
+        }
+
+        // J5-01: the same presses on the Xbox path (through the game's PadChordReader, PlayerInputReader's wiring) and on the
+        // keyboard path. Since round 5 there is no hold-back, so every action and the dodge's i-frames start on the same
+        // frame either way (target: 0 frames added).
+        static void PadLatency(Preset p, float fps)
+        {
+            var t = new Table("Input (" + p + ")", "Keyboard: input → start", "Xbox pad: input → start", "Dodge i-frames from (keys / pad)", "Added on the pad");
+            (string name, Func<int, Pad> script, PlayerEventType ev)[] rows =
+            {
+                ("B tap (dodge)", f => new Pad { Dodge = f >= 2 && f < 5, Move = new Vector2(1f, 0f) }, PlayerEventType.DodgeStarted),
+                ("A (jump)", f => new Pad { Jump = f >= 2 && f < 8 }, PlayerEventType.Jumped),
+                ("X (attack)", f => new Pad { Light = f >= 2 && f < 5 }, PlayerEventType.AttackStarted),
+                ("B tap, X 3 frames later (dodge)", f => new Pad { Dodge = f >= 2 && f < 5, Light = f >= 5 && f < 8, Move = new Vector2(1f, 0f) }, PlayerEventType.DodgeStarted),
+                ("A then X 2 frames later (jump)", f => new Pad { Jump = f >= 2 && f < 8, Light = f >= 4 && f < 7 }, PlayerEventType.Jumped),
+                ("Pick Water (keys: 2; pad: hold RB, then X)", f => new Pad { Element = f == 2 ? ElementId.Water : ElementId.None }, PlayerEventType.ElementSwitched),
+            };
+            foreach (var row in rows)
+            {
+                Trace keys = Trace.Run(p, row.script, 60, null, fps);
+                Trace pad = Trace.Run(p, row.script, 60, s =>
+                {
+                    s.Input.UseRealPad(1);
+                    s.Input.MaxChordSkew = 0f;   // RB and X land together: the pick's own frame is what's measured
+                }, fps);
+                int k = keys.First(row.ev) - 2, q = pad.First(row.ev) - 2;
+                string iframes = "-";
+                if (row.ev == PlayerEventType.DodgeStarted)
+                {
+                    int ki = keys.Span(st => st.Invulnerable, 0).start, qi = pad.Span(st => st.Invulnerable, 0).start;
+                    iframes = (ki >= 0 ? (ki - 2).ToString() : "none") + " / " + (qi >= 0 ? (qi - 2).ToString() : "none");
+                    if (ki != qi) q = int.MaxValue;
+                }
+                bool ok = q == k;   // the same on both paths (Punishing's dodge comes on the release on both)
+                t.Row(row.name, k >= -1 ? k + " f" : "never", q == int.MaxValue ? "i-frames differ" : q >= -1 ? q + " f" : "never", iframes,
+                    (q == int.MaxValue ? "-" : (q - k) + " f ") + Out.Target(ok));
+            }
+            t.Print();
         }
 
         static int ProbeDodgeFollow(Preset p, float fps, Vector2 stick, Button b, PlayerEventType type)

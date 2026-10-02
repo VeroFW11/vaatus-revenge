@@ -2,7 +2,7 @@ using System;
 
 namespace VaatusRevenge.Core
 {
-    // Element switching (hold RB + a face button; 1-4 on the keyboard). PlayerInputFrame.ElementSelect names the element;
+    // Element switching (hold RB, then a face button; 1-4 on the keyboard). PlayerInputFrame.ElementSelect names the element;
     // the loadout says which are learned. One rule: "RB + an element's button on the beat = your next hit in that element".
     //
     //   A. String live (a string move running; or dodging / free with the string remembered or the pause band open; or
@@ -106,7 +106,7 @@ namespace VaatusRevenge.Core
         }
 
         // A switch strike waited in the buffer and never got to run (pressed early in a long dodge on Punishing, whose
-        // buffer is short): the switch still happens, as a plain switch (or waits, or is refused with the wheel's shake),
+        // buffer is short; or replaced by a dodge, parry, jump or heal pressed after it): the switch still happens, as a plain switch (or waits, or is refused with the wheel's shake),
         // so RB + a face button is never dropped without a trace (J3-S03). The next X carries the string on in it.
         void SwitchStrikeExpired()
         {

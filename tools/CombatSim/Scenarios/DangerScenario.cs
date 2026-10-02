@@ -56,7 +56,8 @@ namespace VaatusRevenge.CombatSim
         {
             Out.Heading("Danger sense: cue timing, resolution, sense vs react (" + o.Seeds + " seeds, duels in the sandbox arena)");
             TimingAndResolution(o);
-            SenseVsReact(o);
+            SenseVsReact(o, false);
+            SenseVsReact(o, true);
         }
 
         // Hooks the measuring onto a duel's session (called before the bot attaches).
@@ -195,11 +196,14 @@ namespace VaatusRevenge.CombatSim
                      + "launch (the fighting bots dodge and close in all the time). Fights run 60 s (enemies respawn); warnings in the last 1.5 s are left out.");
         }
 
-        static void SenseVsReact(Options o)
+        // pad: the same fights on the Xbox path (every press through the game's PadChordReader, element picks played as
+        // hold RB then the face button), so a dodge on the white cue is measured exactly as a pad player presses it (J5-01).
+        static void SenseVsReact(Options o, bool pad)
         {
-            Out.Sub("Sense vs react (target, Fluid: sense perfect-dodge rate >= react + 20 points, damage taken <= react's; panic dodges on the delayed thrust <= 10 %)");
+            Out.Sub("Sense vs react" + (pad ? ", Xbox pad (real PadChordReader path)" : ", keyboard path")
+                    + " (target, Fluid: sense perfect-dodge rate >= react + 20 points, damage taken <= react's; panic dodges on the delayed thrust <= 10 %)");
             var table = new Table("Preset", "Enemies", "Bot", "Win", "Perfect dodges / dodges", "Rate", "Perfect dodges / enemy strike", "Damage taken (avg)",
-                "Delayed-thrust panic dodges");
+                "Delayed-thrust panic dodges", "Target");
             foreach (Preset p in o.Presets)
             {
                 foreach (string g in new[] { "soldier", "soldier,soldier", "soldier,soldier,crossbow,platform" })
@@ -209,7 +213,12 @@ namespace VaatusRevenge.CombatSim
                     foreach (string bot in new[] { "react", "sense" })
                     {
                         var results = new List<DuelResult>();
-                        for (int seed = o.Seed; seed < o.Seed + o.Seeds; seed++) results.Add(DuelsScenario.Play(o, p, bot, g, seed, 120.0, null, invariants: false));
+                        for (int seed = o.Seed; seed < o.Seed + o.Seeds; seed++)
+                        {
+                            int padSeed = seed * 389 + 5;
+                            results.Add(DuelsScenario.Play(o, p, bot, g, seed, 120.0, null, invariants: false,
+                                setup: pad ? s => s.Input.UseRealPad(padSeed) : (Action<Session>)null));
+                        }
                         int perfect = results.Sum(r => r.Metrics.PerfectDodges), dodges = results.Sum(r => r.Metrics.Dodges);
                         int strikes = results.Sum(r => r.Metrics.Telegraphs);
                         double rate = perfect / Math.Max(1.0, dodges);
@@ -222,10 +231,13 @@ namespace VaatusRevenge.CombatSim
                             panic = thrusts > 0 ? Out.Pct(early / (double)thrusts) + " of " + thrusts : "-";
                         }
                         table.Row(p, g.Replace(",", "+"), bot, Out.Pct(results.Count(r => r.Won) / (double)results.Count), perfect + " / " + dodges, Out.Pct(rate),
-                            Out.Pct(perfect / Math.Max(1.0, strikes)), Out.N(damage[bot], 0), panic);
+                            Out.Pct(perfect / Math.Max(1.0, strikes)), Out.N(damage[bot], 0), panic, "");
                     }
-                    table.Row("", "", "sense - react", "", "", Out.N((rates["sense"] - rates["react"]) * 100, 0) + " points", "",
-                        Out.N(damage["sense"] - damage["react"], 0), "");
+                    double gain = (rates["sense"] - rates["react"]) * 100;
+                    // Graded on Fluid (Punishing has no white cue, so the sense bot can't beat react by much there).
+                    string target = p == Preset.Fluid ? Out.Target(gain >= 20.0 && damage["sense"] <= damage["react"] + 1e-6) : "-";
+                    table.Row("", "", "sense - react", "", "", Out.N(gain, 0) + " points", "",
+                        Out.N(damage["sense"] - damage["react"], 0), "", target);
                 }
             }
             table.Print();

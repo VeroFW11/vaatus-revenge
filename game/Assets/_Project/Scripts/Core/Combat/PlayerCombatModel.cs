@@ -317,57 +317,13 @@ namespace VaatusRevenge.Core
             bool abilityNorthPressed = Pressed(input.AbilityNorth, ref abilityNorthHeld);
             bool abilityEastPressed = Pressed(input.AbilityEast, ref abilityEastHeld);
 
-            // RB pressed a frame or two after a face button: that face press became this frame's element pick
-            // (PadChordReader's grace). Take its normal action back if it's still waiting; a queued string press keeps
-            // its slot and beat grade and becomes the switch strike below.
-            bool upgradeQueuedLight = false;
-            bool lightAlreadyRan = false;
-            if (input.RetractPress != PlayerCommand.None && input.ElementSelect != ElementId.None)
-            {
-                if (input.RetractPress == PlayerCommand.Dodge) dodgeButton.Reset();   // its swallowed release must not dodge
-                if (buffer.Command == input.RetractPress)
-                {
-                    if (buffer.Command == PlayerCommand.Light && buffer.Locked) upgradeQueuedLight = true;
-                    else buffer.Clear();
-                }
-                else if (input.RetractPress == PlayerCommand.Light && IsStringMoveRunning && attackBeganClock >= lightPressClock - Epsilon)
-                {
-                    // The X already started its hit (from neutral it runs at once): it stays that hit, and RB makes this
-                    // a plain switch, never a second, automatic switch strike: one press is one attack (J3-S02).
-                    lightAlreadyRan = true;
-                }
-            }
-
             bool dodgePressed = input.Dodge.Pressed || (input.Dodge.Held && !dodgeButton.IsHeld);
             bool dodgeTap = dodgeButton.Update(dodgePressed, input.Dodge.Released, input.Dodge.Held, dt,
-                tuning.DodgeTrigger, tuning.TapHoldThreshold, dodgePressed ? input.Dodge.PressDelay : 0f);
-            // A Y / B / A press the pad held back for a moment (in case RB followed) counts from when it was really made.
-            double jumpClock = clock - PressDelayOnClock(input.Jump.PressDelay, dt);
-            double zipClock = clock - PressDelayOnClock(input.ZipStrike.PressDelay, dt);
-            double dodgeClock = dodgeTap && tuning.DodgeTrigger == DodgeTrigger.OnPress
-                ? clock - PressDelayOnClock(input.Dodge.PressDelay, dt) : clock;
+                tuning.DodgeTrigger, tuning.TapHoldThreshold);
 
             if (state == PlayerState.Dead) return;
             // RB + an element's button: a switch now, a switch strike for the string (buffered like Light), or nothing.
             PlayerCommand elementChord = ReadElementSelect(input.ElementSelect);
-            if (lightAlreadyRan && elementChord == PlayerCommand.SwitchStrike)
-            {
-                SwitchElement(pendingSwitchElement, false, ComboBranch.Other);   // the running hit keeps its own element
-                elementChord = PlayerCommand.None;
-            }
-            else if (lightAlreadyRan && elementChord == PlayerCommand.Light)
-            {
-                // RB + X with X a frame or two early, into the element already in hand (or on cooldown): the X that
-                // already ran was this chord's one hit, so it isn't pressed a second time (BH-02).
-                elementChord = PlayerCommand.None;
-            }
-            if (upgradeQueuedLight)
-            {
-                // The queued X was the first half of the chord: it becomes the switch strike in place (already judged
-                // against the beat), or stays a Light when the switch was denied (cooldown, same element).
-                if (elementChord == PlayerCommand.SwitchStrike) buffer.Replace(PlayerCommand.SwitchStrike);
-                elementChord = PlayerCommand.None;
-            }
 
             // Ability chords (hold the guard button, then a face button: Heavy, AbilityNorth, AbilityEast). The guard
             // button is the chord's modifier, so its own press was only ever the first half of the chord: the chord
@@ -385,17 +341,22 @@ namespace VaatusRevenge.Core
             // The buffer keeps one press (see InputBuffer for which press wins). Pushed in this order so that if
             // two buttons go down in the same frame, the defensive one wins, and the dodge over the guard.
             bool defensiveWins = tuning.DefensivePressesWin;
+            bool switchStrikeQueued = buffer.Command == PlayerCommand.SwitchStrike;
             if (healPressed) buffer.Push(PlayerCommand.Heal, clock, defensiveWins);
             if (skillPressed) buffer.Push(PlayerCommand.Skill, clock, defensiveWins);
             if (heavyPressed) buffer.Push(PlayerCommand.Heavy, clock, defensiveWins);
-            if (zipPressed) buffer.Push(PlayerCommand.ZipStrike, zipClock, defensiveWins);
+            if (zipPressed) buffer.Push(PlayerCommand.ZipStrike, clock, defensiveWins);
             if (abilityNorthPressed) buffer.Push(PlayerCommand.AbilityNorth, clock, defensiveWins);
             if (abilityEastPressed) buffer.Push(PlayerCommand.AbilityEast, clock, defensiveWins);
             if (lightPressed) buffer.Push(PlayerCommand.Light, clock, defensiveWins);
             if (elementChord != PlayerCommand.None) buffer.Push(elementChord, clock, defensiveWins);
-            if (jumpPressed) buffer.Push(PlayerCommand.Jump, jumpClock, defensiveWins);
+            if (jumpPressed) buffer.Push(PlayerCommand.Jump, clock, defensiveWins);
             if (guardPressed) buffer.Push(PlayerCommand.Guard, clock, defensiveWins);
-            if (dodgeTap) buffer.Push(PlayerCommand.Dodge, dodgeClock, defensiveWins);
+            if (dodgeTap) buffer.Push(PlayerCommand.Dodge, clock, defensiveWins);
+            // A queued switch strike that another press replaced (a dodge or a parry right after RB + a face button, a jump,
+            // a heal): the pick still happens, as a plain switch (or waits, or is refused with the wheel's shake), never
+            // dropped without a trace (J3-S03 rule, round 5).
+            if (switchStrikeQueued && buffer.Command != PlayerCommand.SwitchStrike) SwitchStrikeExpired();
 
             // A string press the buffer kept (a dodge or guard pressed with it wins) is judged against the beat now, at
             // the clock it was made (a press during a hitstop counts at the frozen moment).
@@ -404,14 +365,6 @@ namespace VaatusRevenge.Core
             {
                 OnStringPress(buffer.Command == PlayerCommand.SwitchStrike);
             }
-        }
-
-        // A held-back press's real age (real seconds) on the game clock, capped so it can never pre-date the buffer.
-        double PressDelayOnClock(float realDelay, float dt)
-        {
-            if (!(realDelay > 0f) || !(dt > 0f)) return 0.0;
-            float scale = frameRealDt > 0f ? dt / frameRealDt : 1f;
-            return Math.Min(realDelay * scale, tuning.InputBufferWindow * 0.5f);
         }
 
         // A press is the Pressed flag, or "held now but not last frame" (covers a skipped frame).

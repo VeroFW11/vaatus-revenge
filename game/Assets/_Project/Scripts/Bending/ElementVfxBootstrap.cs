@@ -7,8 +7,8 @@ namespace VaatusRevenge
     // Hands the element effects their library when play starts (one in the scene, on Systems). Without it, or with an
     // empty library, every effect still draws with its primitive stand-in and the HUD uses the default colours.
     //
-    // When play starts it also reports, once, each picture slot that has no picture yet: one log line per slot, so you
-    // can see what is waiting for art (Art/VFX/README.md lists the slots and the generated images that fill them).
+    // When play starts it also reports, once, the picture slots that have no picture yet: one log message listing every
+    // missing slot (one line each inside it), so you can see what is waiting for art (Art/VFX/README.md lists the slots and the generated images that fill them).
     // Nothing is logged per frame.
     [DisallowMultipleComponent]
     public class ElementVfxBootstrap : MonoBehaviour
@@ -16,7 +16,7 @@ namespace VaatusRevenge
         [Tooltip("Colours and textures per element. Empty = every effect uses its primitive fallback.")]
         public ElementVfxLibraryAsset Library;
 
-        [Tooltip("Log one line per picture slot that has no picture yet, once when play starts.")]
+        [Tooltip("Log one message listing the picture slots that have no picture yet, once when play starts.")]
         [SerializeField] private bool reportMissingPictures = true;
 
         bool reported;

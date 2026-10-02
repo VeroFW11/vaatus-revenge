@@ -39,8 +39,9 @@ other person doesn't change it at the same time:
 - Hit flashes, the dodge shimmer and the fa jin charge glow light up the whole model.
 - In the **Vaatu's Revenge** menu, *Use Player Avatar Model* has a tick next to it.
 
-If something is wrong with the model, the Console shows **one yellow warning** starting `Player avatar model is off`
-that says what (for example which bones it couldn't find), and the player stays the grey-box body. Nothing breaks.
+If something is wrong with the model, the Console shows **a yellow warning** starting `Player avatar model` that says
+what (for example which bones it couldn't find, or `is off for 'Player'`), and the player stays the grey-box body.
+Nothing breaks.
 
 ## Switching back to the grey-box body
 

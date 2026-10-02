@@ -20,7 +20,7 @@ namespace VaatusRevenge.Core
         public float MaxPlaybackRate = 1.4f;
         public float OnBeatDamageMultiplier = 1.10f; // damage of the move an on-beat press started
         public float MashStaminaSurcharge = 4f;      // extra stamina a mashed move costs
-        public float PauseGrace = 0.35f;             // the pause band (X X, wait, X) lasts until this long after the move ends
+        public float PauseGrace = 0.35f;             // the pause band (X X, wait, X X) lasts until this long after the move ends
         public float PerfectStringDamageMultiplier = 1.20f; // a finisher whose whole string was on the beat hits this much harder...
         public float PerfectStringLaunchSpeed = 9f;  // ...and knocks a launchable foe up at this speed (0 = no launch)
         public float BeatInputOffset = 0f;           // calibration: added to every press time (a display or pad with lag)

@@ -4,7 +4,7 @@ namespace VaatusRevenge.Core
 {
     // Rhythm combos, string memory and the pause branch.
     //
-    // THE STRING: the light chain (X X X X X), the pause chain (X X, wait, X), the air chain and the dodge strike are
+    // THE STRING: the light chain (X X X X X), the pause chain (X X, wait, X X), the air chain and the dodge strike are
     //   "string moves". Each knows its slot (chainIndex) in its chain (chainBranch: Main, Pause or Air).
     // STRING MEMORY: a string interrupted by a dodge, zip, ability, skill, heavy, guard or jump isn't lost. RememberString
     //   (on the way out of a string move) notes the next slot: the same one if the move hadn't struck yet (retry it),

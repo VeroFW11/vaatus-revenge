@@ -121,7 +121,7 @@ namespace VaatusRevenge.Core
             return new[] { piercing, turning, swimSweep, doubleChange, gale };
         }
 
-        // The pause branch (X X, wait, X): walk the circle all the way round the foe striking as you go (Orbit 180), then a
+        // The pause branch (X X, wait, X X): walk the circle all the way round the foe striking as you go (Orbit 180), then a
         // whirlwind that lifts it into the air. Poise 4 + 4 + 2x4 + 3x3 = 25, plus hit 1 = 29.
         static MoveData[] CreateAirPauseChain()
         {

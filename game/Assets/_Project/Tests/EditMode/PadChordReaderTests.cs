@@ -3,8 +3,9 @@ using VaatusRevenge.Core;
 
 namespace VaatusRevenge.Tests
 {
-    // The pad's shoulder chords (PadChordReader), frame by frame (Build 05 verify round 2, R2-01): RB + a face button
-    // picks an element and fires nothing else, in whatever order a human's two thumbs land; a lone RB tap fires the skill.
+    // The pad's shoulder chords (PadChordReader), frame by frame (Build 05 verify round 2, R2-01; modifier first since
+    // round 5): hold RB, then a face button picks an element and fires nothing else (RB and the face on the same frame
+    // too); a face pressed before RB does its own job on its own frame; a lone RB tap fires the skill.
     public class PadChordReaderTests
     {
         const float Dt = 1f / 60f;
@@ -19,7 +20,8 @@ namespace VaatusRevenge.Tests
             public PadChordReader.Result Last;
             public int Picks, Skills, DodgePresses, LightPresses;
             public ElementId LastPick;
-            public PlayerCommand LastRetract;
+            public int Frame = -1;
+            public int FirstDodgeFrame = -1, FirstLightFrame = -1, FirstJumpFrame = -1, FirstZipFrame = -1;
 
             public void Step(bool north = false, bool east = false, bool south = false, bool west = false, bool rbNow = false, bool lbNow = false)
             {
@@ -29,17 +31,21 @@ namespace VaatusRevenge.Tests
                 West = ButtonState.From(west, w);
                 ButtonState rbState = ButtonState.From(rbNow, rb);
                 ButtonState lbState = ButtonState.From(lbNow, lb);
+                Frame++;
                 n = north; e = east; s = south; w = west; rb = rbNow; lb = lbNow;
                 Last = Reader.Read(ref North, ref East, ref South, ref West, rbState, lbState, Dt, Layout);
                 if (Last.ElementSelect != ElementId.None)
                 {
                     Picks++;
                     LastPick = Last.ElementSelect;
-                    LastRetract = Last.RetractPress;
                 }
                 if (Last.Skill.Pressed) Skills++;
                 if (East.Pressed) DodgePresses++;
                 if (West.Pressed) LightPresses++;
+                if (East.Pressed && FirstDodgeFrame < 0) FirstDodgeFrame = Frame;
+                if (West.Pressed && FirstLightFrame < 0) FirstLightFrame = Frame;
+                if (South.Pressed && FirstJumpFrame < 0) FirstJumpFrame = Frame;
+                if (North.Pressed && FirstZipFrame < 0) FirstZipFrame = Frame;
             }
         }
 
@@ -52,83 +58,89 @@ namespace VaatusRevenge.Tests
             rig.Step();
             Assert.AreEqual(1, rig.Picks, "one element pick");
             Assert.AreEqual(ElementId.Fire, rig.LastPick, "B is Fire");
-            Assert.AreEqual(PlayerCommand.None, rig.LastRetract, "nothing to take back: B never acted");
             Assert.AreEqual(0, rig.Skills, "the RB release must not fire the ranged skill");
             Assert.AreEqual(0, rig.DodgePresses, "B never reads as a dodge");
         }
 
+        // Modifier first (lead decision, round 5): RB held, then the face, k frames later: only the pick.
         [Test]
-        public void BOneFrameBeforeRbIsHeldBackAndOnlyPicks()
+        public void RbThenFacePicksOnTheFacesFrame([Values(0, 1, 2, 3)] int face, [Values(1, 3, 6)] int rbFirst)
         {
             var rig = new Rig();
-            rig.Step(east: true);                                              // B first: held back, not a dodge yet
-            Assert.AreEqual(0, rig.DodgePresses, "B waits in case RB follows");
-            Assert.IsTrue(rig.Reader.IsHoldingBack(PadChordReader.FaceEast));
-            rig.Step(east: true, rbNow: true);                                 // RB one frame later
-            Assert.AreEqual(1, rig.Picks);
-            Assert.AreEqual(ElementId.Fire, rig.LastPick);
-            Assert.AreEqual(PlayerCommand.None, rig.LastRetract, "nothing to take back: B never acted");
-            Assert.IsFalse(rig.East.Held, "B is swallowed from RB's frame on");
-            for (int i = 0; i < 4; i++) rig.Step(east: true, rbNow: true);
+            for (int i = 0; i < rbFirst; i++) rig.Step(rbNow: true);
+            for (int i = 0; i < 5; i++)
+                rig.Step(north: face == 0, east: face == 1, south: face == 2, west: face == 3, rbNow: true);
             rig.Step();
             rig.Step();
+            Assert.AreEqual(1, rig.Picks, "one element pick");
+            Assert.AreEqual(rig.Layout.PadSlot(face), rig.LastPick);
+            Assert.AreEqual(-1, rig.FirstDodgeFrame, "no dodge");
+            Assert.AreEqual(-1, rig.FirstLightFrame, "no attack");
+            Assert.AreEqual(-1, rig.FirstJumpFrame, "no jump");
+            Assert.AreEqual(-1, rig.FirstZipFrame, "no zip");
             Assert.AreEqual(0, rig.Skills, "no skill on the RB release");
-            Assert.AreEqual(0, rig.DodgePresses, "B never reads as a dodge");
-            Assert.AreEqual(1, rig.Picks);
         }
 
+        // J5-01: every face press reaches the rules on the frame it went down (no hold-back on the pad).
         [Test]
-        public void WithTheHoldBackOffBOneFrameBeforeRbIsUpgradedToThePick()
+        public void FacePressIsReportedOnItsOwnFrame([Values(0, 1, 2, 3)] int face)
         {
             var rig = new Rig();
-            rig.Reader.FaceChordLatency = 0f;
-            rig.Step(east: true);                                              // B first: its dodge press goes out
-            Assert.AreEqual(1, rig.DodgePresses);
-            rig.Step(east: true, rbNow: true);                                 // RB one frame later
-            Assert.AreEqual(1, rig.Picks);
-            Assert.AreEqual(ElementId.Fire, rig.LastPick);
-            Assert.AreEqual(PlayerCommand.Dodge, rig.LastRetract, "the dodge press is named for the model to take back");
-            Assert.IsFalse(rig.East.Held, "B is swallowed from RB's frame on");
-            for (int i = 0; i < 4; i++) rig.Step(east: true, rbNow: true);
             rig.Step();
-            rig.Step();
-            Assert.AreEqual(0, rig.Skills, "no skill on the RB release");
-            Assert.AreEqual(1, rig.Picks);
+            rig.Step(north: face == 0, east: face == 1, south: face == 2, west: face == 3);
+            int reported = face == 0 ? rig.FirstZipFrame : face == 1 ? rig.FirstDodgeFrame : face == 2 ? rig.FirstJumpFrame : rig.FirstLightFrame;
+            Assert.AreEqual(1, reported, "reported on the frame it was pressed");
         }
 
+        // Thumb first is not a chord any more: B before RB is a dodge on B's own frame, and RB then picks nothing.
         [Test]
-        public void HeldBackFaceIsReportedAfterTheLatencyWithItsTrueAge()
+        public void FaceBeforeRbDoesItsOwnJobAndPicksNothing([Values(0, 1, 2, 3)] int face, [Values(1, 2, 4)] int early)
         {
             var rig = new Rig();
-            int reportedOn = -1;
-            float delay = 0f;
-            for (int f = 0; f < 12; f++)
+            for (int i = 0; i < early; i++) rig.Step(north: face == 0, east: face == 1, south: face == 2, west: face == 3);
+            for (int i = 0; i < 4; i++) rig.Step(north: face == 0, east: face == 1, south: face == 2, west: face == 3, rbNow: true);
+            rig.Step();
+            rig.Step();
+            int reported = face == 0 ? rig.FirstZipFrame : face == 1 ? rig.FirstDodgeFrame : face == 2 ? rig.FirstJumpFrame : rig.FirstLightFrame;
+            Assert.AreEqual(0, reported, "its own action, at once");
+            Assert.AreEqual(0, rig.Picks, "no pick: the chord is RB first");
+            Assert.AreEqual(0, rig.Skills, "and RB's release is no stray skill (ChordSkillGuard)");
+        }
+
+        // J5-02: presses come out in the order they were made. B then X: the dodge first, then the X (a dodge strike).
+        [Test]
+        public void PressesKeepTheirOrder([Values(1, 2, 3, 4)] int apart)
+        {
+            var bThenX = new Rig();
+            bThenX.Step(east: true);
+            for (int i = 1; i < apart; i++) bThenX.Step(east: true);
+            for (int i = 0; i < 3; i++) bThenX.Step(east: true, west: true);
+            Assert.AreEqual(0, bThenX.FirstDodgeFrame);
+            Assert.AreEqual(apart, bThenX.FirstLightFrame);
+
+            var aThenX = new Rig();
+            aThenX.Step(south: true);
+            for (int i = 1; i < apart; i++) aThenX.Step(south: true);
+            for (int i = 0; i < 3; i++) aThenX.Step(south: true, west: true);
+            Assert.AreEqual(0, aThenX.FirstJumpFrame);
+            Assert.AreEqual(apart, aThenX.FirstLightFrame);
+        }
+
+        // J5-02: B then LB is a dodge, then a guard: never latched as LB + B (Flame Wheel).
+        [Test]
+        public void BThenLbIsADodgeNotAnAbility([Values(1, 2, 3, 4)] int apart)
+        {
+            var rig = new Rig();
+            int abilities = 0;
+            rig.Step(east: true);
+            for (int i = 1; i < apart; i++) rig.Step(east: true);
+            for (int i = 0; i < 6; i++)
             {
-                rig.Step(south: true);
-                if (rig.South.Pressed && reportedOn < 0)
-                {
-                    reportedOn = f;
-                    delay = rig.South.PressDelay;
-                }
+                rig.Step(east: true, lbNow: true);
+                if (rig.Last.AbilityEast.Pressed) abilities++;
             }
-            Assert.AreEqual(5, reportedOn, "A is reported 5 frames (0.083 s) after it went down");
-            Assert.AreEqual(5f / 60f, delay, 1e-3f, "carrying its real age");
-            Assert.AreEqual(0, rig.Picks);
-        }
-
-        [Test]
-        public void QuickTapIsReportedAsSoonAsItsLetGo()
-        {
-            var rig = new Rig();
-            rig.Step(east: true);
-            rig.Step(east: true);
-            rig.Step();                                                        // let go after 2 frames, no RB
-            Assert.IsTrue(rig.East.Pressed && rig.East.Released && !rig.East.Held, "press and release together");
-            Assert.AreEqual(2f / 60f, rig.East.PressDelay, 1e-3f);
-            Assert.AreEqual(1, rig.DodgePresses);
-            rig.Step(rbNow: true);
-            rig.Step();
-            Assert.AreEqual(0, rig.Picks, "RB after the face was let go is not a chord");
+            Assert.AreEqual(0, rig.FirstDodgeFrame, "the dodge, at once");
+            Assert.AreEqual(0, abilities, "no Flame Wheel");
         }
 
         [Test]
@@ -145,26 +157,12 @@ namespace VaatusRevenge.Tests
         }
 
         [Test]
-        public void LbChordIsNotHeldBack()
+        public void LbChordIsTheAbilityAtOnce()
         {
             var rig = new Rig();
             rig.Step(lbNow: true);
             rig.Step(lbNow: true, north: true);
             Assert.IsTrue(rig.Last.AbilityNorth.Pressed, "LB + Y is the ability at once");
-            Assert.IsFalse(rig.Reader.IsHoldingBack(PadChordReader.FaceNorth));
-        }
-
-        [Test]
-        public void XTwoFramesBeforeRbIsUpgradedAndNamesTheLight()
-        {
-            var rig = new Rig();
-            rig.Step(west: true);
-            rig.Step(west: true);
-            rig.Step(west: true, rbNow: true);
-            Assert.AreEqual(ElementId.Water, rig.LastPick, "X is Water");
-            Assert.AreEqual(PlayerCommand.Light, rig.LastRetract);
-            rig.Step();
-            Assert.AreEqual(0, rig.Skills);
         }
 
         [Test]
@@ -212,10 +210,8 @@ namespace VaatusRevenge.Tests
             Assert.IsFalse(rig.North.Held);
             Assert.AreEqual(0, rig.Skills);
             rig.Step();
-            rig.Step(north: true);                                             // a fresh Y press is a zip again
-            Assert.IsTrue(rig.Reader.IsHoldingBack(PadChordReader.FaceNorth), "held back in case RB follows");
-            for (int i = 0; i < 5; i++) rig.Step(north: true);
-            Assert.IsTrue(rig.North.Pressed, "then reported as a zip");
+            rig.Step(north: true);                                             // a fresh Y press is a zip again, at once
+            Assert.IsTrue(rig.North.Pressed, "reported as a zip on its own frame");
         }
 
         [Test]
@@ -242,40 +238,6 @@ namespace VaatusRevenge.Tests
             Assert.AreEqual(PlayerCommand.SwitchStrike, buffer.Command);
             buffer.Push(PlayerCommand.Dodge, 0.07);
             Assert.AreEqual(PlayerCommand.Dodge, buffer.Command, "a dodge still gets you out");
-        }
-
-        [Test]
-        public void ModelUpgradesAQueuedXIntoTheSwitchStrike()
-        {
-            PlayerDriver d = PlayerDriver.Elements();
-            d.Step(Pad.Light);
-            d.PressOnBeat();                                                  // X on the beat: queued as hit 2
-            Assert.AreEqual(PlayerCommand.Light, d.Model.BufferedCommand);
-            Assert.IsTrue(d.Model.BufferedCommandQueued);
-            int judged = d.Count(PlayerEventType.BeatJudged);
-            d.Select = ElementId.Water;                                       // RB a frame later: that X was RB + X
-            d.Retract = PlayerCommand.Light;
-            d.Step();
-            Assert.AreEqual(PlayerCommand.SwitchStrike, d.Model.BufferedCommand, "the queued X becomes the switch strike");
-            Assert.IsTrue(d.Model.BufferedCommandQueued, "keeps its place");
-            Assert.AreEqual(judged, d.Count(PlayerEventType.BeatJudged), "not judged again (no Mashed)");
-            d.RunUntilStarted(2);
-            Assert.AreEqual(ElementId.Water, d.LastStarted.Element);
-            Assert.IsTrue(d.LastStarted.IsSwitchStrike);
-            Assert.AreEqual(1, d.LastStarted.ChainIndex);
-        }
-
-        [Test]
-        public void ModelDropsADodgeUpgradedIntoAPick()
-        {
-            PlayerDriver d = PlayerDriver.Elements(PlayerTuning.CreatePunishing(), ElementLoadout.CreatePunishing());
-            d.Step(Pad.Dodge);                                                // B (Punishing: the dodge waits for the release)
-            d.Select = ElementId.Water;
-            d.Retract = PlayerCommand.Dodge;
-            d.Step();                                                          // RB a frame later; B swallowed
-            d.Run(60);
-            Assert.AreEqual(0, d.Count(PlayerEventType.DodgeStarted), "the swallowed B never dodges");
-            Assert.AreEqual(ElementId.Water, d.Model.ActiveElement, "the pick still switched");
         }
     }
 }

@@ -950,6 +950,21 @@ namespace VaatusRevenge.CombatSim
             //   no whiplash: the body's horizontal velocity changing more than ReversalMax m/s in one frame as a strike
             //          runs (the dodge strike flipping from -17.6 to +20 m/s, or a 20 m/s dash stopping dead).
             const float SlideSpeed = 12f, SlideFootTravel = 0.2f, ReversalMax = 20f;
+            // Build 05 verify round 5 (J5-04), any state: no floating on the ground. The body grounded (alive, not lying)
+            // with both feet more than FloatHeight above the floor for FloatFrames frames or more, outside a clip that
+            // Leaps on purpose (zip kick, sprint kick, wind leap, wind runner kick): an air finisher or plunge landing in
+            // its air pose. (The touchdown frame itself is one frame: the model reports grounded on the next tick.)
+            const float FloatHeight = 0.2f;
+            const int FloatFrames = 3;
+            int floatRun, floatStart, floatChecked;
+            // (MV-03) walking, running and standing: the pelvis height above the feet' floor changes at most HipStepMax
+            // in one frame (Earth used to drop 9.5 cm into its horse stance on every stop).
+            const float HipStepMax = 0.05f;
+            int hipChecked;
+            float prevHipHeight = float.NaN;
+            string prevHipKey;
+            string floatKeys;
+            float floatWorst;
             const int SlideFrames = 6;
             int slideRun, slideStart;
             string slideKey;
@@ -1047,6 +1062,8 @@ namespace VaatusRevenge.CombatSim
                     spinCheckUntil = -1;
                 }
                 CheckSlide(rig, key, attacking, same, joints, root);
+                CheckFloating(rig, key, same, joints, root);
+                CheckHipHeight(rig, key, same, joints, root);
                 hipHistory.Add(hip);
                 if (hipHistory.Count > 8) hipHistory.RemoveAt(0);
                 Array.Copy(joints, prevJoints, prevJoints.Length);
@@ -1054,6 +1071,48 @@ namespace VaatusRevenge.CombatSim
                 prevAttacking = attacking;
                 prevMotionScene = scene;
                 prevMotionKey = key;
+            }
+
+            void CheckHipHeight(AnimRig rig, string key, bool same, Vector3[] joints, Vector3 root)
+            {
+                bool loco = key == AnimationKeys.Idle || FighterAnimator.IsGaitKey(key);
+                float height = joints[(int)BodyJoint.Hips].Y - root.Y;
+                bool grounded = rig.LastInput.Grounded;
+                if (same && loco && grounded && prevHipKey != null && !float.IsNaN(prevHipHeight))
+                {
+                    hipChecked++;
+                    float step = Math.Abs(height - prevHipHeight);
+                    if (step > HipStepMax) motionIssues.Add((scene, FrameCount, prevHipKey + " -> " + key, "hips moved up or down in one frame (m)", step));
+                }
+                prevHipHeight = height;
+                prevHipKey = loco && grounded ? key : null;
+            }
+
+            void CheckFloating(AnimRig rig, string key, bool same, Vector3[] joints, Vector3 root)
+            {
+                FighterAnimInput input = rig.LastInput;
+                PoseClip clip = rig.Animator.Clip(key);
+                bool lying = key == AnimationKeys.Knockdown || key == AnimationKeys.GetUp || key == AnimationKeys.Death || key == AnimationKeys.Launched;
+                bool check = input.Grounded && !input.Dead && rig.Fighter.IsAlive && !lying && (clip == null || !clip.Leaps);
+                float lowest = Math.Min(Math.Min(joints[(int)BodyJoint.LeftFoot].Y, joints[(int)BodyJoint.RightFoot].Y),
+                                        Math.Min(joints[(int)BodyJoint.LeftToes].Y, joints[(int)BodyJoint.RightToes].Y)) - root.Y;
+                if (check) floatChecked++;
+                bool floating = check && same && lowest > FloatHeight;
+                if (floating)
+                {
+                    if (floatRun == 0)
+                    {
+                        floatStart = FrameCount;
+                        floatKeys = key;
+                        floatWorst = 0f;
+                    }
+                    else if (!floatKeys.EndsWith(key)) floatKeys += " -> " + key;
+                    floatRun++;
+                    floatWorst = Math.Max(floatWorst, lowest);
+                    return;
+                }
+                if (floatRun >= FloatFrames) motionIssues.Add((scene, floatStart, floatKeys, "floated: both feet up for " + floatRun + " frames, highest (m)", floatWorst));
+                floatRun = 0;
             }
 
             void CheckSlide(AnimRig rig, string key, bool attacking, bool same, Vector3[] joints, Vector3 root)
@@ -1642,6 +1701,10 @@ namespace VaatusRevenge.CombatSim
                 int whips = motionIssues.Count(x => x.what.StartsWith("speed changed"));
                 t3.Row("Statue slides: over " + Out.N(SlideSpeed, 0) + " m/s for " + SlideFrames + "+ frames, legs frozen (J4-02)", motionFrames, slides, Out.Target(slides == 0));
                 t3.Row("Speed change over " + Out.N(ReversalMax, 0) + " m/s in one frame in a strike (J4-02)", motionFrames, whips, Out.Target(whips == 0));
+                int floats = motionIssues.Count(x => x.what.StartsWith("floated"));
+                int hipSteps = motionIssues.Count(x => x.what.StartsWith("hips moved"));
+                t3.Row("Hips up or down over " + Out.N(HipStepMax, 2) + " m in one frame, standing or moving (MV-03)", hipChecked, hipSteps, Out.Target(hipSteps == 0));
+                t3.Row("Grounded, both feet over " + Out.N(FloatHeight, 1) + " m up for " + FloatFrames + "+ frames (J5-04)", floatChecked, floats, Out.Target(floats == 0));
                 t3.Row("Grounded Earth rock from the body (J3-07)", earthGroundFx + " grounded Earth fx", earthBodyRockFx, Out.Target(earthBodyRockFx == 0));
                 int fromNowhere = earthThrows - earthThrowsFromFloor;
                 t3.Row("Earth boulders thrown without rising from the floor (J4-03)", earthThrows + " grounded Earth throws", fromNowhere,

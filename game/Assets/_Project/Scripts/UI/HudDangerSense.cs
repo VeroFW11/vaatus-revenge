@@ -7,7 +7,8 @@ namespace VaatusRevenge
     // round it pointing at each attacker (up to three; the one landing soonest is bigger).
     //   gold  you can parry it (tap LB)
     //   red   you must dodge it (B): it can't be parried, or can't be blocked
-    //   white now: press (Fluid only; DangerNow)
+    //   white now: press (Fluid only; DangerNow). The mark's core turns white and its rim stays gold or red, and the
+    //         arrows keep their colour, so the parry / dodge call is still there at the moment you act (V5-03).
     // The mark pulses faster as the strike gets closer (6 to 14 times a second). It appears exactly WarningLead before
     // impact because it shows the model's own warned strikes (TryGetThreat), and goes when the strike lands or is
     // called off.
@@ -68,7 +69,7 @@ namespace VaatusRevenge
                 float radians = angle * Mathf.Deg2Rad;
                 var at = new Vector2(center.x + Mathf.Sin(radians) * circle, center.y - Mathf.Cos(radians) * circle);
                 float size = i == 0 ? p.U(22f) * pulse : p.U(15f);
-                Color color = ColorOf(in strike);
+                Color color = TypeColor(in strike);
                 p.Triangle(at, size + p.U(4f), angle, Shadow);
                 p.Triangle(at, size, angle, color);
             }
@@ -76,14 +77,20 @@ namespace VaatusRevenge
             // The mark.
             float markSize = p.U(34f) * pulse;
             Color markColor = ColorOf(in soonest);
+            Color rimColor = TypeColor(in soonest);
             var mark = new Rect(center.x - markSize * 0.5f, center.y - markSize * 0.5f, markSize, markSize);
+            // At "now" the white core sits inside a rim of the call's colour.
+            float rim = soonest.NowFired ? p.U(5f) : 0f;
+            var core = new Rect(mark.x + rim, mark.y + rim, mark.width - rim * 2f, mark.height - rim * 2f);
             if (ElementVfx.TryGetTexture(ElementId.None, VfxSlot.Danger, out Texture2D picture, out _))
             {
-                p.Picture(mark, picture, markColor);
+                p.Picture(mark, picture, rimColor);
+                if (soonest.NowFired) p.Picture(core, picture, markColor);
                 return;
             }
             p.Diamond(new Rect(mark.x - p.U(3f), mark.y - p.U(3f), mark.width + p.U(6f), mark.height + p.U(6f)), Shadow);
-            p.Diamond(mark, markColor);
+            p.Diamond(mark, rimColor);
+            if (soonest.NowFired) p.Diamond(core, markColor);
             float textHeight = p.Body.fontSize * 1.2f;
             // Dark on a light mark (white "now", parry gold), white on the red dodge mark.
             float luminance = 0.2126f * markColor.r + 0.7152f * markColor.g + 0.0722f * markColor.b;
@@ -118,6 +125,12 @@ namespace VaatusRevenge
         static Color ColorOf(in IncomingStrike strike)
         {
             if (strike.NowFired) return NowWhite;
+            return TypeColor(in strike);
+        }
+
+        // The call itself: gold = parry, red = dodge (kept on the rim and the arrows at "now").
+        static Color TypeColor(in IncomingStrike strike)
+        {
             return strike.MustDodge ? DodgeRed : ParryGold;
         }
     }

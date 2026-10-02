@@ -328,7 +328,7 @@ namespace VaatusRevenge
                 painter.Bar(momentum, meter01, momentumColor, BarBackground);
                 painter.Outline(momentum, 1f, BarOutline);
                 painter.Text(new Rect(momentum.xMax + painter.U(10f), momentum.center.y - painter.Small.fontSize * 0.65f, painter.U(120f), painter.U(22f)),
-                    MeterLabel(meterElement), painter.Small, momentumColor);
+                    MeterLabel(model, meterElement), painter.Small, momentumColor);
                 y = momentum.yMax + painter.U(12f);
             }
             else
@@ -366,11 +366,15 @@ namespace VaatusRevenge
         // Cached (per HUD) so OnGUI doesn't build a string every frame.
         readonly string[] meterLabels = new string[(int)ElementId.Air + 1];
 
-        string MeterLabel(ElementId element)
+        // "<element's display name> Momentum", from the move data (V5-07: not the enum's name). Built once per element.
+        string MeterLabel(PlayerCombatModel model, ElementId element)
         {
             int i = (int)element;
             if (i < 0 || i >= meterLabels.Length) return "";
-            return meterLabels[i] ?? (meterLabels[i] = element + " Momentum");
+            if (meterLabels[i] != null) return meterLabels[i];
+            ElementMoveSet set = model.Loadout != null ? model.Loadout.Get(element) : null;
+            string name = set != null && !string.IsNullOrEmpty(set.DisplayName) ? set.DisplayName : element.ToString();
+            return meterLabels[i] = name + " Momentum";
         }
 
         void DrawHealCharges(float x, float y, int charges, int maxCharges)

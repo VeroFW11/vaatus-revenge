@@ -125,7 +125,7 @@ namespace VaatusRevenge.Core
             return new[] { stoneFist, tigerClaw, stomp, butterfly, quake };
         }
 
-        // The pause branch (X X, wait, X): both arms heave a boulder up out of the ground (it pops the foe up a little), then
+        // The pause branch (X X, wait, X X): both arms heave a boulder up out of the ground (it pops the foe up a little), then
         // hurl it. Poise 7 + 8 + 10 + 14 = 39, plus hit 1 = 46.
         static MoveData[] CreateEarthPauseChain()
         {

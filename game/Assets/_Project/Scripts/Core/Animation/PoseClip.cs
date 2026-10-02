@@ -83,6 +83,9 @@ namespace VaatusRevenge.Core
         // The body rides something across the floor (a surf on water or earth): the feet glide on purpose, so a fast
         // grounded rush in this clip is never given running steps (FighterAnimator's lunge stride).
         public bool Glides;
+        // A flying strike that leaves the ground on purpose (a zip kick, a sprint kick, a leap): its feet are meant to be
+        // off the floor, so the landing ground fit (FighterAnimator, J5-04) leaves its legs alone.
+        public bool Leaps;
         // Idle clips only: how much the arms swing when walking or running (0 = keep the weapon guard up).
         public float ArmSwing = 1f;
         public PoseKeyframe[] Keys = new PoseKeyframe[0];

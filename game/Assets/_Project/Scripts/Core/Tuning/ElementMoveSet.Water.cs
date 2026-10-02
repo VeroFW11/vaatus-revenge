@@ -117,7 +117,7 @@ namespace VaatusRevenge.Core
             return new[] { wardOff, rollBack, press, push, singleWhip };
         }
 
-        // The pause branch (X X, wait, X): cloud hands (the arms circle, four soft hits all round that keep drawing the foe
+        // The pause branch (X X, wait, X X): cloud hands (the arms circle, four soft hits all round that keep drawing the foe
         // in), then part the wild horse's mane, a long diagonal sweep that throws it back and restores you.
         // Poise 6 + 6 + 2x4 + 14 = 34, plus hit 1 = 40.
         static MoveData[] CreateWaterPauseChain()

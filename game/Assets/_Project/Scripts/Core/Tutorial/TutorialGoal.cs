@@ -7,7 +7,7 @@ namespace VaatusRevenge.Core
     {
         Timed,            // just play for TutorialStepData.Duration seconds (move and look around)
         OnBeatFinisher,   // land a main-string finisher in a string with at least MinOnBeat on-beat presses
-        PauseFinisher,    // land the pause-chain finisher (X X, wait, X)
+        PauseFinisher,    // land the pause-chain finisher (X X, wait, X X)
         DodgeKeepsCombo,  // dodge with a combo of at least MinComboCount going, then land another hit in the same combo
         SlipInStrike,     // slip in from at least MinStartDistance away, then land a hit within FollowUpWindow
         DodgeStrike,      // land a dodge strike (X late in a dodge)

@@ -8,10 +8,6 @@ namespace VaatusRevenge.Core
         public bool Held;      // down this frame
         public bool Pressed;   // went down this frame
         public bool Released;  // went up this frame
-        // With Pressed: how long ago (real seconds) the button really went down, when the press was held back before
-        // being reported (PadChordReader waits a moment after Y / B / A in case RB follows: a chord pressed thumb first).
-        // The rules count the press from then, so the buffer and the dodge's tap/hold timer aren't shifted. 0 normally.
-        public float PressDelay;
 
         public static ButtonState From(bool heldNow, bool heldLastFrame)
         {
@@ -37,7 +33,7 @@ namespace VaatusRevenge.Core
     //   AbilityNorth  hold LB + Y (L1 + Triangle) / hold Q + F        ability slot (Fire: Fire Whip, mid range)
     //   AbilityEast   hold LB + B (L1 + Circle) / hold Q + Left Shift ability slot (Fire: Flame Wheel, close all round)
     //   Skill      tap RB (R1) / right mouse          Fire Blast
-    //   ElementSelect  hold RB + a face button / 1-4 (ElementButtonLayout: B Fire, X Water, A Earth, Y Air; keys 1-4 Fire,
+    //   ElementSelect  hold RB, then press a face button / 1-4 (ElementButtonLayout: B Fire, X Water, A Earth, Y Air; keys 1-4 Fire,
     //                  Water, Earth, Air). Mid-string it is a switch strike: the next hit comes out in that element
     //   Heal       D-pad down / R
     //   LockOn     R3 / middle mouse or Tab (optional: off unless you press it)
@@ -64,8 +60,5 @@ namespace VaatusRevenge.Core
 
         public int SwitchTargetDelta; // -1 = previous/left, +1 = next/right, 0 = none (edge-triggered)
         public ElementId ElementSelect; // None unless an element was picked this frame (edge-triggered; see ElementButtonLayout)
-        // With ElementSelect: the face press made a frame or two before RB that became this pick (PadChordReader's grace).
-        // Its normal action was already reported; the model takes it back if it's still waiting. None otherwise.
-        public PlayerCommand RetractPress;
     }
 }

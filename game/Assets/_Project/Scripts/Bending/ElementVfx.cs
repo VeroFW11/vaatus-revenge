@@ -97,6 +97,14 @@ namespace VaatusRevenge
             return color;
         }
 
+        // The fists' glow while charging the heavy, per element (V5-01: it used to be Fire's orange for all four). Opaque.
+        public static Color ChargeFistColor(ElementId element)
+        {
+            Color color = StyleOf(element).ChargeFistColor;
+            color.a = 1f;
+            return color;
+        }
+
         // The body flash on a switch and the MIX accent ring (J3-S09): each element's own hue at about the same brightness,
         // so Fire's flash isn't many times Earth's, and Air isn't the plain white of a perfect dodge or a heal.
         public static Color SwitchFlashColor(ElementId element)

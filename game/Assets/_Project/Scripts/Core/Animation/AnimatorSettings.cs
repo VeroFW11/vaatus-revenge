@@ -100,6 +100,14 @@ namespace VaatusRevenge.Core
         public float LandDuration = 0.22f;           // knees absorb a landing for this long (when nothing else is playing)
         public float LandBlendIn = 0.05f;            // ...blending in over this long
         public float HardLandingSpeed = 9f;          // m/s: landings faster than this sink deeper
+        // Ground fit (J5-04): for LandingFitWindow seconds after a touchdown (after more than LandingFitMinAirTime in the
+        // air), a pose whose feet would hang over LandingFitTolerance metres above the floor (an air finisher or plunge
+        // still in its air pose as the body lands) takes the landing legs at once and sits its pelvis down onto them,
+        // handing back to the clip's own legs over LandingFitRelease seconds once they reach the floor themselves.
+        public float LandingFitWindow = 0.6f;
+        public float LandingFitMinAirTime = 0.05f;
+        public float LandingFitTolerance = 0.04f;
+        public float LandingFitRelease = 0.12f;
     }
 
     // The walk / run / sprint cycle, generated from ground speed instead of fixed clips, so a fighter at any
@@ -149,6 +157,8 @@ namespace VaatusRevenge.Core
         public float SpeedSmoothing = 10f;           // how quickly the gait follows speed changes (1/s)
         public float StopSmoothing = 30f;            // ...and how quickly when slowing down, so a stop reaches idle at once (0 = SpeedSmoothing)
         public float GroundSpeedSmoothing = 40f;     // ...and how quickly the stride follows the body's true speed (1/s)
+        public float HipsHeightSmoothing = 8f;       // how quickly the pelvis height moves between the stance and the gait (1/s,
+                                                     // ~0.12 s): a deep stance (Earth) settles instead of dropping (0 = at once)
 
         public float Cadence(float speed)
         {

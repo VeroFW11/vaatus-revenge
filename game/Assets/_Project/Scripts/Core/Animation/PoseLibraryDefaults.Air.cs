@@ -463,7 +463,7 @@ namespace VaatusRevenge.Core
 
             // Wind Leap Strike (zip): a gust-assisted leap (a jump, not flight): the knees tuck as you sail across, then the
             //    right leg fires out in a flying front kick.
-            clips.Add(Strike(AnimationKeys.WindLeap, bagua)
+            clips.Add(Strike(AnimationKeys.WindLeap, bagua, leaps: true)
                 .K(KeyPhase.Startup, 0.3f, PoseEase.Out, s =>
                 {
                     s.Set(PoseChannel.ArmFollow, 0.3f);
@@ -494,7 +494,7 @@ namespace VaatusRevenge.Core
 
             // Wind Runner Kick (sprint attack): out of the run, a light skipping take-off into a high front kick, the arms
             //    swept back like wings.
-            clips.Add(Strike(AnimationKeys.WindRunnerKick, bagua)
+            clips.Add(Strike(AnimationKeys.WindRunnerKick, bagua, leaps: true)
                 .K(KeyPhase.Startup, 0.5f, PoseEase.Out, s =>
                 {
                     s.Set(PoseChannel.ArmFollow, 0.2f);

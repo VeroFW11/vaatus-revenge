@@ -4,7 +4,7 @@ namespace VaatusRevenge.Core
 {
     // The combat tutorial: its steps in order and the few timings around them. Lives in a TutorialScriptAsset in Unity;
     // CreateDefault is the Build 05 tutorial (spec 5 D): eleven steps, step 8 in three parts (Water, Earth, Air), taught
-    // on Xbox buttons with the colour-matched element layout (hold RB + B Fire, X Water, A Earth, Y Air; keys 1-4).
+    // on Xbox buttons with the colour-matched element layout (hold RB, then B Fire, X Water, A Earth, Y Air; keys 1-4).
     [Serializable]
     public class TutorialScript
     {
@@ -18,9 +18,10 @@ namespace VaatusRevenge.Core
         // Bumped when the default steps change, so the sandbox builder can offer to update an old saved tutorial.
         // A field missing from an old asset keeps its initialiser, so it reads 0.
         public int DataVersion = 0;
-        public const int CurrentDataVersion = 4;   // 2: Build 05 verify (pause finisher X X wait X X, beat taught as anticipation)
+        public const int CurrentDataVersion = 5;   // 2: Build 05 verify (pause finisher X X wait X X, beat taught as anticipation)
                                                    // 3: verify round 2 (shorter step 2 hint; hints wrap and stay under HintBudget)
                                                    // 4: verify round 3 (starts in Fire; slip-in step distance bar and hint)
+                                                   // 5: verify round 5 (modifier first: "hold RB, then press" in every switch step)
         // Longest hint, in characters (a {button} counts as 3): the panel wraps hints, and this keeps any of them to two
         // or three short lines. TutorialTrackerTests checks every default hint against it.
         public const int HintBudget = 140;
@@ -88,38 +89,38 @@ namespace VaatusRevenge.Core
                     new TutorialStepData
                     {
                         Id = "8", Title = "Switch mid-combo: Water", Goal = TutorialGoal.SwitchStrikeTo, Element = ElementId.Water,
-                        Prompt = "{X}{X}, {RB}+{X} (Water), keep going",
+                        Prompt = "{X}{X}, hold {RB} then {X} (Water), keep going",
                         KeyboardPrompt = "{X}{X}, then 2 (Water), keep going",
-                        Hint = "The button's colour is the element: blue X is Water. The string carries on in Water with its next hit.",
+                        Hint = "RB first, then the button: its colour is the element, blue X is Water. The string carries on in Water with its next hit.",
                         KeyboardHint = "The string carries on in Water with its next hit.",
-                        AlreadyInElementHint = "You're already in Water: {RB}+{B} back to Fire first.",
+                        AlreadyInElementHint = "You're already in Water: hold {RB} then {B} to go back to Fire first.",
                         KeyboardAlreadyInElementHint = "You're already in Water: press 1 to go back to Fire first."
                     },
                     new TutorialStepData
                     {
                         Id = "8b", Title = "Switch mid-combo: Earth", Goal = TutorialGoal.SwitchStrikeTo, Element = ElementId.Earth,
-                        Prompt = "{X}{X}, {RB}+{A} (Earth), keep going",
+                        Prompt = "{X}{X}, hold {RB} then {A} (Earth), keep going",
                         KeyboardPrompt = "{X}{X}, then 3 (Earth), keep going",
-                        Hint = "Green A is Earth: slow, heavy and rooted. Its hits push through enemy attacks.",
+                        Hint = "RB first, then green A: Earth, slow, heavy and rooted. Its hits push through enemy attacks.",
                         KeyboardHint = "Earth is slow, heavy and rooted. Its hits push through enemy attacks.",
-                        AlreadyInElementHint = "You're already in Earth: {RB}+{X} to Water first.",
+                        AlreadyInElementHint = "You're already in Earth: hold {RB} then {X} for Water first.",
                         KeyboardAlreadyInElementHint = "You're already in Earth: press 2 for Water first."
                     },
                     new TutorialStepData
                     {
                         Id = "8c", Title = "Switch mid-combo: Air", Goal = TutorialGoal.SwitchStrikeTo, Element = ElementId.Air,
-                        Prompt = "{X}{X}, {RB}+{Y} (Air), keep going",
+                        Prompt = "{X}{X}, hold {RB} then {Y} (Air), keep going",
                         KeyboardPrompt = "{X}{X}, then 4 (Air), keep going",
-                        Hint = "Yellow Y is Air: the fastest, many little hits that circle round the enemy.",
+                        Hint = "RB first, then yellow Y: Air, the fastest, many little hits that circle round the enemy.",
                         KeyboardHint = "Air is the fastest: many little hits that circle round the enemy.",
-                        AlreadyInElementHint = "You're already in Air: {RB}+{A} to Earth first.",
+                        AlreadyInElementHint = "You're already in Air: hold {RB} then {A} for Earth first.",
                         KeyboardAlreadyInElementHint = "You're already in Air: press 3 for Earth first."
                     },
                     new TutorialStepData
                     {
                         Id = "9", Title = "MIX finisher", Goal = TutorialGoal.MixFinisher, MinMixLevel = 2,
                         Prompt = "Finish a string after mixing two elements",
-                        Hint = "Try {X}{X}, {RB} + a different colour, {X}{X}. Every element you land adds to MIX: two hit harder, three launch.",
+                        Hint = "Try {X}{X}, hold {RB} then a different colour, {X}{X}. Every element you land adds to MIX: two hit harder, three launch.",
                         KeyboardHint = "Try {X}{X}, a different element's number key (1-4), {X}{X}. Every element you land adds to MIX: two hit harder, three launch."
                     },
                     new TutorialStepData

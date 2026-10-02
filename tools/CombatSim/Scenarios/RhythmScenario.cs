@@ -80,7 +80,7 @@ namespace VaatusRevenge.CombatSim
             Out.Heading("Rhythm: the beat vs mashing (" + o.Seeds + " seeds x 60 s into a passive sparring partner)");
             Out.Line("Bots: rhythm (presses on the beat, ± 0.03 s), sloppy (± 0.08 s), masher (every 0.12-0.2 s), reactpress (presses a "
                      + "reaction time after each hit lands, 15% double taps), slowtap (presses after the beat window, inside the combo "
-                     + "window), pauser (X X, wait, X).");
+                     + "window), pauser (X X, wait, X X).");
             foreach (Preset p in o.Presets)
             {
                 Out.Sub(p + " preset");

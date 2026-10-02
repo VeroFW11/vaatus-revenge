@@ -105,6 +105,13 @@ namespace VaatusRevenge.Core
         float landTime = float.MaxValue;
         float landDepth = 1f;
         float airTime;
+        float hipsWeight;              // the gait's share of the pelvis height (eased: GaitSettings.HipsHeightSmoothing)
+        // Landing ground fit (J5-04): seconds since the root touched down after real air time, and how much of the legs
+        // (and hips) currently come from the grounded locomotion pose instead of the shown clip.
+        float sinceTouchdown = float.MaxValue;
+        float fitAirTime;
+        bool fitWasGrounded = true;
+        float groundFit;
         string locoKey = AnimationKeys.Idle;
         float locoKeyTime;
 
@@ -197,6 +204,11 @@ namespace VaatusRevenge.Core
             hasHistory = false;
             landTime = float.MaxValue;
             airTime = 0f;
+            sinceTouchdown = float.MaxValue;
+            hipsWeight = 0f;
+            fitAirTime = 0f;
+            fitWasGrounded = true;
+            groundFit = 0f;
             locoKey = AnimationKeys.Idle;
             locoKeyTime = 0f;
             leanPitch = leanRoll = headLag = flinchPitch = flinchRoll = flinchYaw = default;
@@ -301,6 +313,7 @@ namespace VaatusRevenge.Core
             PoseClip shown = action ? Clip(key) : null;
             float aim = shown != null && shown.Aims ? input.AimPitch : 0f;
             solver.Solve(output, pose, action ? travel : 0f, aim, input.Grounded);
+            FitLandingToFloor(in input, action ? key : "", action ? travel : 0f, aim, dt, settings);
             if (!pose.IsFinite())
             {
                 // Never hand Unity a broken pose: fall back to the stance (and say nothing: this is a safety net).
@@ -316,6 +329,73 @@ namespace VaatusRevenge.Core
 
             UpdateCues(key, action, in input, weight);
             lastVelocity = velocity;
+        }
+
+        // ------------------------------------------------------------------ landing ground fit
+
+        // J5-04: an air-string finisher or plunge reaches the floor (FinisherGravityScale) while its clip is still in its
+        // air pose, and the crossfade out of it to the land pose carries that tuck for a few frames: the fighter would
+        // stand on nothing, feet 0.3-0.5 m up. For a short while after a touchdown, whenever the solved feet are off the
+        // floor the legs (and hips) take the grounded locomotion pose (the knee-bending landing) at once, and any gap
+        // left is closed by lowering the pelvis; as the clip's own legs come down the fit hands back over
+        // LandingFitRelease. Deliberate leaps that start on the ground never fit (they aren't after a touchdown).
+        void FitLandingToFloor(in FighterAnimInput input, string key, float shownTravel, float aim, float dt, AnimatorSettings s)
+        {
+            if (input.Grounded)
+            {
+                if (!fitWasGrounded && fitAirTime > s.LandingFitMinAirTime) sinceTouchdown = 0f;
+                else if (sinceTouchdown < float.MaxValue) sinceTouchdown += dt;
+                fitAirTime = 0f;
+            }
+            else
+            {
+                fitAirTime += dt;
+            }
+            fitWasGrounded = input.Grounded;
+
+            float k = solver.Skeleton.Scale;
+            PoseClip clip = key.Length > 0 ? Clip(key) : null;
+            bool candidate = input.Grounded && !input.Dead && sinceTouchdown <= s.LandingFitWindow && !KeepsItsLegs(key)
+                             && !(clip != null && clip.Leaps);
+            bool floating = candidate && FootGap(k) > s.LandingFitTolerance * k;
+            if (floating) groundFit = 1f;
+            else if (dt > 0f) groundFit = Math.Max(0f, groundFit - dt / Math.Max(0.01f, s.LandingFitRelease));
+            if (!(groundFit > 0f)) return;
+
+            float w = AnimMath.SmoothStep(groundFit);
+            for (int c = 0; c < PoseSpec.LegChannels; c++)
+            {
+                PoseChannel left = PoseSpec.Leg(BodySide.Left, c), right = PoseSpec.Leg(BodySide.Right, c);
+                output[left] = AnimMath.Lerp(output[left], locoSpec[left], w);
+                output[right] = AnimMath.Lerp(output[right], locoSpec[right], w);
+            }
+            output[PoseChannel.LegFrame] = AnimMath.Lerp(output[PoseChannel.LegFrame], locoSpec[PoseChannel.LegFrame], w);
+            output[PoseChannel.HipsY] = Math.Min(output[PoseChannel.HipsY], AnimMath.Lerp(output[PoseChannel.HipsY], locoSpec[PoseChannel.HipsY], w));
+            solver.Solve(output, pose, shownTravel, aim, true);
+            float gap = FootGap(k);
+            if (gap > s.LandingFitTolerance * k * 0.5f)
+            {
+                // The legs can't reach from that high (a tucked hip height): sit the pelvis down onto them.
+                output[PoseChannel.HipsY] -= gap / Math.Max(1e-3f, k);
+                solver.Solve(output, pose, shownTravel, aim, true);
+            }
+        }
+
+        // Lowest point of either foot (the ankle, or the ball of the foot) above the floor, model space.
+        float FootGap(float k)
+        {
+            float lowest = Math.Min(Math.Min(solver.ModelPosition(BodyJoint.LeftToes).Y, solver.ModelPosition(BodyJoint.RightToes).Y),
+                                    Math.Min(solver.ModelPosition(BodyJoint.LeftFoot).Y, solver.ModelPosition(BodyJoint.RightFoot).Y));
+            return lowest - FlatToesHeight * k;
+        }
+
+        const float FlatToesHeight = 0.02f;   // the ball of the foot's joint on a flat foot (PoseSolver.ToesFloorHeight)
+
+        // Lying, falling or getting up: the legs are the clip's own (a body on the floor, not a landing).
+        static bool KeepsItsLegs(string key)
+        {
+            return key == AnimationKeys.Knockdown || key == AnimationKeys.GetUp || key == AnimationKeys.Death
+                || key == AnimationKeys.Launched;
         }
 
         // ------------------------------------------------------------------ locomotion
@@ -402,10 +482,16 @@ namespace VaatusRevenge.Core
             else
             {
                 float moveWeight = AnimMath.SmoothStep((smoothSpeed - gait.MoveThreshold * 0.5f) / Math.Max(0.05f, gait.WalkSpeed * 0.6f));
-                if (moveWeight > 0f)
+                // The pelvis height between the stance and the gait eases on its own (MV-03): Earth's deep horse stance
+                // is 0.2 m under its walk, and the legs' quick stop would drop the hips 10 cm in a frame.
+                hipsWeight = gait.HipsHeightSmoothing > 0f && dt > 0f
+                    ? hipsWeight + (moveWeight - hipsWeight) * AnimMath.ExpBlend(gait.HipsHeightSmoothing, dt)
+                    : moveWeight;
+                if (moveWeight > 0f || hipsWeight > 1e-3f)
                 {
                     GaitGenerator.Evaluate(gaitPhase, smoothSpeed, smoothDir, gait, stanceSpec, gaitSpec, IdleArmSwing(), groundSpeed);
                     PoseSpec.Lerp(stanceSpec, gaitSpec, moveWeight, locoSpec);
+                    locoSpec[PoseChannel.HipsY] = AnimMath.Lerp(stanceSpec[PoseChannel.HipsY], gaitSpec[PoseChannel.HipsY], hipsWeight);
                 }
                 else
                 {

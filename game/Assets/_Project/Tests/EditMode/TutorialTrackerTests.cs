@@ -126,14 +126,15 @@ namespace VaatusRevenge.Tests
         [Test]
         public void SwitchStepsUseTheColourMatchedLayout()
         {
-            // Spec 8.1: hold RB + B (red) Fire, X (blue) Water, A (green) Earth, Y (yellow) Air; keys 1-4 Fire, Water, Earth, Air.
+            // Spec 8.1: hold RB, then B (red) Fire, X (blue) Water, A (green) Earth, Y (yellow) Air; keys 1-4 Fire, Water,
+            // Earth, Air. Modifier first (round 5): the prompt says RB comes first.
             var layout = new ElementButtonLayout();
             TutorialScript script = TutorialScript.CreateDefault();
             string[] faces = { "{Y}", "{B}", "{A}", "{X}" };
             foreach (TutorialStepData step in script.Steps)
             {
                 if (step.Goal != TutorialGoal.SwitchStrikeTo) continue;
-                string chord = "{RB}+" + faces[layout.PadSlotOf(step.Element)];
+                string chord = "hold {RB} then " + faces[layout.PadSlotOf(step.Element)];
                 StringAssert.Contains(chord, step.Prompt, step.Id + " teaches the element's own button");
                 string key = ((int)step.Element).ToString();
                 Assert.AreEqual(step.Element, layout.KeySlot((int)step.Element - 1));
@@ -717,6 +718,39 @@ namespace VaatusRevenge.Tests
             Assert.IsTrue(r.D.LastOf(PlayerEventType.ElementSwitched).IsSwitchStrike);
             r.RunUntil(x => x.T.PassSerial > 0, 90);
             AssertStepPassed(r, id);
+        }
+
+        // J5-03: the switch made Late in the string (past the switch strike's widened window) still passes the step.
+        [Test]
+        public void Step8PassesWithALateSwitch([Values("8", "8b", "8c")] string id)
+        {
+            ElementId element = id == "8" ? ElementId.Water : id == "8b" ? ElementId.Earth : ElementId.Air;
+            var r = new Rig(id);
+            r.OnBeatString(1);                                   // X X
+            for (int i = 0; i < 120 && r.D.Model.Rhythm.Active && r.D.Model.Rhythm.TimeToBeat > r.D.Dt * 0.5f; i++) r.Frame();
+            for (int i = 0; i < 11; i++) r.Frame();             // well after hit 2's beat
+            r.D.Select = element;
+            r.Frame();
+            r.RunUntil(x => x.T.PassSerial > 0, 120);
+            Assert.AreEqual(BeatGrade.Late, r.D.LastOf(PlayerEventType.AttackStarted).Grade, "a Late switch");
+            AssertStepPassed(r, id);
+        }
+
+        // A plain switch while the combo is still going (a switch strike that outlived its buffer in a dodge), then the
+        // next hit in the new element in the same combo: the string carried on, so the step passes.
+        [Test]
+        public void Step8PassesWithAPlainSwitchMidCombo()
+        {
+            var r = new Rig("8");
+            r.OnBeatString(1);                                   // X X
+            r.SettleToLocomotion();                              // the string is over, the combo still counts
+            Assert.Greater(r.D.Model.ComboCount, 0, "combo alive");
+            r.D.Select = ElementId.Water;
+            r.Frame();
+            Assert.AreEqual(ElementId.Water, r.D.Model.ActiveElement);
+            r.Frame(Pad.Light);
+            r.RunUntil(x => x.T.PassSerial > 0, 120);
+            AssertStepPassed(r, "8");
         }
 
         [Test]

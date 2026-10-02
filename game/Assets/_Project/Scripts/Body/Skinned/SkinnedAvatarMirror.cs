@@ -121,7 +121,7 @@ namespace VaatusRevenge
                 if (!warnedException)
                 {
                     warnedException = true;
-                    Debug.LogWarning("SkinnedAvatarMirror on '" + name + "' stopped and fell back to the procedural body: " + e, this);
+                    Debug.LogWarning("Player avatar model stopped on '" + name + "' and fell back to the procedural body: " + e, this);
                 }
                 Fail(null);
             }

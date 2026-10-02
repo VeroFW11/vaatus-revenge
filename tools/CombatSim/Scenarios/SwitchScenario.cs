@@ -217,18 +217,18 @@ namespace VaatusRevenge.CombatSim
         }
         // ---------------------------------------------------------------- real pad (J4-01 / BH-04)
 
-        // The same bots on a real pad: their element picks are played as RB + the face button up to 80 ms apart in either
-        // order, and every face press goes through the game's PadChordReader (PlayerInputReader's wiring). A chord must
-        // only switch: any jump, dodge, zip or skill the bot didn't press itself is a stray action.
+        // The same bots on a real pad: their element picks are played modifier first, RB then the face button up to 80 ms
+        // later (or on the same frame), and every face press goes through the game's PadChordReader (PlayerInputReader's
+        // wiring). A chord must only switch: any jump, dodge, zip or skill the bot didn't press itself is a stray action.
         static void RealPadChords(Options o)
         {
-            Out.Sub("Real pad: RB + face up to 80 ms apart, through PadChordReader (target: 0 stray actions, 0 lost picks)");
-            var t = new Table("Preset", "Bot", "Chords", "Face first", "Picks seen", "Switch strikes", "Stray jump / dodge / zip / skill", "Lost picks", "Target");
+            Out.Sub("Real pad: hold RB, then the face up to 80 ms later, through PadChordReader (target: 0 stray actions, 0 lost picks)");
+            var t = new Table("Preset", "Bot", "Chords", "Same frame", "Picks seen", "Switch strikes", "Stray jump / dodge / zip / skill", "Lost picks", "Target");
             foreach (Preset p in o.Presets)
             {
                 foreach (string botName in new[] { "switcher", "chaosswitch" })
                 {
-                    int chords = 0, faceFirst = 0, picks = 0, strikes = 0, strayJump = 0, strayDodge = 0, strayZip = 0, straySkill = 0;
+                    int chords = 0, sameFrame = 0, picks = 0, strikes = 0, strayJump = 0, strayDodge = 0, strayZip = 0, straySkill = 0;
                     for (int seed = o.Seed; seed < o.Seed + o.Seeds; seed++)
                     {
                         Session s = WithPartner(o, p, seed, out _);
@@ -249,14 +249,17 @@ namespace VaatusRevenge.CombatSim
                         };
                         int frames = (int)(30f * o.Fps);
                         for (int f = 0; f < frames; f++) s.Step(bot.NextPad());
-                        chords += pad.ChordsPlayed;
-                        faceFirst += pad.ChordsFaceFirst;
+                        // A chord dropped for a dodge or parry made no pick, nor did one still waiting for its face as the run
+                        // ended; a switch strike still queued at the end hasn't switched yet (it would as its move starts).
+                        chords += pad.ChordsPlayed - pad.ChordsCancelled - (pad.ChordPickPending ? 1 : 0)
+                                  - (s.Model.BufferedCommand == PlayerCommand.SwitchStrike ? 1 : 0);
+                        sameFrame += pad.ChordsSameFrame;
                     }
                     int stray = strayJump + strayDodge + strayZip + straySkill;
                     // Every chord shows up as a switch, a switch strike or a denial (a pick made while the last chord is
                     // still in flight waits, so picks can't exceed chords).
                     int lost = Math.Max(0, chords - picks);
-                    t.Row(p, botName, chords, faceFirst, picks, strikes, strayJump + " / " + strayDodge + " / " + strayZip + " / " + straySkill,
+                    t.Row(p, botName, chords, sameFrame, picks, strikes, strayJump + " / " + strayDodge + " / " + strayZip + " / " + straySkill,
                         lost, Out.Target(stray == 0 && lost == 0 && chords > 0));
                 }
             }

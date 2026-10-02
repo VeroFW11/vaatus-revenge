@@ -5,13 +5,14 @@ using VaatusRevenge.Core;
 
 namespace VaatusRevenge.Tests
 {
-    // The Xbox chord end to end (Build 05 verify round 4, J4-01): raw pad buttons -> PadChordReader -> PlayerInputFrame
-    // -> PlayerCombatModel, wired exactly like PlayerInputReader. A face button that lands up to 5 frames (60 fps) before
-    // RB must only switch the element: no jump, dodge, zip, skill or second attack on top, from neutral, from string
-    // memory, mid-move and after a dodge, on both presets.
+    // The Xbox chord end to end (Build 05 verify round 4, J4-01; modifier first since round 5): raw pad buttons ->
+    // PadChordReader -> PlayerInputFrame -> PlayerCombatModel, wired exactly like PlayerInputReader. Hold RB, then a face
+    // button 0-5 frames (60 fps) later must only switch the element (a switch strike when a string is live): no jump,
+    // dodge, zip, skill or extra attack on top, from neutral, from string memory, mid-move and after a dodge, on both
+    // presets. Every other press reaches the rules on its own frame, in the order it was made (J5-01, J5-02).
     public class PadChordModelTests
     {
-        static readonly int[] FramesEarly = { 0, 1, 2, 3, 5 };
+        static readonly int[] FramesRbFirst = { 0, 1, 2, 3, 5 };
         static readonly int[] Faces = { PadChordReader.FaceNorth, PadChordReader.FaceEast, PadChordReader.FaceSouth, PadChordReader.FaceWest };
 
         public enum Context { Neutral, StringMemory, MidMove, AfterDodge }
@@ -59,7 +60,6 @@ namespace VaatusRevenge.Tests
                     AbilityNorth = chord.AbilityNorth,
                     AbilityEast = chord.AbilityEast,
                     ElementSelect = chord.ElementSelect,
-                    RetractPress = chord.ElementSelect != ElementId.None ? chord.RetractPress : PlayerCommand.None,
                 };
                 D.StepFrame(frame);
             }
@@ -82,10 +82,11 @@ namespace VaatusRevenge.Tests
                 Assert.GreaterOrEqual(D.Started, n, "attack " + n + " never started");
             }
 
-            // The chord: the face goes down 'early' frames before RB, both held, then both let go.
-            public void Chord(int face, int early)
+            // The chord, modifier first: RB goes down 'rbFirst' frames before the face (0 = the same frame), both held,
+            // then both let go.
+            public void Chord(int face, int rbFirst)
             {
-                for (int i = 0; i < early; i++) Step(face);
+                for (int i = 0; i < rbFirst; i++) Step(-1, true);
                 for (int i = 0; i < 6; i++) Step(face, true);
                 Step();
             }
@@ -167,16 +168,16 @@ namespace VaatusRevenge.Tests
             int notLive = 0;
             foreach (int face in Faces)
             {
-                foreach (int early in FramesEarly)
+                foreach (int rbFirst in FramesRbFirst)
                 {
                     var p = new PadProbe(punishing);
                     ElementId target = p.Layout.PadSlot(face);
                     int from = Prepare(p, context, target);
                     // Is there a string for the chord to continue (a switch strike) or not (a plain switch)?
                     bool live = context == Context.MidMove || p.D.Model.StringNextIndex >= 0;
-                    p.Chord(face, early);
+                    p.Chord(face, rbFirst);
                     p.Run(90);
-                    string label = (punishing ? "Punishing " : "Fluid ") + context + " face " + face + " " + early + "f early: " + Describe(p.D, from);
+                    string label = (punishing ? "Punishing " : "Fluid ") + context + " face " + face + " RB " + rbFirst + "f first: " + Describe(p.D, from);
 
                     int attacks = 0, switchStrikes = 0, jumps = 0, dodges = 0, zips = 0, skills = 0;
                     for (int i = from; i < p.D.Log.Count; i++)
@@ -190,14 +191,12 @@ namespace VaatusRevenge.Tests
                         if (e.AttackKind == PlayerAttackKind.ZipStrike) zips++;
                         if (e.AttackKind == PlayerAttackKind.Skill) skills++;
                     }
-                    bool xFace = face == PadChordReader.FaceWest;
-                    // From neutral a Y / B / A chord is a plain switch (no attack); X is its one hit, kept, plus the switch.
-                    // (X and RB on the same frame is a pure chord: no hit from neutral either.)
-                    int expectedAttacks = !live && (!xFace || early == 0) ? 0 : 1;
+                    // From neutral a chord is a plain switch (no attack); with a string live it is the switch strike (one attack).
+                    int expectedAttacks = live ? 1 : 0;
                     if (jumps != 0 || dodges != 0 || zips != 0 || skills != 0) failures.Add(label + "  [stray action]");
                     else if (attacks != expectedAttacks) failures.Add(label + "  [" + attacks + " attacks, expected " + expectedAttacks + "]");
                     else if (p.D.Model.ActiveElement != target) failures.Add(label + "  [ended in " + p.D.Model.ActiveElement + "]");
-                    else if (!xFace && live && switchStrikes != 1) failures.Add(label + "  [no switch strike]");
+                    else if (live && switchStrikes != 1) failures.Add(label + "  [no switch strike]");
                     if (context != Context.Neutral && !live) notLive++;
                 }
             }
@@ -214,9 +213,9 @@ namespace VaatusRevenge.Tests
         [Test] public void PunishingMidMove() { CheckChord(true, Context.MidMove); }
         [Test] public void PunishingAfterDodge() { CheckChord(true, Context.AfterDodge); }
 
-        // BH-02: Water in hand, X a few frames before RB (RB + X = Water, the element already in hand): one attack, not two.
+        // BH-02: Water in hand, RB held for the next X (X is Water's button): mid-string that X is the next hit, one attack.
         [Test]
-        public void SameElementEarlyXIsOneAttack([Values(1, 2, 3, 4, 5)] int early, [Values(false, true)] bool memory)
+        public void SameElementRbThenXIsOneAttack([Values(0, 1, 3, 5)] int rbFirst, [Values(false, true)] bool memory)
         {
             var p = new PadProbe(false);
             p.D.Select = ElementId.Water;
@@ -233,35 +232,156 @@ namespace VaatusRevenge.Tests
             }
             int from = p.D.Log.Count;
             int before = p.D.Started;
-            p.Chord(PadChordReader.FaceWest, early);
+            p.Chord(PadChordReader.FaceWest, rbFirst);
             p.Run(90);
-            Assert.AreEqual(1, p.D.Started - before, Describe(p.D, from));
+            Assert.AreEqual(memory ? 1 : 0, p.D.Started - before, Describe(p.D, from));
             Assert.AreEqual(ElementId.Water, p.D.Model.ActiveElement);
         }
 
-        // A held-back press keeps its real time: a jump pressed on its own still jumps, 5 frames after the press.
+        // J5-01: no added latency on the pad. Each face press starts its action on the frame it was pressed, exactly like
+        // the keyboard, so a dodge on the white danger cue starts (and its i-frames open) when the thumb lands.
         [Test]
-        public void LoneJumpComesOutAfterTheHoldBack()
+        public void FaceActionsStartOnThePressFrame([Values(false, true)] bool punishing)
         {
-            var p = new PadProbe(false);
-            p.Run(5);
-            int from = p.D.Frame + 1;
-            p.Tap(PadChordReader.FaceSouth, 10);
-            p.Run(10);
-            int jumped = p.D.FirstFrame(PlayerEventType.Jumped, from);
-            Assert.AreEqual(from + 5, jumped, "jumps 0.083 s after the press");
+            var jump = new PadProbe(punishing);
+            jump.Run(5);
+            int from = jump.D.Frame + 1;
+            jump.Tap(PadChordReader.FaceSouth, 10);
+            jump.Run(10);
+            Assert.AreEqual(from, jump.D.FirstFrame(PlayerEventType.Jumped, from), "jumps on the press frame");
+
+            if (punishing) return;   // Punishing dodges on the release (a hold sprints)
+            var dodge = new PadProbe(false);
+            dodge.Run(5);
+            from = dodge.D.Frame + 1;
+            dodge.Tap(PadChordReader.FaceEast, 3);
+            dodge.Run(10);
+            Assert.AreEqual(from, dodge.D.FirstFrame(PlayerEventType.DodgeStarted, from), "dodges on the press frame");
         }
 
-        // Punishing's dodge is on release (a hold past TapHoldThreshold sprints): the hold-back must not stretch the
-        // tap window, because the hold is timed from the real press.
+        // J5-02: a brisk B (stick toward) then X is a dodge then the dodge strike, A then X a jump then the air attack, and
+        // B then LB a dodge, never LB + B (Flame Wheel), at every gap a human makes.
         [Test]
-        public void PunishingHoldIsTimedFromTheRealPress()
+        public void BriskSequencesComeOutInOrder([Values(1, 2, 3, 4)] int apart)
+        {
+            var toward = new Vector2(0f, 1f);
+
+            var dodgeStrike = new PadProbe(false);
+            dodgeStrike.Run(5);
+            int from = dodgeStrike.D.Log.Count;
+            for (int i = 0; i < apart; i++) dodgeStrike.Step(PadChordReader.FaceEast, false, toward);
+            for (int i = 0; i < 3; i++) dodgeStrike.Step(PadChordReader.FaceEast, false, toward, PadChordReader.FaceWest);
+            dodgeStrike.Run(40, -1, toward);
+            string log = Describe(dodgeStrike.D, from);
+            Assert.AreEqual(1, dodgeStrike.D.Count(PlayerEventType.DodgeStarted), "B then X: one dodge. " + log);
+            Assert.AreEqual(PlayerAttackKind.DodgeStrike, FirstAttack(dodgeStrike.D, from), "B then X: the dodge strike. " + log);
+
+            var air = new PadProbe(false);
+            air.Run(5);
+            from = air.D.Log.Count;
+            for (int i = 0; i < apart; i++) air.Step(PadChordReader.FaceSouth);
+            for (int i = 0; i < 3; i++) air.Step(PadChordReader.FaceSouth, false, default, PadChordReader.FaceWest);
+            air.Run(20);
+            log = Describe(air.D, from);
+            Assert.AreEqual(1, air.D.Count(PlayerEventType.Jumped), "A then X: a jump. " + log);
+            Assert.AreEqual(PlayerAttackKind.Air, FirstAttack(air.D, from), "A then X: the air attack. " + log);
+
+            // B then LB: through the raw reader (the probe never holds LB), the dodge goes out on B's frame and LB + B
+            // never latches as the ability.
+            var reader = new PadChordReader();
+            var layout = new ElementButtonLayout();
+            bool bWas = false, lbWas = false;
+            int dodgeFrame = -1, abilities = 0;
+            for (int f = 0; f < apart + 6; f++)
+            {
+                bool lbNow = f >= apart;
+                ButtonState n = default(ButtonState), so = default(ButtonState), w = default(ButtonState);
+                ButtonState e = ButtonState.From(true, bWas);
+                ButtonState lb = ButtonState.From(lbNow, lbWas);
+                bWas = true;
+                lbWas = lbNow;
+                PadChordReader.Result r = reader.Read(ref n, ref e, ref so, ref w, default(ButtonState), lb, 1f / 60f, layout);
+                if (e.Pressed && dodgeFrame < 0) dodgeFrame = f;
+                if (r.AbilityEast.Pressed) abilities++;
+            }
+            Assert.AreEqual(0, dodgeFrame, "B then LB: the dodge on B's frame");
+            Assert.AreEqual(0, abilities, "B then LB: no Flame Wheel");
+        }
+
+        // J5-03: hold RB, then X mid-string, pressed Late (past even the switch strike's wider window: 0.16 s Fluid, 0.11 s
+        // Punishing, and before the pause band opens): still the switch strike in Water at the next slot, graded Late (no
+        // on-beat bonus), never a plain switch.
+        [Test]
+        public void LateRbThenXMidStringIsTheSwitchStrike([Values(false, true)] bool punishing, [Values(11, 12, 13)] int lateFrames,
+                                                          [Values(1, 3, 5)] int rbFirst)
+        {
+            var p = new PadProbe(punishing);
+            int started = p.D.Started;
+            p.Tap(PadChordReader.FaceWest, 2);
+            p.RunUntilStarted(started + 1);
+            PressOnBeat(p);
+            p.RunUntilStarted(started + 2);
+            // Wait for hit 2's beat, then lateFrames more, holding RB for the last rbFirst of them.
+            for (int i = 0; i < 120 && p.D.Model.Rhythm.Active && p.D.Model.Rhythm.TimeToBeat > p.D.Dt * 0.5f; i++) p.Step();
+            int from = p.D.Log.Count;
+            for (int i = 0; i < lateFrames; i++) p.Step(-1, i >= lateFrames - rbFirst);
+            for (int i = 0; i < 3; i++) p.Step(PadChordReader.FaceWest, true);
+            p.Step();
+            p.RunUntilStarted(started + 3);
+            p.Run(30);
+            string log = Describe(p.D, from);
+            PlayerEvent third = default(PlayerEvent);
+            int seen = 0;
+            for (int i = 0; i < p.D.Log.Count; i++)
+            {
+                if (p.D.Log[i].Type != PlayerEventType.AttackStarted) continue;
+                if (++seen == started + 3) { third = p.D.Log[i]; break; }
+            }
+            Assert.IsTrue(third.IsSwitchStrike, "a switch strike: " + log);
+            Assert.AreEqual(ElementId.Water, third.Element, log);
+            Assert.AreEqual(2, third.ChainIndex, "hit 3 of the string: " + log);
+            Assert.AreEqual(ComboBranch.Main, third.Branch, "the main string, not the pause chain: " + log);
+            Assert.AreEqual(BeatGrade.Late, third.Grade, "graded Late (no on-beat bonus): " + log);
+        }
+
+        // A switch strike queued mid-string, then a dodge pressed before it ran: the dodge wins the buffer, and the pick still
+        // switches (a plain switch), never lost without a trace.
+        [Test]
+        public void DodgeAfterAQueuedSwitchStrikeStillSwitches([Values(false, true)] bool punishing)
+        {
+            PlayerDriver d = punishing ? PlayerDriver.Elements(PlayerTuning.CreatePunishing(), ElementLoadout.CreatePunishing()) : PlayerDriver.Elements();
+            d.Target(new Vector3(0f, 0f, 1.6f));
+            d.Step(Pad.Light);
+            d.RunUntilStarted(1);
+            d.Select = ElementId.Water;
+            d.Step();
+            Assert.AreEqual(PlayerCommand.SwitchStrike, d.Model.BufferedCommand, "queued as the switch strike");
+            d.Tap(Pad.Dodge, new Vector2(0f, -1f));
+            d.Run(40);
+            // (Punishing's dodge comes on the release and its buffer is short: it may not get out of the jab, but it still
+            // took the buffer's place.)
+            if (!punishing) Assert.GreaterOrEqual(d.Count(PlayerEventType.DodgeStarted), 1, "the dodge went out");
+            Assert.AreEqual(ElementId.Water, d.Model.ActiveElement, "the pick still switched");
+        }
+
+        static PlayerAttackKind FirstAttack(PlayerDriver d, int from)
+        {
+            for (int i = from; i < d.Log.Count; i++)
+            {
+                if (d.Log[i].Type == PlayerEventType.AttackStarted) return d.Log[i].AttackKind;
+            }
+            return PlayerAttackKind.None;
+        }
+
+        // Punishing's dodge is on release (a hold past TapHoldThreshold sprints).
+        [Test]
+        public void PunishingHoldIsTimedFromThePress()
         {
             var p = new PadProbe(true);
             var forward = new Vector2(0f, 1f);
             p.Run(5, -1, forward);
             float threshold = PlayerTuning.CreatePunishing().TapHoldThreshold;
-            int holdFrames = (int)System.Math.Ceiling(threshold * 60f) + 1;   // just past the threshold, really
+            int holdFrames = (int)System.Math.Ceiling(threshold * 60f) + 1;   // just past the threshold
             p.Run(holdFrames, PadChordReader.FaceEast, forward);
             p.Step(-1, false, forward);
             p.Run(20, -1, forward);

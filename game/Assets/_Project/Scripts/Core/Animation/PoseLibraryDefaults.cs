@@ -203,10 +203,12 @@ namespace VaatusRevenge.Core
                 .K(KeyPhase.Recovery, 1f, PoseEase.InOut, guard)
                 .Build());
 
-            // Air dash: body stretched out flat behind a jet of flame from the feet, arms swept back.
+            // Air dash: body stretched out flat behind a jet of flame from the feet, arms swept back. It stretches out over
+            // the startup (eased, not snapped: MV-06) and folds back over a longer recovery, so no limb jumps half a metre
+            // in a frame on the way in or out.
             PoseSpec air = AirGuard();
-            clips.Add(new ClipBuilder(AnimationKeys.AirDash, ClipMode.Action, air) { DefaultDuration = 0.3f, StartupShare = 0.25f, ActiveShare = 0.5f, FadeIn = 0.06f }
-                .K(KeyPhase.Startup, 1f, PoseEase.Snap, s =>
+            clips.Add(new ClipBuilder(AnimationKeys.AirDash, ClipMode.Action, air) { DefaultDuration = 0.3f, StartupShare = 0.38f, ActiveShare = 0.17f, FadeIn = 0.06f }
+                .K(KeyPhase.Startup, 1f, PoseEase.InOut, s =>
                 {
                     s.Hips(0f, 0f, 0f).Pelvis(28f, 5f).Torso(40f, 0f).Head(-45f, 0f);
                     s.Kick(L, 4f, -140f, 0.95f, 0f, 55f).Kick(R, 6f, -130f, 0.92f, 0f, 55f);
@@ -739,7 +741,7 @@ namespace VaatusRevenge.Core
 
             // Flame Step Strike (zip strike): fire jets carry you forward leaning into the flight with knees tucked,
             //    the body turns side-on and the right leg fires out in a flying side kick.
-            clips.Add(Strike(AnimationKeys.ZipKick, guard)
+            clips.Add(Strike(AnimationKeys.ZipKick, guard, leaps: true)
                 .K(KeyPhase.Startup, 0.3f, PoseEase.Out, s =>
                 {
                     s.Hips(0f, 0f, 0f).Pelvis(10f, 10f).Torso(32f, 0f).Head(-25f, 0f).Set(PoseChannel.ArmFollow, 0.3f);
@@ -772,7 +774,7 @@ namespace VaatusRevenge.Core
 
             // Flying Fire Kick (sprint attack): drive the lead knee up to take off, then the right leg fires out in a
             //    flying front kick at head height while the body leans back and the arms counter.
-            clips.Add(Strike(AnimationKeys.SprintKick, guard)
+            clips.Add(Strike(AnimationKeys.SprintKick, guard, leaps: true)
                 .K(KeyPhase.Startup, 0.5f, PoseEase.Out, s =>
                 {
                     s.Hips(0f, 0.06f, 0f).Pelvis(0f, 0f).Torso(6f, 0f).Set(PoseChannel.ArmFollow, 0.2f);
@@ -801,7 +803,7 @@ namespace VaatusRevenge.Core
                 .Build());
         }
 
-        // Fire's pause branch (X X, wait, X) and its dodge strike (Build 05).
+        // Fire's pause branch (X X, wait, X X) and its dodge strike (Build 05).
         static void AddFireBranches(List<PoseClip> clips)
         {
             PoseSpec guard = Guard();
@@ -1063,9 +1065,9 @@ namespace VaatusRevenge.Core
             s.Arm(R, yaw, 2f, 1f, 5f, 0f).Set(PoseChannel.Blade, 5f);
         }
 
-        static ClipBuilder Strike(string key, PoseSpec start)
+        static ClipBuilder Strike(string key, PoseSpec start, bool leaps = false)
         {
-            return new ClipBuilder(key, ClipMode.Action, start) { FadeIn = 0.08f };
+            return new ClipBuilder(key, ClipMode.Action, start) { FadeIn = 0.08f, Leaps = leaps };
         }
 
         // Builds a clip one key at a time; each key starts as a copy of the one before, so a key only states
@@ -1085,6 +1087,7 @@ namespace VaatusRevenge.Core
             public bool UpperBodyOnly;
             public bool Aims;
             public bool Glides;
+            public bool Leaps;
             public float ArmSwing = 1f;
 
             public ClipBuilder(string key, ClipMode mode, PoseSpec start)
@@ -1143,7 +1146,7 @@ namespace VaatusRevenge.Core
                 return new PoseClip
                 {
                     Key = key, Mode = mode, LoopPeriod = LoopPeriod, DefaultDuration = DefaultDuration, StartupShare = StartupShare,
-                    ActiveShare = ActiveShare, FadeIn = FadeIn, UpperBodyOnly = UpperBodyOnly, Aims = Aims, Glides = Glides, ArmSwing = ArmSwing,
+                    ActiveShare = ActiveShare, FadeIn = FadeIn, UpperBodyOnly = UpperBodyOnly, Aims = Aims, Glides = Glides, Leaps = Leaps, ArmSwing = ArmSwing,
                     Keys = keys.ToArray()
                 };
             }

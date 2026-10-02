@@ -14,7 +14,7 @@ criteria · 7 Canon check · 8 Decision log and open questions for David and Jer
 **Dodging.** Tap B and you dodge, but you never turn your back on the fight. Push the stick *toward* an enemy and you slip in close,
 ready to hit. Push *away* and you hop back out of reach. Push *sideways* and you side-step round them. Leave the stick alone when
 something is about to hit you and the game picks a safe sideways dodge for you. In Fluid, dodging costs no stamina, and you can chain
-three dodges before a short breather. **Dodging does not break your combo.** If you were on hit 3 of your string and you dodge, your next
+a few dodges before a short breather (Earth two, Fire and Water three, Air four; two in every element on Punishing). **Dodging does not break your combo.** If you were on hit 3 of your string and you dodge, your next
 X is hit 4. Press X late in a dodge and you get a **dodge strike**: a counter that dashes back in and counts as the next hit.
 
 **Rhythm combos.** Every element has a five-hit string on X. You can mash and it still works, but slowly and at a stamina cost. Press X
@@ -24,10 +24,10 @@ whole string and the finisher hits harder still and (Fluid) knocks the enemy up.
 hands are back in guard and the circle glows blue, then X X**: that's the **pause finisher**, a different two-hit ending per element
 (Fire's is a sweeping kick into a rising kick that launches). *(Build 05 verify: the pause chain is two moves, so it is X X (wait) X X.)*
 
-**Element switching.** Hold RB and press a face button to change element. **The button's colour is the element: B (red) Fire, X (blue)
+**Element switching.** Hold RB, then press a face button to change element (modifier first, like Spider-Man 2's L1 gadgets; §8.6). **The button's colour is the element: B (red) Fire, X (blue)
 Water, A (green) Earth, Y (yellow) Air** (§8.1 item 3). Do it **in the middle of a string** and the string carries on in the new element
-with its next hit: X, X, RB+X, X, X is two Fire hits then three Water hits ending on Water's finisher. The switching hit lands a little
-harder. Use more elements in one combo and every hit gets stronger: **two elements hits harder, three knocks them up on the finisher,
+with its next hit: X, X, hold RB then X, X, X is two Fire hits then three Water hits ending on Water's finisher. The switching hit lands a little
+harder (on the beat or not). Use more elements in one combo and every hit gets stronger: **two elements hits harder, three knocks them up on the finisher,
 four also tops up Fire's Momentum (FinisherMeterRefill) (and breaks the guard of a foe too heavy to launch).** The HUD calls this **MIX**.
 
 Each element plays like its martial art:
@@ -48,7 +48,7 @@ Each step shows the buttons as pictures, counts your progress, and chimes when y
 |---|---|
 | Left stick / Right stick | Move / camera. Flick the right stick to change target while locked on |
 | **X** | Attack. Tap in rhythm for the 5-hit string. **X X (wait) X X** = pause finisher (NEW). In the air: air string |
-| Hold **X** | Launcher (throws the enemy up, you follow); holding any string press before the finisher: that hit plays, then the launcher follows |
+| Hold **X** | Launcher (throws the enemy up, you follow); keep holding any string press before the finisher and that hit becomes the launcher |
 | **Y** | Zip strike to a far enemy (keeps your combo going) |
 | **B** | Tap: dodge (stick decides slip-in, evade-out or side-step; NEW). Hold: sprint. **X late in a dodge = dodge strike** (NEW) |
 | **A** | Jump |
@@ -227,9 +227,9 @@ data changes. Clamped to `[MinPlaybackRate, MaxPlaybackRate]`. **Poise is never 
 
 `Enabled = false` restores today's chain timing exactly (sandbox A/B and a regression test).
 
-#### 2.4.3 Pause chain (X X (pause) X)
+#### 2.4.3 Pause chain (X X, wait, X X)
 - Eligible only after main-chain index `ElementRhythm.PauseAfterIndex` (default **1**, i.e. after the 2nd hit), with no follow-up and no
-  early press. One rule to teach: "two hits, wait, hit".
+  early press. One rule to teach: "two hits, wait, two hits".
 - Pause band (move-local, scaled by rate): `(ComboWindowEnd, TotalDuration + PauseGrace]`. A press in it → `PauseChain[0]`, branch `Pause`,
   graded `Pause`. Presses inside the pause chain are beat-judged normally and walk `PauseChain[1..]`; after its last move the string
   loops to main index 0. After the band: restart at 0. A dodge / zip / ability in between turns the press into a string-memory continue,
@@ -289,7 +289,7 @@ Effects don't stack past the highest tier; the perfect-string launch and MIX lau
 **Loadout.** New `ElementLoadout` holds four `ElementMoveSet`s and learned flags (all four learned in this build; sandbox can toggle).
 The old `(PlayerTuning, ElementMoveSet)` constructor wraps a one-set loadout.
 
-**Rule in one line: "RB + an element's button on the beat = your next hit in that element".**
+**Rule in one line: "hold RB, then an element's button = your next hit in that element (on the beat: faster too)".**
 - **A. String live** (Attacking a string move; or dodging / free with string memory or pause band live; or airborne in an air string):
   the chord is `PlayerCommand.SwitchStrike` (element in `pendingSwitchElement`), buffered and beat-judged **exactly like a Light press**
   with `SwitchStrikeBeatLateBonus` extra late window. When it runs (normal cancel point) the element switches at that instant and the
@@ -812,8 +812,8 @@ Active 0 with `PoseEase.Snap`; dodge clips facing the fight; the multi-hit moves
   `swirl streak ring ribbon puff`; Common `beat_ring spark danger`. Importer: under `Art/VFX/`, sRGB, mipmaps, max 512,
   `alphaIsTransparency`, Repeat for `ribbon`/`streak` else Clamp; a texture with no alpha (black background) draws additive, with alpha
   draws alpha-blended. Every slot has a primitive fallback (blobs → sphere, rings/cracks/swirls → ring band, streaks/shards → stretched
-  sphere, rocks/debris → cube, ribbon → plain trail), so a missing texture or `Library == null` still renders; one log line per missing
-  slot at bootstrap, nothing per frame.
+  sphere, rocks/debris → cube, ribbon → plain trail), so a missing texture or `Library == null` still renders; one log message at bootstrap
+  listing every missing slot (a line each), nothing per frame.
 - **VFX art status (blocked).** 24 images were generated but none reached the repo (egress policy refused the CDN). `Art/VFX` holds no
   PNGs; C ships on fallbacks and must not depend on them. When David downloads them by hand, rename into slots:
 
@@ -978,8 +978,8 @@ playback rate in `[Min, Max]`; every `DangerWarning` followed by impact or `Dang
 ### 6.3 Package C
 - Compile 5/5; no edits outside ownership; `ElementVfx` Fire path produces the same pieces as before (diff of `FireVfx` calls in a
   scripted Fire string: identical).
-- In Unity with **no PNGs present**: all 13 EffectKeys render for all four elements with no errors and exactly one log line per missing
-  slot at bootstrap. With a test PNG dropped into a slot, Refresh VFX Textures picks it up and it renders (black-background PNG reads
+- In Unity with **no PNGs present**: all 13 EffectKeys render for all four elements with no errors and exactly one log message at bootstrap
+  listing the missing slots. With a test PNG dropped into a slot, Refresh VFX Textures picks it up and it renders (black-background PNG reads
   additive).
 - Profiler, 30 s fight with switching: **0 B GC alloc per frame** in `CombatHud`, `PlayerFeedback` and `ElementVfx` after warm-up.
 - Beat ring reaches its inner radius on the frame of `BeatTime` (± 1 frame, checked in slow motion F2) and freezes during hitstop.
@@ -1107,7 +1107,7 @@ brief is about. These calls were made to fix it (Jeremy and David: please try th
 
 
 ### 8.3 Build 05 verify round 2 (1 Oct): the controller, the teaching text and the canon
-1. **RB + a face button never fires the ranged skill.** A human "simultaneous" chord often reaches the game in one frame; the
+1. *(The grace and `RetractPress` below were removed in §8.6 item 1; the same-frame chord and the skill guard stay.)* **RB + a face button never fires the ranged skill.** A human "simultaneous" chord often reaches the game in one frame; the
    reader used to start a new RB hold *after* swallowing the face button, so letting go of RB fired the Fire Blast and replaced
    the queued switch strike. The chord logic now lives in pure C# (`Core/Contracts/PadChordReader.cs`, tested frame by frame) and a
    face button pressed up to `elementChordGrace` (0.05 s, 3 frames) **before** RB is upgraded into the element pick: its own action
@@ -1189,7 +1189,7 @@ Still open:
   dodge bonus at contact range, so it's your call. Per-element dodge poses (one shared pose today) and Fluid `BeatLate` are open too.
 
 ### 8.5 Build 05 verify round 4 (1 Oct): the chord on a real pad, the dodge strike's dash, Earth's boulders
-1. **Thumb-first chords only switch** (J4-01, `PadChordReader.FaceChordLatency`, `PlayerInputReader.faceChordLatency`). On the
+1. *(Superseded by §8.6 item 1: the hold-back and the grace are gone, chords are modifier first.)* **Thumb-first chords only switch** (J4-01, `PadChordReader.FaceChordLatency`, `PlayerInputReader.faceChordLatency`). On the
    gamepad, with RB up, a Y / B / A press is held back 0.08 s (5 frames at 60 fps, 2 at 30) in case RB follows; RB in that time makes
    it only the element pick (no jump, dodge or zip ever starts). Otherwise it is reported then, carrying its real age
    (`ButtonState.PressDelay`) so the buffer and the dodge's tap/hold timer count from the real press. A quick tap let go sooner is
@@ -1219,4 +1219,42 @@ Still open:
    (`DodgeChainLimited`); another element's Momentum (Fire's, topped up by a MIX 4 finisher) shows as a thin labelled bar while
    you're in Water, Earth or Air; How-To-Play's Punishing notes fixed (the pause route fits three elements in one string; the launcher
    hold is on any hit before the finisher; when to press B on Punishing; three dodges then a breath).
+
+### 8.6 Build 05 verify round 5 (2 Oct): modifier-first chords, no added pad latency, landings on the floor
+1. **Element switching is modifier first** (lead design decision 1-2 Oct on David's delegation; overrides J4-01 / S-09 and §8.5 item 1).
+   Hold RB, then press the face button, exactly like Spider-Man 2's L1 + face for gadgets. RB and the face on the same frame is still
+   the chord. A face button pressed **before** RB simply does its own job (X attacks, B dodges, A jumps, Y zips): accepted, documented
+   behaviour. `PadChordReader` no longer holds Y / B / A back (`FaceChordLatency` and `PlayerInputReader.faceChordLatency` deleted),
+   has no grace for a face pressed before RB (`ElementChordGrace`, `PlayerInputFrame.RetractPress` and `ButtonState.PressDelay` deleted),
+   so every face press reaches the rules on the frame it is pressed and in the order it was made. Kept: a face held at most
+   `ChordSkillGuard` (0.15 s) when RB goes down still stops RB's release firing the ranged skill, and a held RB with nothing picked
+   fires nothing after `SkillTapMaxTime`. **Measured cost for Jeremy (J5-01): 0 frames.** The round-4 hold-back started every pad
+   dodge up to 5 frames late; the sense bot's perfect-dodge rate on the pad fell to 19 / 21 / 13 % (one soldier / two / the full ring).
+   Now `danger` runs sense vs react on the keyboard and on the pad path and both read 50 / 42 / 24 % (sense +50 / +39 / +22 points
+   over react, target +20); `framedata` shows input to dodge / jump / attack / pick and the dodge's i-frames at 0 frames added on the
+   pad; `dodgeflow` repeats facing, slip-in, spam and the string on the pad path (same numbers); `duels` compares pad and keyboard for
+   five bots. J5-02 (a brisk B then X losing the dodge strike, A then X the air attack, B then LB becoming Flame Wheel) is gone with
+   the hold-back: presses come out in order (`PadChordReaderTests`, `PadChordModelTests.BriskSequencesComeOutInOrder`).
+   Tutorial prompts, hints, the F1 overlay and How-To-Play say "hold RB, then press"; `TutorialScript.CurrentDataVersion` 5 (the
+   sandbox builder offers the update).
+2. **A switch pressed Late in the string is still the switch strike** (J5-03). With RB first, a mid-string pick is buffered and
+   beat-judged like any X: past the switch strike's widened window (0.16 s Fluid, 0.11 s Punishing) it is graded Late (no on-beat
+   speed-up) but still switches with the strike's damage and poise multipliers, at the next slot; later still, the pause band takes it.
+   The tutorial's switch steps also pass for a plain switch made while the combo is still going, followed by a hit in that element.
+   A queued switch strike that another press replaces (a dodge or parry pressed right after the chord, a jump, a heal) still
+   switches, as a plain switch, like one that outlives its buffer (J3-S03): a pick is never dropped without a trace.
+3. **Air finishers and plunges land on the floor** (J5-04, `AnimatorSettings.LandingFit*`). For 0.6 s after a touchdown, whenever the
+   solved feet hang more than 4 cm above the floor (an air-string finisher or plunge still in its air pose: `FinisherGravityScale`
+   gets the body down before the clip expects), the legs take the grounded locomotion pose (the knee-bending landing) at once and the
+   pelvis sits down onto them; the fit hands back over 0.12 s once the clip's own legs reach the floor. Clips that leave the ground on
+   purpose are marked `PoseClip.Leaps` (zip kick, sprint kick, wind leap, wind runner kick) and keep their legs. The `anim` scenario
+   fails on a grounded fighter with both feet over 0.2 m up for 3+ frames (Meteor Drop, Earthquake Drop, Air Burst Landing, Tornado
+   Slam, Needle Drop all used to float 5-14 frames); only the touchdown frame itself remains (the model reports grounded a tick later).
+4. Should-fix polish: per-element charge glow on the fists (`ElementVfxStyle.ChargeFistColor`: Fire orange, Water pale blue, Air faint
+   white, Earth none; the sweet spot's white-gold is shared); the danger mark keeps its gold / red rim and arrows when its core turns
+   white at "now"; the air dash eases into and out of its pose (worst limb move per frame 0.60 m to 0.36 m); the pelvis height eases
+   between stance and gait (`GaitSettings.HipsHeightSmoothing`: Earth's stop no longer drops the hips 9.5 cm in a frame; `anim` fails a
+   hip step over 5 cm in locomotion); a boulder at the end of its range breaks into chunks; the other element's meter is labelled from
+   the move data; the F1 overlay has a pause row and a shorter MIX row; dodge counts per element and "that hit becomes the launcher" in
+   How-To-Play, David's plan and §1; stale "X X, wait, X" comments fixed.
 

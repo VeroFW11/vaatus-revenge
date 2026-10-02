@@ -19,7 +19,7 @@ namespace VaatusRevenge.Core
                                                                  // overrides ("" = Fire, "water", "earth", "air")
 
         public MoveData[] LightChain = CreateFireLightChain();   // light presses walk through this; after the last it loops
-        public MoveData[] PauseChain = CreateFirePauseChain();   // X X, wait, X: the pause branch (after it, back to LightChain[0])
+        public MoveData[] PauseChain = CreateFirePauseChain();   // X X, wait, X X: the pause branch (after it, back to LightChain[0])
         public MoveData DodgeStrike = CreateFireDodgeStrike();   // X late in a dodge: a counter that takes the string's next slot
         public ElementRhythm Rhythm = CreateFireRhythm();        // how this element's martial art changes the beat
         public MoveData Launcher = CreateFireLauncher();         // attack held on the ground: throws the target up, you follow
@@ -179,7 +179,7 @@ namespace VaatusRevenge.Core
             return new[] { jab, cross, snap, spin, palm };
         }
 
-        // The pause branch (X X, wait, X): a low spinning sweep that takes the legs, then a rising kick that throws the
+        // The pause branch (X X, wait, X X): a low spinning sweep that takes the legs, then a rising kick that throws the
         // foe up. Poise 8 + 9 + 10 + 12 = 39 with the first two chain hits, plus a jab = 47: still under a soldier's 52.
         static MoveData[] CreateFirePauseChain()
         {

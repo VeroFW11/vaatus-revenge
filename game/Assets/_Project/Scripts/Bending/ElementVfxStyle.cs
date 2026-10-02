@@ -30,6 +30,8 @@ namespace VaatusRevenge
         public Color AccentColor = Color.white;
         [Tooltip("The body flash when switching to this element and the MIX accent ring (LDR). Keep the four at about the same brightness (relative luminance ~0.6) so no element's flash drowns another's.")]
         public Color SwitchFlashColor = new Color(0.8f, 0.8f, 0.8f, 1f);
+        [Tooltip("The fists' glow while charging the heavy (fa jin), at full charge (LDR, scaled by the body's ChargeIntensity). Black = no glow (Earth's charge reads through its rooted stance and the stone rising, not glowing fists). The sweet spot's white-gold is shared by every element.")]
+        public Color ChargeFistColor = new Color(1f, 0.45f, 0.1f, 1f);
         [Tooltip("The pop where this element's hits connect (LDR; brightened for bloom like Fire's hit sparks).")]
         public Color HitSparkColor = Color.white;
         [Tooltip("Limb trails: colour at the limb and at the tail (alpha fades along it).")]
@@ -125,6 +127,7 @@ namespace VaatusRevenge
                 AccentColor = new Color(0.8f, 0.97f, 1.3f, 0.95f),
                 HitSparkColor = new Color(0.55f, 0.85f, 1f),
                 SwitchFlashColor = new Color(0.35f, 0.66f, 1f, 1f),        // relative luminance ~0.62
+                ChargeFistColor = new Color(0.4f, 0.65f, 1f, 1f),          // pale blue
                 TrailHeadColor = new Color(0.8f, 0.95f, 1f, 0.95f),
                 TrailTailColor = new Color(0.15f, 0.45f, 1f, 0f),
                 BlobKind = VfxMaterialKind.AlphaBlend,
@@ -156,6 +159,7 @@ namespace VaatusRevenge
                 AccentColor = new Color(0.1f, 0.08f, 0.06f, 0.85f),
                 HitSparkColor = new Color(0.9f, 0.72f, 0.45f),
                 SwitchFlashColor = new Color(0.85f, 0.6f, 0.25f, 1f),      // warm ochre, ~0.63
+                ChargeFistColor = Color.black,                             // no glowing fists for Earth
                 TrailHeadColor = new Color(0.7f, 0.6f, 0.45f, 0.7f),
                 TrailTailColor = new Color(0.5f, 0.42f, 0.32f, 0f),
                 BlobKind = VfxMaterialKind.AlphaBlend,
@@ -187,6 +191,7 @@ namespace VaatusRevenge
                 AccentColor = new Color(1.4f, 1.45f, 1.5f, 0.85f),
                 HitSparkColor = new Color(0.92f, 0.96f, 1f),
                 SwitchFlashColor = new Color(0.4f, 0.72f, 0.85f, 1f),      // pale cyan (not a heal's or perfect dodge's white), ~0.66
+                ChargeFistColor = new Color(0.45f, 0.48f, 0.52f, 1f),      // a faint white
                 TrailHeadColor = new Color(1f, 1f, 1f, 0.75f),
                 TrailTailColor = new Color(0.85f, 0.92f, 1f, 0f),
                 BlobKind = VfxMaterialKind.Additive,
@@ -217,6 +222,7 @@ namespace VaatusRevenge
                 AccentColor = new Color(4f, 2.2f, 0.6f, 1f),
                 HitSparkColor = new Color(1f, 0.55f, 0.15f),
                 SwitchFlashColor = new Color(1f, 0.5f, 0.18f, 1f),         // ~0.58
+                ChargeFistColor = new Color(1f, 0.45f, 0.1f, 1f),          // fire orange (BodyLook's old shared charge colour)
                 TrailHeadColor = new Color(1f, 0.95f, 0.7f, 1f),
                 TrailTailColor = new Color(0.8f, 0.15f, 0.02f, 0f),
                 BlobKind = VfxMaterialKind.Additive,

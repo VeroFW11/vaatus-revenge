@@ -18,6 +18,6 @@ namespace VaatusRevenge.Core
         public float OnBeatStaminaRefund = 0f;       // stamina given back by each on-beat press
         public bool OnBeatHyperArmor = false;        // the move an on-beat press starts has hyper armour until its active frames end
         public bool DodgeKeepsBeat = false;          // a dodge between hits keeps the streak; the dodge strike is always on the beat
-        public int PauseAfterIndex = 1;              // the pause branch opens after this main-chain hit (1 = the 2nd: X X, wait, X)
+        public int PauseAfterIndex = 1;              // the pause branch opens after this main-chain hit (1 = the 2nd: X X, wait, X X)
     }
 }

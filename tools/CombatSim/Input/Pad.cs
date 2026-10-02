@@ -21,10 +21,11 @@ namespace VaatusRevenge.CombatSim
     {
         Pad last;
 
-        // Real-pad mode (Build 05 verify round 4, BH-04): Light / ZipStrike / Dodge / Jump are the raw X / Y / B / A face
-        // buttons and Guard is LB; an element pick (Pad.Element) is played as a human chord: its face button and RB go
-        // down up to MaxChordSkew apart in either order, held ChordHold, and all of it goes through the game's
-        // PadChordReader exactly like PlayerInputReader (so the hold-back, the grace and the swallowed faces are tested).
+        // Real-pad mode (Build 05 verify round 4, BH-04; modifier first since round 5): Light / ZipStrike / Dodge / Jump are
+        // the raw X / Y / B / A face buttons and Guard is LB; an element pick (Pad.Element) is played as a human chord:
+        // RB goes down, then its face button up to MaxChordSkew later (or on the same frame), held ChordHold, and all of
+        // it goes through the game's PadChordReader exactly like PlayerInputReader (so the swallowed faces and the RB tap
+        // guard are tested, and every other press reaches the rules on its own frame, as on the pad).
         // Off (the default): the keyboard path, presses reach the rules as they are and Element is the number keys.
         public bool RealPad;
         public float MaxChordSkew = 0.08f;
@@ -34,14 +35,18 @@ namespace VaatusRevenge.CombatSim
         DeterministicRandom rng = new DeterministicRandom(1);
         double clock;
         int chordFace = -1;
+        bool chordFaceWasDown;      // the chord's face has gone down (so its pick was made)
         double chordFaceDown, chordRbDown, chordEnd;
         bool rawN, rawE, rawS, rawW, rawRb, rawLb;
 
         // Real time of the bot's own last press of each face (for "stray action" checks): X, Y, B, A.
         public double LastOwnLight = double.NegativeInfinity, LastOwnZip = double.NegativeInfinity;
         public double LastOwnDodge = double.NegativeInfinity, LastOwnJump = double.NegativeInfinity, LastOwnSkill = double.NegativeInfinity;
-        public int ChordsPlayed, ChordsFaceFirst;
+        public int ChordsPlayed, ChordsSameFrame, ChordsCancelled;
         public double Clock => clock;
+        public bool ChordInFlight => chordFace >= 0;
+        // RB is down for a chord whose face hasn't gone down yet (a run that ends here never made that pick).
+        public bool ChordPickPending => chordFace >= 0 && !chordFaceWasDown;
 
         public void UseRealPad(int seed)
         {
@@ -98,25 +103,35 @@ namespace VaatusRevenge.CombatSim
                 int face = layout.PadSlotOf(now.Element);
                 if (face >= 0)
                 {
-                    float skew = rng.Range(-MaxChordSkew, MaxChordSkew);   // > 0: the face first, RB 'skew' later
+                    float skew = rng.Range(0f, MaxChordSkew);   // RB first, the face 'skew' later
                     // The chord owns its face button from now on. If the bot is still holding that face from a press of its
                     // own, a human's thumb comes up first: the chord starts a frame later.
                     double start = RawFace(face) ? clock + Math.Max(dt, 1e-3) : clock;
                     chordFace = face;
-                    chordFaceDown = skew >= 0f ? start : start - skew;
-                    chordRbDown = skew >= 0f ? start + skew : start;
-                    chordEnd = Math.Max(chordFaceDown, chordRbDown) + ChordHold;
+                    chordFaceWasDown = false;
+                    chordRbDown = start;
+                    chordFaceDown = start + skew;
+                    chordEnd = chordFaceDown + ChordHold;
                     ChordsPlayed++;
-                    if (skew > 0f) ChordsFaceFirst++;
+                    if (skew < dt) ChordsSameFrame++;
                 }
             }
             bool chordFaceHeld = false, chordRbHeld = false;
+            if (chordFace >= 0 && OwnPressOtherThan(now, chordFace))
+            {
+                // The bot wants another button (a dodge, a jump, a parry...) while RB is down for a chord: a human lets go
+                // of RB as that thumb moves, so the new press does its own job instead of picking another element. If the
+                // chord's face hadn't gone down yet, the pick is dropped (a change of mind, counted in ChordsCancelled).
+                if (!chordFaceWasDown) ChordsCancelled++;
+                chordEnd = clock;
+            }
             if (chordFace >= 0)
             {
                 if (clock >= chordEnd - 1e-6) chordFace = -1;
                 else
                 {
                     chordFaceHeld = clock >= chordFaceDown - 1e-6;
+                    if (chordFaceHeld) chordFaceWasDown = true;
                     chordRbHeld = clock >= chordRbDown - 1e-6;
                 }
             }
@@ -160,10 +175,19 @@ namespace VaatusRevenge.CombatSim
                 AbilityEast = abilityEast,
                 SwitchTargetDelta = now.SwitchTarget,
                 ElementSelect = chord.ElementSelect,
-                RetractPress = chord.ElementSelect != ElementId.None ? chord.RetractPress : PlayerCommand.None,
             };
             last = now;
             return f;
+        }
+
+        // A fresh press of the bot's own, on a face other than the chord's (or LB).
+        bool OwnPressOtherThan(in Pad now, int chordFaceIndex)
+        {
+            return (now.ZipStrike && !last.ZipStrike && chordFaceIndex != PadChordReader.FaceNorth)
+                || (now.Dodge && !last.Dodge && chordFaceIndex != PadChordReader.FaceEast)
+                || (now.Jump && !last.Jump && chordFaceIndex != PadChordReader.FaceSouth)
+                || (now.Light && !last.Light && chordFaceIndex != PadChordReader.FaceWest)
+                || (now.Guard && !last.Guard);
         }
 
         bool RawFace(int face)
