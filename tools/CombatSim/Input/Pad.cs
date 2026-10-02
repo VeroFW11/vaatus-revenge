@@ -175,6 +175,7 @@ namespace VaatusRevenge.CombatSim
                 AbilityEast = abilityEast,
                 SwitchTargetDelta = now.SwitchTarget,
                 ElementSelect = chord.ElementSelect,
+                ElementSelectOffAttack = chord.ElementSelectOffAttack,
             };
             last = now;
             return f;

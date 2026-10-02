@@ -122,8 +122,9 @@ namespace VaatusRevenge
                 }
             }
 
-            // "RB +": a face button picks an element now.
-            if (held && gamepad)
+            // "RB +": a face button picks an element now. Shown once RB has been held GrowAfterHold (like the grow), so the
+            // pill doesn't flicker on every ranged-skill tap (J6-S08 / V6-04).
+            if (held && gamepad && now - heldSince >= GrowAfterHold)
             {
                 float pillHeight = p.U(26f);
                 var pill = new Rect(center.x - spacing - size - p.U(78f), center.y - pillHeight * 0.5f, p.U(44f), pillHeight);

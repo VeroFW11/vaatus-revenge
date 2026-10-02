@@ -5,7 +5,8 @@ namespace VaatusRevenge
 {
     // The beat ring: when to press X for the next hit of the string. A ring closes from 2.2x onto a fixed circle and
     // touches it exactly on the beat (the moment the running hit lands); a gold disc fills the circle while a press would
-    // count as on the beat. An on-beat press bursts the ring gold; an early or mashed press flashes a grey tick, a late one an amber LATE. After X X
+    // count as on the beat. An on-beat press bursts the ring gold once its move starts (when it can no longer turn into a mash);
+    // an early or mashed press flashes a grey tick, a late one an amber LATE. After X X
     // with no press, the circle glows blue while the pause band is open (RhythmView.PauseReady): X now starts the pause
     // finisher. The wait is taught by that cue, not by seconds (the band opens at a different time in each element).
     //
@@ -39,13 +40,19 @@ namespace VaatusRevenge
 
         public void OnEvent(in PlayerEvent e, float now)
         {
+            if (e.Type == PlayerEventType.BeatConfirmed)
+            {
+                // The on-beat burst waits until the move the press started has begun: before that, a second press can
+                // still make it a mash (J6-05), and the burst, chime and rumble must never say "on the beat" to a masher.
+                burstStart = now;
+                tickStart = -10f;
+                return;
+            }
             if (e.Type != PlayerEventType.BeatJudged) return;
             switch (e.Grade)
             {
                 case BeatGrade.OnBeat:
-                    burstStart = now;
-                    tickStart = -10f;
-                    break;
+                    break;                     // confirmed (and burst) when its move starts: BeatConfirmed above
                 case BeatGrade.Early:
                     tickStart = now;
                     tickLabel = "EARLY";
@@ -58,7 +65,7 @@ namespace VaatusRevenge
                     tickColor = TickAmber;
                     break;
                 case BeatGrade.Mashed:
-                    // A downgrade from on-beat: the burst that was showing is taken back.
+                    // A downgrade from on-beat (never confirmed, so no burst was shown for it).
                     burstStart = -10f;
                     tickStart = now;
                     tickLabel = "MASH";

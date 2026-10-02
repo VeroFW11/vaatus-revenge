@@ -15,8 +15,9 @@ namespace VaatusRevenge.Core
     //      SwitchBufferWindow (a stagger drops it).
     //   C. On cooldown: a switch strike is played as a normal Light press in the current element (the string never drops)
     //      and ElementSwitchDenied{Cooldown} is raised; a plain switch is just denied.
-    //   D. NotLearned and SameElement are denied (the HUD wheel shakes). A SameElement press while the string is live
-    //      is played as a normal Light press, like C, so keeping RB down for the next X never drops a hit.
+    //   D. NotLearned and SameElement are denied (the HUD wheel shakes). A SameElement press with the attack button (X,
+    //      Water's) while the string is live is played as a normal Light press, like C, so keeping RB down for the next X
+    //      never drops a hit; with another face (PlayerInputFrame.ElementSelectOffAttack) it's denied, never an attack.
     // A running action always finishes with the element it started with (actionSet). Switching from a held block into a
     // parry-only element drops the guard; into a blocking element with the guard button held, it rises when free.
     // Switching costs no stamina: the cooldown is the limiter.
@@ -26,6 +27,7 @@ namespace VaatusRevenge.Core
 
         double switchCooldownUntil = double.NegativeInfinity;
         ElementId pendingSwitchElement;           // the switch strike's element (the buffered SwitchStrike command)
+        bool switchStrikeQueuedAloft;             // that switch strike was pressed in the air (an air string's next hit)
         ElementId pendingSwitch;                  // a plain switch waiting for the player to be free (B, busy)
         double pendingSwitchUntil = double.NegativeInfinity;
 
@@ -60,9 +62,22 @@ namespace VaatusRevenge.Core
         // A string the next X would continue (A).
         bool IsStringLive => IsStringMoveRunning || IsStringMemoryLive || IsPauseBandLive;
 
+        // The air string the running air move belongs to has nothing left to play (its finisher is running, or the
+        // per-jump cap is reached, in 'element's rules): an X now would be dropped, so RB + a face is a plain switch at
+        // once, never a switch strike that waits and then vanishes or turns into a ground hit on landing (J6-04).
+        bool IsAirStringSpent(ElementId element)
+        {
+            if (!(IsStringMoveRunning && attackKind == PlayerAttackKind.Air)) return false;
+            NextSlot(ComboBranch.Air, chainIndex, moveIsChainFinisher, out _, out int next);
+            if (next < 0) return true;
+            ElementMoveSet set = loadout.Get(element) ?? moveSet;
+            AerialSettings aerial = set.Aerial ?? FallbackAerial;
+            return airAttacksUsed >= Math.Max(0, aerial.AirAttacksPerJump);
+        }
+
         // RB + a face button this frame. Returns the command to buffer: SwitchStrike (A), Light (C: the string goes on in
         // the current element) or None (a plain switch, done or waiting, or a denial).
-        PlayerCommand ReadElementSelect(ElementId requested)
+        PlayerCommand ReadElementSelect(ElementId requested, bool offAttack = false)
         {
             if (requested == ElementId.None) return PlayerCommand.None;
             if (!loadout.IsLearned(requested))
@@ -70,17 +85,19 @@ namespace VaatusRevenge.Core
                 EmitSwitchDenied(requested, SwitchDeniedReason.NotLearned);
                 return PlayerCommand.None;
             }
+            bool live = IsStringLive && !IsAirStringSpent(requested);
             if (requested == activeElement)
             {
                 // Mid-string, RB still held for the next X (X is also Water's button): the press carries the string on in
                 // the current element (C), instead of being swallowed. That's the string going on, not a refusal, so no
-                // denial (the element wheel would shake on every hit with RB down, J3-S01).
-                if (IsStringLive) return PlayerCommand.Light;
+                // denial (the element wheel would shake on every hit with RB down, J3-S01). Only the attack button does
+                // that: RB still held and B in Fire, A in Earth or Y in Air is no attack (J6-S02), just the wheel's shake.
+                if (live && !offAttack) return PlayerCommand.Light;
                 EmitSwitchDenied(requested, SwitchDeniedReason.SameElement);
                 return PlayerCommand.None;
             }
             bool coolingDown = clock < switchCooldownUntil;
-            if (IsStringLive)
+            if (live)
             {
                 if (coolingDown)
                 {
@@ -88,6 +105,7 @@ namespace VaatusRevenge.Core
                     return PlayerCommand.Light;
                 }
                 pendingSwitchElement = requested;
+                switchStrikeQueuedAloft = Aloft;
                 return PlayerCommand.SwitchStrike;
             }
             if (coolingDown)

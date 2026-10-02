@@ -36,7 +36,7 @@ namespace VaatusRevenge
         [Tooltip("Player numbers (health, stamina, movement, input feel) plus the feel settings (shake, rumble, flashes). "
                  + "Empty = built-in Fluid defaults.")]
         [SerializeField] private PlayerTuningAsset tuningAsset;
-        [Tooltip("The four elements' move sets and which are learned (RB + a face button switches). When set, it is used "
+        [Tooltip("The four elements' move sets and which are learned (hold RB, then press a face button, to switch). When set, it is used "
                  + "instead of the single move set below.")]
         [SerializeField] private ElementLoadoutAsset loadoutAsset;
         [Tooltip("One element's moves, used when there is no loadout: light chain, heavy, sprint and jump attacks, skill, "
@@ -48,6 +48,9 @@ namespace VaatusRevenge
         HumanoidBody rig;
         BodyAnimatorDriver animatorDriver;
         readonly PlayerAnimationFeed animationFeed = new PlayerAnimationFeed();   // combat state -> body animation
+        // How far down the animator looks for the floor while airborne (metres). Presentation only: further than a plunge
+        // falls in its landing lead (~0.15 s at 18 m/s), nowhere near a gameplay number.
+        const float FloorProbeDistance = 6f;
         PlayerCombatModel model;
         PlayerFeedback feel;         // element effects, flashes, sounds, shake and rumble (the Unity-side "feel")
         readonly List<HitReport> hits = new List<HitReport>(8);
@@ -465,9 +468,11 @@ namespace VaatusRevenge
             {
                 // The body aims its strikes at whoever the combat rules are tracking (locked, else soft target).
                 Combatant aimAt = lockTarget != null ? lockTarget : softTarget;
-                animatorDriver.SetInput(aimAt != null
-                    ? animationFeed.Build(model, dt, true, transform.position.ToNumerics(), aimAt.AimPoint.position.ToNumerics())
-                    : animationFeed.Build(model, dt));
+                // In the air, how far the floor is: the legs reach for it as it comes and a plunge lands its chop on it (J6-01).
+                float floorBelow = -1f;
+                if (!model.IsGrounded && CombatPhysics.FloorBelow(transform.position, FloorProbeDistance, out float below)) floorBelow = below;
+                animatorDriver.SetInput(animationFeed.Build(model, dt, aimAt != null, transform.position.ToNumerics(),
+                    aimAt != null ? aimAt.AimPoint.position.ToNumerics() : System.Numerics.Vector3.Zero, floorBelow));
             }
         }
 

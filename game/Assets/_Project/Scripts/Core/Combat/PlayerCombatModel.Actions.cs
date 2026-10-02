@@ -37,8 +37,9 @@ namespace VaatusRevenge.Core
     //   than the move's own LungeDistance, by up to PlayerTuning.GapCloseDistance, stopping short of the target.
     // ZIP STRIKE: needs PlayerWorldState.HasZipTarget; without one the press is dropped and costs nothing. The dash
     //   covers the whole gap to the target during the move's startup and active frames. Not in the air.
-    // LAUNCHER: keep holding the attack press that started a ground-string move (any hit of the main chain, Spider-Man's
-    //   hold-square works at any point in a combo) for AerialSettings.LauncherHoldTime and that move turns into the launcher:
+    // LAUNCHER: keep holding the attack press that started a ground-string move (any hit of the main chain before its
+    //   finisher, Spider-Man's hold-square works at any point in a combo) for AerialSettings.LauncherHoldTime, timed from
+    //   when that move began, and that move turns into the launcher:
     //   the hit throws the target up and SelfLift carries you after it when the strike lands.
     // AIR STRING: attack while in the air (jumping, launched, after a zip) walks the AirChain, which does not loop and is
     //   capped at AerialSettings.AirAttacksPerJump strikes before touching down. Air strikes lift you (SelfLift) and
@@ -134,6 +135,14 @@ namespace VaatusRevenge.Core
             if (Aloft)
             {
                 TryAirAttack(world, switching);
+                return;
+            }
+            if (buffer.Command == PlayerCommand.SwitchStrike && switchStrikeQueuedAloft)
+            {
+                // Pressed as the next hit of an air string, and the player touched down first: the air string is over, so
+                // it's the switch alone, never a ground hit nobody asked for (J6-04; matches what both presets do).
+                SwitchStrikeExpired();
+                buffer.Clear();
                 return;
             }
             if (!CanStartAttack()) return;
@@ -295,7 +304,10 @@ namespace VaatusRevenge.Core
             AerialSettings aerial = set.Aerial ?? FallbackAerial;
             if (LengthOf(chain) == 0 || next < 0 || chain[next] == null || airAttacksUsed >= Math.Max(0, aerial.AirAttacksPerJump))
             {
-                buffer.Clear();                              // the air string is spent until you land
+                // The air string is spent until you land. A switch strike still switches (J3-S03: RB + a face is never
+                // dropped without a trace; J6-04).
+                if (buffer.Command == PlayerCommand.SwitchStrike) SwitchStrikeExpired();
+                buffer.Clear();
                 return;
             }
             if (!stamina.CanAct) return;
@@ -309,10 +321,16 @@ namespace VaatusRevenge.Core
         void TryLauncherHold(in PlayerWorldState world)
         {
             if (state != PlayerState.Attacking || attackKind != PlayerAttackKind.Light || chainBranch != ComboBranch.Main || moveSet.Launcher == null) return;
+            // The finisher is never converted (J6-03): holding its press must still land it, with its perfect-string and
+            // MIX payoff. "Any hit before the finisher" is what the guide promises.
+            if (moveIsChainFinisher) return;
             if (!lightHeld || !grounded) return;
-            if (clock - lightPressClock < Aerial.LauncherHoldTime - Epsilon) return;
             // The held press must be the one that started this move (buffered presses count from a little earlier).
             if (lightPressClock < attackBeganClock - tuning.InputBufferWindow - Epsilon) return;
+            // The hold is timed from when this move began, not from a press buffered during the move before: a press made
+            // early and kept down a moment never converts the hit it has only just started (J6-03).
+            double holdFrom = Math.Max(lightPressClock, attackBeganClock);
+            if (clock - holdFrom < Aerial.LauncherHoldTime - Epsilon) return;
             if (!stamina.CanAct) return;
             if (buffer.Command == PlayerCommand.Light) buffer.Clear();
             StartAttack(moveSet.Launcher, PlayerAttackKind.Launcher, -1, ChargeTier.None, isCounter || ConsumeCounterWindow(), true, world);
@@ -463,6 +481,17 @@ namespace VaatusRevenge.Core
             moveVelocity = Vector3.Zero;
             action.Begin();
             EmitMoveEvent(PlayerEventType.AttackStarted);
+            if (stringMove)
+            {
+                // The press that started this move can no longer be downgraded to a mash: confirm it (J6-05).
+                confirmedStreak = onBeatStreak;
+                if (grade == BeatGrade.OnBeat)
+                {
+                    PlayerEvent confirmed = MoveEvent(PlayerEventType.BeatConfirmed);
+                    confirmed.Count = confirmedStreak;
+                    Emit(confirmed);
+                }
+            }
             BeginBeat(actionSet);
             UpdateAttack(world);   // moments at time 0 (a move with no startup is active at once)
         }

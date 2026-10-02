@@ -108,6 +108,12 @@ namespace VaatusRevenge.Core
         public float LandingFitMinAirTime = 0.05f;
         public float LandingFitTolerance = 0.04f;
         public float LandingFitRelease = 0.12f;
+        // J6-01: the fit never jumps: it rises to full weight over LandingFitRise seconds at the fastest (a one-frame rise
+        // pulled a foot 0.3-1.2 m down in a single frame), and while falling in an action pose with the floor known
+        // (FighterAnimInput.HasFloorBelow) it starts LandingFitLead seconds before the predicted touchdown, so the legs
+        // meet the floor with the body instead of after it.
+        public float LandingFitRise = 0.1f;
+        public float LandingFitLead = 0.12f;
     }
 
     // The walk / run / sprint cycle, generated from ground speed instead of fixed clips, so a fighter at any
@@ -155,6 +161,9 @@ namespace VaatusRevenge.Core
         public float RunArmReach = 0.55f;            // ...and bend to 90 degrees running
         public float StrafeWidth = 0.06f;            // extra stance width when moving sideways
         public float SpeedSmoothing = 10f;           // how quickly the gait follows speed changes (1/s)
+        public float ReverseSnapDot = -0.3f;         // the travel direction turning further than this (dot of old and new
+                                                     // headings, ~107 degrees) takes the new heading at once instead of
+                                                     // sweeping the stride through sideways (J6-02)
         public float StopSmoothing = 30f;            // ...and how quickly when slowing down, so a stop reaches idle at once (0 = SpeedSmoothing)
         public float GroundSpeedSmoothing = 40f;     // ...and how quickly the stride follows the body's true speed (1/s)
         public float HipsHeightSmoothing = 8f;       // how quickly the pelvis height moves between the stance and the gait (1/s,

@@ -121,7 +121,7 @@ namespace VaatusRevenge
         [Tooltip("A slip-in dodge leaves see-through afterimages of the body behind it.")]
         public bool SlipInAfterimages = true;
 
-        [Header("Element switch (RB + a face button)")]
+        [Header("Element switch (hold RB, then a face button)")]
         [Tooltip("Seconds the new element clings to both fists after a switch.")]
         public float SwitchAuraTime = 0.4f;
         [Tooltip("The body flashes the new element's HUD colour for this long (0 = no flash).")]

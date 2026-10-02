@@ -10,12 +10,18 @@ namespace VaatusRevenge.CombatSim
     // 60 s into a passive sparring partner (the tutorial's: can't die, never attacks, moves or breaks out), so only the string
     // itself is measured. "On-beat" = the share of judged string moves (each move's first follow-up press, downgraded to
     // Mashed by a second press) graded OnBeat; "pause moves" = pause-branch moves per minute (accidental for every bot but
-    // the pauser); string DPS = damage dealt per second.
+    // the pauser); string DPS = damage dealt per second. "Chimes" = BeatConfirmed events (the on-beat chime, rumble and
+    // HUD burst, played once the move the press started has begun) per judged move: checked to be at or below the
+    // on-beat rate, so mashing never sounds on the beat (J6-05). The last column shows what playing them at the press did.
     public static class RhythmScenario
     {
         public sealed class Result
         {
             public int OnBeat, Early, Late, Mashed, Pause, Graded;
+            public int Chimes;          // BeatConfirmed: the on-beat chime + rumble + HUD burst, once the move has started
+            public int PressChimes;     // OnBeat judgements at the press (where the chime used to play, before J6-05)
+            public int PressChimesUndone;   // ...of which a second press later made a mash
+            public int OnBeatStarts;    // string moves that started graded OnBeat (a judged on-beat press can still expire unrun)
             public double Seconds, Damage;
             public int Moves;
             public double DamagePerSecond => Seconds > 0 ? Damage / Seconds : 0;
@@ -53,8 +59,15 @@ namespace VaatusRevenge.CombatSim
             }
             s.World.PlayerEvent += e =>
             {
+                if (e.Type == PlayerEventType.BeatConfirmed)
+                {
+                    r.Chimes++;
+                    return;
+                }
                 if (e.Type == PlayerEventType.BeatJudged)
                 {
+                    if (e.Grade == BeatGrade.OnBeat) r.PressChimes++;
+                    if (e.Grade == BeatGrade.Mashed) r.PressChimesUndone++;
                     if (e.Grade == BeatGrade.Mashed || verdict == BeatGrade.None) verdict = e.Grade;
                     return;
                 }
@@ -62,6 +75,7 @@ namespace VaatusRevenge.CombatSim
                 bool stringMove = e.AttackKind == PlayerAttackKind.Light || e.AttackKind == PlayerAttackKind.Air
                                   || e.AttackKind == PlayerAttackKind.DodgeStrike;
                 if (!stringMove) return;
+                if (e.Grade == BeatGrade.OnBeat) r.OnBeatStarts++;
                 Tally();
                 r.Moves++;
                 if (e.Branch == ComboBranch.Pause) r.Pause++;
@@ -84,7 +98,8 @@ namespace VaatusRevenge.CombatSim
             foreach (Preset p in o.Presets)
             {
                 Out.Sub(p + " preset");
-                var t = new Table("Bot", "On-beat", "Early", "Late", "Mashed", "Pause moves / min", "String DPS", "String moves / min");
+                var t = new Table("Bot", "On-beat", "Early", "Late", "Mashed", "Pause moves / min", "String DPS", "String moves / min",
+                    "Chimes", "Chimes <= on-beat", "At-press chimes undone (old)");
                 var dps = new Dictionary<string, double>();
                 foreach (string bot in BotNames)
                 {
@@ -94,9 +109,17 @@ namespace VaatusRevenge.CombatSim
                     double minutes = results.Sum(r => r.Seconds) / 60.0;
                     double d = results.Average(r => r.DamagePerSecond);
                     dps[bot] = d;
-                    t.Row(bot, Out.Pct(results.Sum(r => r.OnBeat) / graded), Out.Pct(results.Sum(r => r.Early) / graded),
+                    // J6-05: the chime (and rumble, and HUD burst) fires only for presses whose move started on the beat, so
+                    // its rate can never be above the final on-beat rate (a masher used to hear chimes the HUD called MASH).
+                    double chimes = results.Sum(r => r.Chimes) / graded;
+                    double onBeat = results.Sum(r => r.OnBeat) / graded;
+                    int pressChimes = results.Sum(r => r.PressChimes);
+                    t.Row(bot, Out.Pct(onBeat), Out.Pct(results.Sum(r => r.Early) / graded),
                         Out.Pct(results.Sum(r => r.Late) / graded), Out.Pct(results.Sum(r => r.Mashed) / graded),
-                        Out.N(results.Sum(r => r.Pause) / minutes, 2), Out.N(d, 1), Out.N(results.Sum(r => r.Moves) / minutes, 0));
+                        Out.N(results.Sum(r => r.Pause) / minutes, 2), Out.N(d, 1), Out.N(results.Sum(r => r.Moves) / minutes, 0),
+                        Out.Pct(chimes) + (results.Sum(r => r.Chimes) == results.Sum(r => r.OnBeatStarts) ? " (= on-beat moves run)" : " (MISMATCH)"),
+                        Out.Target(chimes <= onBeat + 1e-9 && results.Sum(r => r.Chimes) == results.Sum(r => r.OnBeatStarts)),
+                        results.Sum(r => r.PressChimesUndone) + " / " + pressChimes);
                 }
                 t.Print();
                 Out.Line("String DPS rhythm / masher: **" + Out.N(dps["rhythm"] / Math.Max(1e-6, dps["masher"]), 2) + "** (target >= "

@@ -359,7 +359,7 @@ namespace VaatusRevenge.Core
 
             // Air Burst Landing (plunge): float through a long hang with the arms spread like wings, drop, and land softly
             //    on bent knees with both palms pressing out at the floor as the cushion of air bursts round you.
-            clips.Add(new ClipBuilder(AnimationKeys.AirLanding, ClipMode.Action, air) { FadeIn = 0.06f }
+            clips.Add(new ClipBuilder(AnimationKeys.AirLanding, ClipMode.Action, air) { FadeIn = 0.06f, LandsItself = true }
                 .K(KeyPhase.Startup, 1f, PoseEase.Out, s =>
                 {
                     s.Set(PoseChannel.ArmFollow, 0.5f).Torso(-6f, 0f).Head(-6f, 0f);

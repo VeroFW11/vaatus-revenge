@@ -833,7 +833,10 @@ namespace VaatusRevenge.CombatSim
                     // Aim at where the target's body really is (a launched enemy lies flat, well below its capsule's
                     // chest height): its chest as last animated, like PlayerController reading HumanoidBody.ChestAnchor.
                     Vector3 chest = target != null ? ChestOf(target) : Vector3.Zero;
-                    LastInput = target != null ? PlayerFeed.Build(p.Model, dt, true, p.Feet, chest) : PlayerFeed.Build(p.Model, dt);
+                    // The floor under the feet (PlayerController casts a ray down): the legs reach for it as it comes (J6-01).
+                    float ground = world.Level.GroundHeight(p.Feet.X, p.Feet.Z, p.Feet.Y, 0f);
+                    float floorBelow = float.IsNegativeInfinity(ground) ? -1f : Math.Max(0f, p.Feet.Y - ground);
+                    LastInput = PlayerFeed.Build(p.Model, dt, target != null, p.Feet, chest, floorBelow);
                 }
                 else if (Fighter is SimEnemy e)
                 {
@@ -891,12 +894,37 @@ namespace VaatusRevenge.CombatSim
             string prevFootScene;
             int footFrames;
 
+            // Build 05 verify round 6 (J6-01): landings are no longer exempt from the snap check. For TouchdownFrames frames
+            // after the body touches down (after TouchdownAirFrames+ frames in the air), in a plunge, and in the land
+            // poses, a foot may drop at most LandingDrop relative to the root in one frame (the touchdown frame itself
+            // included: it used to pull the legs 0.26-1.22 m down at once). Only a body lying down (knockdown, death,
+            // get-up, launched) keeps the exemption.
+            const float LandingDrop = 0.15f;
+            const int TouchdownFrames = 12, TouchdownAirFrames = 3;
+            static readonly HashSet<string> LyingKeys = new HashSet<string>
+            {
+                AnimationKeys.Launched, AnimationKeys.Knockdown, AnimationKeys.Death, AnimationKeys.GetUp,
+            };
+            int footAirRun, touchdownLeft;
+
             void CheckFeet(AnimRig rig, string key)
             {
                 bool grounded = rig.LastInput.Grounded && !rig.LastInput.Dead;
-                // A plunge (the axe kick's heel chop, the earthquake drop) is a landing: its foot comes down on purpose.
-                bool landing = LandingKeys.Contains(key) || (rig.Fighter is SimPlayer pl && pl.Model.State == PlayerState.Plunging);
+                bool plunging = rig.Fighter is SimPlayer pl && pl.Model.State == PlayerState.Plunging;
+                bool lying = LyingKeys.Contains(key);
                 bool sameScene = prevFootValid && prevFootScene == scene;
+                if (!sameScene)
+                {
+                    footAirRun = 0;
+                    touchdownLeft = 0;
+                }
+                if (!grounded) footAirRun++;
+                else
+                {
+                    if (footAirRun >= TouchdownAirFrames) touchdownLeft = TouchdownFrames;
+                    footAirRun = 0;
+                }
+                bool landing = touchdownLeft > 0 || plunging || LandingKeys.Contains(key);
                 Vector3 hips = rig.Fk.Positions[(int)BodyJoint.Hips];
                 Vector3 fwd = Directions.FromYaw(rig.Fighter.Yaw);
                 PoseSpec spec = rig.Animator.CurrentSpec;
@@ -926,10 +954,13 @@ namespace VaatusRevenge.CombatSim
                             footIssues.Add((scene, dragStart[i], dragKey[i], "rear foot dragged " + dragRun[i] + " frames", dragMax[i]));
                         dragRun[i] = 0;
                     }
-                    if (sameScene && grounded && prevFootY[i] - height > SnapDrop && !landing)
-                        footIssues.Add((scene, FrameCount, key, "foot dropped in one frame", prevFootY[i] - height));
-                    prevFootY[i] = grounded ? height : -10f;   // a frame in the air never counts as the "before" of a drop
+                    if (sameScene && grounded && !lying && prevFootY[i] - height > (landing ? LandingDrop : SnapDrop))
+                        footIssues.Add((scene, FrameCount, key, landing ? "foot dropped in one frame landing" : "foot dropped in one frame",
+                            prevFootY[i] - height));
+                    // A frame in the air counts as the "before" of a touchdown (root-relative), and of nothing else.
+                    prevFootY[i] = grounded || touchdownLeft > 0 || footAirRun > 0 ? height : -10f;
                 }
+                if (grounded && touchdownLeft > 0) touchdownLeft--;
                 prevFootValid = true;
                 prevFootScene = scene;
                 footFrames++;
@@ -1061,6 +1092,7 @@ namespace VaatusRevenge.CombatSim
                     glideRun = 0;
                     spinCheckUntil = -1;
                 }
+                CheckGait(rig, key, same, joints, root);
                 CheckSlide(rig, key, attacking, same, joints, root);
                 CheckFloating(rig, key, same, joints, root);
                 CheckHipHeight(rig, key, same, joints, root);
@@ -1071,6 +1103,59 @@ namespace VaatusRevenge.CombatSim
                 prevAttacking = attacking;
                 prevMotionScene = scene;
                 prevMotionKey = key;
+            }
+
+            // Build 05 verify round 6 (J6-02), walking and running on the ground (Locomotion / Sprinting): travelling within
+            // GaitStraightAngle of the facing at over GaitMinSpeed, no 'strafe' key and (run or strafe) no stance wider than
+            // GaitMaxSpread across the body (walking back in after an evade-out used to crab sideways with the feet 0.93 m
+            // apart); and never GaitLiftFrames+ frames with both feet over GaitLiftHeight off the floor (measured at the
+            // sole: the ankle sits 8 cm up on a flat foot).
+            const float GaitStraightAngle = 30f, GaitMinSpeed = 1f, GaitMaxSpread = 0.6f, GaitLiftHeight = 0.1f;
+            const int GaitLiftFrames = 4;
+            int gaitChecked, gaitLiftRun, gaitLiftStart;
+            string gaitLiftKeys;
+
+            void CheckGait(AnimRig rig, string key, bool same, Vector3[] joints, Vector3 root)
+            {
+                var player = (SimPlayer)rig.Fighter;
+                bool loco = (player.Model.State == PlayerState.Locomotion || player.Model.State == PlayerState.Sprinting)
+                            && rig.LastInput.Grounded && same;
+                Vector3 lf = joints[(int)BodyJoint.LeftFoot], rf = joints[(int)BodyJoint.RightFoot];
+                if (loco)
+                {
+                    gaitChecked++;
+                    Vector3 travel = root - prevRoot;
+                    travel.Y = 0f;
+                    float speed = travel.Length() / Dt;
+                    Vector3 fwd = Directions.FromYaw(rig.Fighter.Yaw);
+                    if (speed > GaitMinSpeed)
+                    {
+                        float cos = Vector3.Dot(Vector3.Normalize(travel), fwd);
+                        bool straight = cos >= (float)Math.Cos(GaitStraightAngle * Math.PI / 180.0);
+                        if (straight && key == AnimationKeys.Strafe)
+                            motionIssues.Add((scene, FrameCount, key, "gait: strafe key while moving straight (m/s)", speed));
+                        var right = new Vector3(fwd.Z, 0f, -fwd.X);
+                        float spread = Math.Abs(Vector3.Dot(lf - rf, right));
+                        if (straight && (key == AnimationKeys.Strafe || key == AnimationKeys.Run) && spread > GaitMaxSpread)
+                            motionIssues.Add((scene, FrameCount, key, "gait: feet spread across the body while moving straight (m)", spread));
+                    }
+                }
+                float lowest = Math.Min(Math.Min(lf.Y - 0.08f, rf.Y - 0.08f),
+                                        Math.Min(joints[(int)BodyJoint.LeftToes].Y - 0.02f, joints[(int)BodyJoint.RightToes].Y - 0.02f)) - root.Y;
+                if (loco && lowest > GaitLiftHeight)
+                {
+                    if (gaitLiftRun == 0)
+                    {
+                        gaitLiftStart = FrameCount;
+                        gaitLiftKeys = key;
+                    }
+                    else if (!gaitLiftKeys.EndsWith(key)) gaitLiftKeys += " -> " + key;
+                    gaitLiftRun++;
+                    return;
+                }
+                if (gaitLiftRun >= GaitLiftFrames)
+                    motionIssues.Add((scene, gaitLiftStart, gaitLiftKeys, "gait: both feet off the floor for " + gaitLiftRun + " frames", 0f));
+                gaitLiftRun = 0;
             }
 
             void CheckHipHeight(AnimRig rig, string key, bool same, Vector3[] joints, Vector3 root)
@@ -1684,7 +1769,8 @@ namespace VaatusRevenge.CombatSim
                 t2.Print();
                 Out.Sub("Planted feet on lunges (R2-02): no grounded foot above " + Out.N(DragHeight, 2) + " m and more than "
                         + Out.N(DragBehind, 2) + " m behind the hips for more than " + DragFramesAllowed
-                        + " frames outside kicks, and no drop over " + Out.N(SnapDrop, 2) + " m in one frame outside landings and plunges");
+                        + " frames outside kicks, and no drop over " + Out.N(SnapDrop, 2) + " m in one frame (" + Out.N(LandingDrop, 2)
+                        + " m root-relative at a touchdown, in a plunge or a landing; J6-01)");
                 var t3 = new Table("Check", "Frames checked", "Problems", "Result");
                 int drags = footIssues.Count(x => x.what.StartsWith("rear"));
                 int drops = footIssues.Count - drags;
@@ -1705,6 +1791,12 @@ namespace VaatusRevenge.CombatSim
                 int hipSteps = motionIssues.Count(x => x.what.StartsWith("hips moved"));
                 t3.Row("Hips up or down over " + Out.N(HipStepMax, 2) + " m in one frame, standing or moving (MV-03)", hipChecked, hipSteps, Out.Target(hipSteps == 0));
                 t3.Row("Grounded, both feet over " + Out.N(FloatHeight, 1) + " m up for " + FloatFrames + "+ frames (J5-04)", floatChecked, floats, Out.Target(floats == 0));
+                int strafes = motionIssues.Count(x => x.what.StartsWith("gait: strafe"));
+                int spreads = motionIssues.Count(x => x.what.StartsWith("gait: feet spread"));
+                int lifts = motionIssues.Count(x => x.what.StartsWith("gait: both feet"));
+                t3.Row("Strafe key while moving within " + Out.N(GaitStraightAngle, 0) + " deg of facing (J6-02)", gaitChecked, strafes, Out.Target(strafes == 0));
+                t3.Row("Run / strafe feet over " + Out.N(GaitMaxSpread, 1) + " m apart across the body moving straight (J6-02)", gaitChecked, spreads, Out.Target(spreads == 0));
+                t3.Row("Walking or running with both feet over " + Out.N(GaitLiftHeight, 1) + " m up for " + GaitLiftFrames + "+ frames (J6-02)", gaitChecked, lifts, Out.Target(lifts == 0));
                 t3.Row("Grounded Earth rock from the body (J3-07)", earthGroundFx + " grounded Earth fx", earthBodyRockFx, Out.Target(earthBodyRockFx == 0));
                 int fromNowhere = earthThrows - earthThrowsFromFloor;
                 t3.Row("Earth boulders thrown without rising from the floor (J4-03)", earthThrows + " grounded Earth throws", fromNowhere,

@@ -86,6 +86,11 @@ namespace VaatusRevenge.Core
         // A flying strike that leaves the ground on purpose (a zip kick, a sprint kick, a leap): its feet are meant to be
         // off the floor, so the landing ground fit (FighterAnimator, J5-04) leaves its legs alone.
         public bool Leaps;
+        // A plunge whose recovery lands its own legs (the axe kick's heel chop, the earthquake drop's stamp): the feed starts
+        // that recovery just before the impact (PlayerAnimationFeed.PlungeLandShare), so the landing ground fit leaves its
+        // legs alone whenever the floor was known on the way down (J6-01). Its first Recovery key at PlungeLandShare is the
+        // pose on the floor.
+        public bool LandsItself;
         // Idle clips only: how much the arms swing when walking or running (0 = keep the weapon guard up).
         public float ArmSwing = 1f;
         public PoseKeyframe[] Keys = new PoseKeyframe[0];

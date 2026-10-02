@@ -46,6 +46,7 @@ namespace VaatusRevenge.Core
         public struct Result
         {
             public ElementId ElementSelect;     // an element picked with RB this frame (None otherwise)
+            public bool ElementSelectOffAttack; // ...with a face that isn't the attack button (B, A or Y; X is FaceWest)
             public ButtonState Skill;           // the RB tap (Pressed on release)
             public ButtonState Heavy;           // LB + X
             public ButtonState AbilityNorth;    // LB + Y
@@ -96,13 +97,15 @@ namespace VaatusRevenge.Core
 
             // 2. Element picks: a face pressed while RB is held (RB first, or both on the same frame).
             ElementId picked = ElementId.None;
-            Swallow(FaceNorth, ref north, rb.Held, ref picked, layout);
-            Swallow(FaceEast, ref east, rb.Held, ref picked, layout);
-            Swallow(FaceSouth, ref south, rb.Held, ref picked, layout);
-            Swallow(FaceWest, ref west, rb.Held, ref picked, layout);
+            int pickedFace = -1;
+            Swallow(FaceNorth, ref north, rb.Held, ref picked, ref pickedFace, layout);
+            Swallow(FaceEast, ref east, rb.Held, ref picked, ref pickedFace, layout);
+            Swallow(FaceSouth, ref south, rb.Held, ref picked, ref pickedFace, layout);
+            Swallow(FaceWest, ref west, rb.Held, ref picked, ref pickedFace, layout);
             // A face only just pressed before RB did its own job, but RB was meant as the chord: its release fires nothing.
             if (picked == ElementId.None && rbArrived && AnyFaceYoungerThan(ChordSkillGuard)) skillPadChordUsed = true;
             result.ElementSelect = picked;
+            result.ElementSelectOffAttack = picked != ElementId.None && pickedFace != FaceWest;
 
             // 3. The RB tap: fires on release when nothing was picked during this hold.
             if (skillPadDown)
@@ -122,13 +125,17 @@ namespace VaatusRevenge.Core
             return result;
         }
 
-        void Swallow(int face, ref ButtonState button, bool rbHeld, ref ElementId picked, ElementButtonLayout layout)
+        void Swallow(int face, ref ButtonState button, bool rbHeld, ref ElementId picked, ref int pickedFace, ElementButtonLayout layout)
         {
             if (rbHeld && button.Pressed)
             {
                 faceSwallowed[face] = true;
                 skillPadChordUsed = true;
-                if (picked == ElementId.None && layout != null) picked = layout.PadSlot(face);
+                if (picked == ElementId.None && layout != null)
+                {
+                    picked = layout.PadSlot(face);
+                    pickedFace = face;
+                }
             }
             if (!faceSwallowed[face]) return;
             if (!button.Held) faceSwallowed[face] = false;

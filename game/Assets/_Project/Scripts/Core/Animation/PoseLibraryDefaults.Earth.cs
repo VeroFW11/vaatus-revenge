@@ -339,7 +339,7 @@ namespace VaatusRevenge.Core
 
             // Earthquake Drop (plunge): crouched with both fists raised through the hang, drop like a stone, then land in the
             //    deepest horse with both fists punching into the ground; rise back into the stance.
-            clips.Add(new ClipBuilder(AnimationKeys.QuakeDrop, ClipMode.Action, air) { FadeIn = 0.06f }
+            clips.Add(new ClipBuilder(AnimationKeys.QuakeDrop, ClipMode.Action, air) { FadeIn = 0.06f, LandsItself = true }
                 .K(KeyPhase.Startup, 1f, PoseEase.Out, s =>
                 {
                     s.Set(PoseChannel.ArmFollow, 0.5f).Torso(-10f, 0f);
@@ -347,7 +347,7 @@ namespace VaatusRevenge.Core
                     s.Kick(L, 20f, -70f, 0.6f, 20f, 30f).Kick(R, 20f, -75f, 0.6f, 20f, 30f);
                 })
                 .K(KeyPhase.Active, 1f, PoseEase.Linear, s => s.Torso(-6f, 0f))
-                .K(KeyPhase.Recovery, 0.22f, PoseEase.InOut, s =>
+                .K(KeyPhase.Recovery, 0.25f, PoseEase.InOut, s =>
                 {
                     s.Set(PoseChannel.ArmFollow, 0f);
                     s.Hips(0f, -0.42f, 0.02f).Pelvis(14f, 0f).Torso(34f, 0f).Head(-20f, 0f);

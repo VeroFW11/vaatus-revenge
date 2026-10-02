@@ -24,6 +24,8 @@ namespace VaatusRevenge.Core
         public float ActionDirectionYaw;    // degrees, fighter frame: which way a dodge or a flinch goes (0 = forward)
         public float ChargeLevel;           // 0..1 while charging a heavy
         public float AimPitch;              // degrees up toward the target (crossbow)
+        public bool HasFloorBelow;          // airborne, and the floor under the feet is known (a ray down): FloorBelow is set
+        public float FloorBelow;            // metres from the feet down to the floor (the legs reach for it as it comes, J6-01)
 
         public bool HasTarget;              // who the fighter is striking at (for aiming a strike at it)
         public Vector3 TargetLocal;         // the target's chest, in the fighter's frame, measured from its feet
@@ -112,6 +114,8 @@ namespace VaatusRevenge.Core
         float fitAirTime;
         bool fitWasGrounded = true;
         float groundFit;
+        bool fallKnewFloor;            // some frame of this fall had FighterAnimInput.HasFloorBelow
+        bool landedKnowingFloor;       // ...as of the last touchdown (a LandsItself clip's recovery was started in time)
         string locoKey = AnimationKeys.Idle;
         float locoKeyTime;
 
@@ -209,6 +213,7 @@ namespace VaatusRevenge.Core
             fitAirTime = 0f;
             fitWasGrounded = true;
             groundFit = 0f;
+            fallKnewFloor = landedKnowingFloor = false;
             locoKey = AnimationKeys.Idle;
             locoKeyTime = 0f;
             leanPitch = leanRoll = headLag = flinchPitch = flinchRoll = flinchYaw = default;
@@ -312,7 +317,11 @@ namespace VaatusRevenge.Core
             // ---- 5. solve
             PoseClip shown = action ? Clip(key) : null;
             float aim = shown != null && shown.Aims ? input.AimPitch : 0f;
-            solver.Solve(output, pose, action ? travel : 0f, aim, input.Grounded);
+            // A plunge already in its landing recovery just before the impact (the feed starts it in time, J6-01): its
+            // feet stop at the soles' level like on the ground, never poking under the floor the body is about to reach.
+            bool landingEarly = shown != null && shown.LandsItself && input.HasFloorBelow && input.HasFrameData
+                                && input.ActionTime >= input.Timing.LastActiveEnd;
+            solver.Solve(output, pose, action ? travel : 0f, aim, input.Grounded || landingEarly);
             FitLandingToFloor(in input, action ? key : "", action ? travel : 0f, aim, dt, settings);
             if (!pose.IsFinite())
             {
@@ -333,33 +342,59 @@ namespace VaatusRevenge.Core
 
         // ------------------------------------------------------------------ landing ground fit
 
-        // J5-04: an air-string finisher or plunge reaches the floor (FinisherGravityScale) while its clip is still in its
-        // air pose, and the crossfade out of it to the land pose carries that tuck for a few frames: the fighter would
-        // stand on nothing, feet 0.3-0.5 m up. For a short while after a touchdown, whenever the solved feet are off the
-        // floor the legs (and hips) take the grounded locomotion pose (the knee-bending landing) at once, and any gap
-        // left is closed by lowering the pelvis; as the clip's own legs come down the fit hands back over
-        // LandingFitRelease. Deliberate leaps that start on the ground never fit (they aren't after a touchdown).
+        // J5-04 / J6-01: an air-string finisher or plunge reaches the floor (FinisherGravityScale) while its clip is still in
+        // its air pose: the fighter would stand on nothing, feet 0.3-0.5 m up. The legs (and hips) are blended toward the
+        // locomotion pose (the falling legs reaching down in the air, the knee-bending landing on the ground) by groundFit:
+        //   - before contact, when the feed knows how far the floor is (FighterAnimInput.HasFloorBelow), the legs start
+        //     reaching down LandingFitLead seconds before the predicted touchdown, so they meet the floor with the body;
+        //   - on the ground, for a short while after a touchdown, whenever the solved feet are still off the floor;
+        //   - the weight never rises faster than 1 / LandingFitRise per second: no one-frame leg snaps (it used to jump
+        //     to 1 on the touchdown frame and pull a foot 0.3-1.2 m down in one frame), and any gap left is closed by
+        //     lowering the pelvis (on the ground only);
+        //   - as the clip's own legs come down the fit hands back over LandingFitRelease.
+        // Deliberate leaps that start on the ground never fit, nor does a plunge clip that lands its own legs (LandsItself:
+        // the feed starts its landing recovery before the impact) when the floor was known on the way down.
         void FitLandingToFloor(in FighterAnimInput input, string key, float shownTravel, float aim, float dt, AnimatorSettings s)
         {
             if (input.Grounded)
             {
-                if (!fitWasGrounded && fitAirTime > s.LandingFitMinAirTime) sinceTouchdown = 0f;
+                if (!fitWasGrounded && fitAirTime > s.LandingFitMinAirTime)
+                {
+                    sinceTouchdown = 0f;
+                    landedKnowingFloor = fallKnewFloor;
+                }
                 else if (sinceTouchdown < float.MaxValue) sinceTouchdown += dt;
                 fitAirTime = 0f;
+                fallKnewFloor = false;
             }
             else
             {
                 fitAirTime += dt;
+                if (input.HasFloorBelow) fallKnewFloor = true;
             }
             fitWasGrounded = input.Grounded;
 
             float k = solver.Skeleton.Scale;
             PoseClip clip = key.Length > 0 ? Clip(key) : null;
-            bool candidate = input.Grounded && !input.Dead && sinceTouchdown <= s.LandingFitWindow && !KeepsItsLegs(key)
-                             && !(clip != null && clip.Leaps);
-            bool floating = candidate && FootGap(k) > s.LandingFitTolerance * k;
-            if (floating) groundFit = 1f;
-            else if (dt > 0f) groundFit = Math.Max(0f, groundFit - dt / Math.Max(0.01f, s.LandingFitRelease));
+            bool ownLanding = clip != null && clip.LandsItself && (input.Grounded ? landedKnowingFloor : input.HasFloorBelow);
+            bool eligible = !input.Dead && !KeepsItsLegs(key) && !(clip != null && clip.Leaps) && !ownLanding;
+            float target = 0f;
+            if (input.Grounded)
+            {
+                bool candidate = eligible && sinceTouchdown <= s.LandingFitWindow;
+                if (candidate && FootGap(k) > s.LandingFitTolerance * k) target = 1f;
+            }
+            else if (eligible && clip != null && input.HasFloorBelow && input.LocalVelocity.Y < -1f && s.LandingFitLead > 0f)
+            {
+                // Falling in an action pose: reach for the floor as it comes (the time to it at the current fall speed).
+                float timeToFloor = Math.Max(0f, input.FloorBelow) / -input.LocalVelocity.Y;
+                target = AnimMath.Clamp01(1f - timeToFloor / s.LandingFitLead);
+            }
+            if (dt > 0f)
+            {
+                if (target > groundFit) groundFit = Math.Min(target, groundFit + dt / Math.Max(0.01f, s.LandingFitRise));
+                else groundFit = Math.Max(target, groundFit - dt / Math.Max(0.01f, s.LandingFitRelease));
+            }
             if (!(groundFit > 0f)) return;
 
             float w = AnimMath.SmoothStep(groundFit);
@@ -371,12 +406,14 @@ namespace VaatusRevenge.Core
             }
             output[PoseChannel.LegFrame] = AnimMath.Lerp(output[PoseChannel.LegFrame], locoSpec[PoseChannel.LegFrame], w);
             output[PoseChannel.HipsY] = Math.Min(output[PoseChannel.HipsY], AnimMath.Lerp(output[PoseChannel.HipsY], locoSpec[PoseChannel.HipsY], w));
-            solver.Solve(output, pose, shownTravel, aim, true);
+            solver.Solve(output, pose, shownTravel, aim, input.Grounded);
+            if (!input.Grounded) return;
             float gap = FootGap(k);
             if (gap > s.LandingFitTolerance * k * 0.5f)
             {
-                // The legs can't reach from that high (a tucked hip height): sit the pelvis down onto them.
-                output[PoseChannel.HipsY] -= gap / Math.Max(1e-3f, k);
+                // The legs can't reach from that high (a tucked hip height): sit the pelvis down onto them, as far as the
+                // fit has come (so this eases in with it too).
+                output[PoseChannel.HipsY] -= w * gap / Math.Max(1e-3f, k);
                 solver.Solve(output, pose, shownTravel, aim, true);
             }
         }
@@ -440,7 +477,19 @@ namespace VaatusRevenge.Core
             if (speed > 0.05f)
             {
                 Vector2 dir = horizontal / speed;
-                smoothDir = Vector2.Normalize(Vector2.Lerp(smoothDir, dir, AnimMath.Clamp01(k * 1.5f)) + dir * 1e-3f);
+                // J6-02: the gait's travel direction turns toward the body's along the shortest arc. From a standstill it
+                // takes the new direction at once (a stop keeps the old heading, so walking back in after an evade-out would
+                // otherwise sweep the stride through sideways: a 'strafe' crab while moving straight at the foe), and so
+                // does a reversal sharper than ReverseSnapDot (any turn through 180 degrees passes through sideways; a
+                // normalised lerp from near-opposite did so for ~15 frames).
+                // The heading is smoothed in the world, not the body's frame: a body turning to face where it goes (the
+                // model turns it 15 degrees a frame) carries the old heading round with it, so the stride never lags
+                // into a sideways step just because the body turned.
+                float yawDelta = AnimMath.IsFinite(input.YawDelta) ? input.YawDelta : 0f;
+                if (yawDelta != 0f) smoothDir = TurnToward(smoothDir, smoothDir, 0f, -yawDelta * AnimMath.Deg2Rad);
+                bool fromStandstill = smoothSpeed < gait.MoveThreshold;
+                if (fromStandstill || Vector2.Dot(smoothDir, dir) < gait.ReverseSnapDot) smoothDir = dir;
+                else smoothDir = TurnToward(smoothDir, dir, AnimMath.Clamp01(k * 1.5f));
             }
             idleTime += dt;
             if (smoothSpeed > 0.01f) gaitPhase = Wrap01(gaitPhase + gait.Cadence(groundSpeed) * dt);
@@ -1231,6 +1280,20 @@ namespace VaatusRevenge.Core
                 Duration = cycling ? 1f / g.Cadence(smoothSpeed) : 0f,
                 Loop = locoKey != AnimationKeys.Land, Speed = smoothSpeed, Weight = action ? 1f - weight : 1f
             };
+        }
+
+        // Rotates unit vector 'from' toward unit vector 'to' by 'share' of the angle between them (shortest arc), so the
+        // result always stays unit length and never shrinks through zero.
+        // 'extra' radians are added to the heading on top (+ = toward +X).
+        static Vector2 TurnToward(Vector2 from, Vector2 to, float share, float extra = 0f)
+        {
+            float a = MathF.Atan2(from.X, from.Y);
+            float b = MathF.Atan2(to.X, to.Y);
+            float diff = b - a;
+            if (diff > MathF.PI) diff -= 2f * MathF.PI;
+            if (diff < -MathF.PI) diff += 2f * MathF.PI;
+            float h = a + diff * AnimMath.Clamp01(share) + extra;
+            return new Vector2(MathF.Sin(h), MathF.Cos(h));
         }
 
         static float Wrap01(float x)

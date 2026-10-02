@@ -50,6 +50,27 @@ namespace VaatusRevenge
             return found;
         }
 
+        // Distance from a fighter's feet straight down to solid floor, within maxDistance (the animator's legs reach for the
+        // floor as a fall nears it, J6-01). The ray starts a little above the feet so a foot resting on the floor still
+        // finds it; fighter colliders are skipped.
+        public static bool FloorBelow(Vector3 feet, float maxDistance, out float distance)
+        {
+            const float lift = 0.05f;
+            distance = 0f;
+            if (!(maxDistance > 0f)) return false;
+            int count = Physics.RaycastNonAlloc(feet + Vector3.up * lift, Vector3.down, hits, maxDistance + lift, Layers.EnvironmentMask,
+                QueryTriggerInteraction.Ignore);
+            float best = float.MaxValue;
+            for (int i = 0; i < count; i++)
+            {
+                if (IsFighterCollider(hits[i].collider)) continue;
+                if (hits[i].distance < best) best = hits[i].distance;
+            }
+            if (best == float.MaxValue) return false;
+            distance = Mathf.Max(0f, best - lift);
+            return true;
+        }
+
         // True when a sphere at this position already overlaps solid geometry (e.g. launched inside a wall).
         public static bool IsOverlapping(Vector3 position, float radius)
         {

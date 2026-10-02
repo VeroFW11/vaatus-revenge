@@ -274,6 +274,7 @@ namespace VaatusRevenge
                 SwapShoulder = swapShoulderButton,
                 SwitchTargetDelta = ReadSwitchDelta(scroll),
                 ElementSelect = elementPick != ElementId.None ? elementPick : ReadElementSelect(),
+                ElementSelectOffAttack = elementPick != ElementId.None && chord.ElementSelectOffAttack,
             };
         }
 

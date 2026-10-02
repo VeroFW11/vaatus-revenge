@@ -323,7 +323,7 @@ namespace VaatusRevenge.Core
 
             if (state == PlayerState.Dead) return;
             // RB + an element's button: a switch now, a switch strike for the string (buffered like Light), or nothing.
-            PlayerCommand elementChord = ReadElementSelect(input.ElementSelect);
+            PlayerCommand elementChord = ReadElementSelect(input.ElementSelect, input.ElementSelectOffAttack);
 
             // Ability chords (hold the guard button, then a face button: Heavy, AbilityNorth, AbilityEast). The guard
             // button is the chord's modifier, so its own press was only ever the first half of the chord: the chord

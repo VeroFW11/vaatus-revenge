@@ -30,6 +30,7 @@ namespace VaatusRevenge.CombatSim
             ExitDrop(o);
             SideSlipCircle(o);
             StringAcross(o);
+            WalkBackIn(o);
 
             // The same dodge measurements on the Xbox path (J5-01): every press through the game's PadChordReader, the
             // element picked with hold RB, then its face button. No added latency, so the targets are the same.
@@ -373,6 +374,69 @@ namespace VaatusRevenge.CombatSim
                 previous = speed;
             }
             return worst;
+        }
+
+        // ---------------------------------------------------------------- evade-out, stop, walk back in (J6-02)
+
+        // Evade out from the rooted partner, let go and stand a moment, then walk (and run) straight back at it, with the
+        // game's procedural animator on the body. The gait must face the way it goes: no 'strafe' key while moving within
+        // 30 degrees of the facing, and never 4+ frames with both feet 0.1 m off the floor (it used to crab sideways, feet
+        // 0.93 m apart and off the floor for 13-17 frames, on every in-and-out).
+        static void WalkBackIn(Options o)
+        {
+            Out.Sub("Evade-out, stop, walk back in: the gait faces the way it goes (target: no strafe crab, feet down; J6-02)");
+            var t = new Table("Preset", "Element", "Strafe frames moving straight", "Longest both-feet-up run", "Widest stance across (m)", "Target");
+            foreach (Preset p in o.Presets)
+            {
+                foreach (ElementId el in Elements)
+                {
+                    (int strafe, int lift, double spread) = WalkBackInTrial(p, el, o.Fps);
+                    t.Row(p, el, strafe, lift + " frames", Out.N(spread, 2), Out.Target(strafe == 0 && lift < 4 && spread <= 0.6));
+                }
+            }
+            t.Print();
+        }
+
+        static (int strafe, int lift, double spread) WalkBackInTrial(Preset p, ElementId el, float fps)
+        {
+            Session s = Start(p, el, fps, Vector3.Zero);
+            SimEnemy partner = Partner(s, new Vector3(0f, 0f, 2.5f), 1);
+            var feed = new PlayerAnimationFeed();
+            HumanoidSkeleton skeleton = HumanoidSkeleton.Create();
+            var animator = new FighterAnimator(PoseLibrary.Default, skeleton);
+            var fk = new ForwardKinematics(skeleton);
+            s.World.PlayerEvent += e => feed.OnEvent(e);
+            int strafe = 0, run = 0, longest = 0;
+            double spread = 0;
+            Vector3 last = s.Player.Feet;
+            int total = (int)(2.4f * fps);
+            for (int f = 0; f < total; f++)
+            {
+                Vector3 toward = Directions.Flatten(partner.Feet - s.Player.Feet);
+                Pad pad;
+                if (f < 2) pad = new Pad { Dodge = true, Move = s.StickToward(-toward) };          // evade out
+                else if (f < (int)(0.9f * fps)) pad = new Pad();                                  // stop, stand
+                else pad = new Pad { Move = s.StickToward(toward) };                               // walk back in
+                s.Step(pad);
+                animator.Update(feed.Build(s.Model, s.Dt, true, s.Player.Feet, partner.Feet + new Vector3(0f, 1.2f, 0f)));
+                fk.Compute(animator.Pose, Vector3.Zero, 0f);
+                Vector3 travel = Directions.Flatten(s.Player.Feet - last);
+                last = s.Player.Feet;
+                bool loco = (s.Model.State == PlayerState.Locomotion || s.Model.State == PlayerState.Sprinting) && s.Model.IsGrounded;
+                if (!loco || f < (int)(0.9f * fps)) continue;
+                float speed = travel.Length() / s.Dt;
+                // Facing-relative: the FK body is built facing +Z.
+                Vector3 local = Vector3.Transform(travel, Quaternion.CreateFromAxisAngle(Vector3.UnitY, -s.Player.Yaw * (float)Math.PI / 180f));
+                bool straight = speed > 1f && local.Z > 0f && Math.Abs(local.X) <= local.Z * (float)Math.Tan(30.0 * Math.PI / 180.0);
+                string key = animator.LocomotionCue.Key;
+                if (straight && key == AnimationKeys.Strafe) strafe++;
+                Vector3 lf = fk[BodyJoint.LeftFoot], rf = fk[BodyJoint.RightFoot];
+                if (straight && (key == AnimationKeys.Run || key == AnimationKeys.Strafe)) spread = Math.Max(spread, Math.Abs(lf.X - rf.X));
+                float lowest = Math.Min(Math.Min(lf.Y - 0.08f, rf.Y - 0.08f), Math.Min(fk[BodyJoint.LeftToes].Y - 0.02f, fk[BodyJoint.RightToes].Y - 0.02f));
+                run = lowest > 0.1f ? run + 1 : 0;
+                longest = Math.Max(longest, run);
+            }
+            return (strafe, longest, spread);
         }
 
         // ---------------------------------------------------------------- side-slip: a circle round the enemy

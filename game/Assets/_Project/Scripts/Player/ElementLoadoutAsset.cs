@@ -3,7 +3,7 @@ using VaatusRevenge.Core;
 
 namespace VaatusRevenge
 {
-    // The four elements the player switches between (hold RB + a face button), one MoveSetAsset each, and which of
+    // The four elements the player switches between (hold RB, then press a face button), one MoveSetAsset each, and which of
     // them have been learned. PlayerController hands the model an ElementLoadout built from it (ToLoadout), which
     // points at the move set assets' data by reference, so Inspector edits to a move set apply live. Fluid and
     // Punishing are two of these (F5 / F6). Create one via Assets > Create > Vaatu's Revenge > Tuning > Element Loadout.

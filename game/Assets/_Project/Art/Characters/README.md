@@ -17,6 +17,17 @@ other person doesn't change it at the same time:
 `git lfs lock game/Assets/_Project/Art/Characters/Player/player_avatar.glb` (and `git lfs unlock ...` when done).
 (A file Git doesn't track yet can't be locked.)
 
+## How to get it
+
+Who: **David** (the art owner) fetches the file; nothing in the game waits on it.
+
+- **The generated model:** the session that made it could not download from the image host. Either allow the host in the
+  Claude environment's network policy (Build 05 spec, §8 open question 3) and ask Claude to fetch it again, or download it
+  by hand from the generation page and put it at the path above.
+- **Or make one in Blender:** any humanoid character works if its bones use humanoid names (hips, spine, chest, neck,
+  head, upper/lower arm, hand, upper/lower leg, foot for left and right). Export with **File > Export > glTF 2.0**, format
+  **glTF Binary (.glb)**, and keep the `.blend` source in `art/` (lock it with `git lfs lock` before editing).
+
 ## Putting the painted Avatar in the game
 
 1. **Rename the file to `player_avatar.glb` and put it at** `game/Assets/_Project/Art/Characters/Player/player_avatar.glb`
@@ -63,8 +74,9 @@ Select **Player** and find **Skinned Avatar Mirror** in the Inspector:
 - The model never animates itself. The grey-box body still does all the moving (it's just hidden) and every frame
   `SkinnedAvatarMirror` copies its pose onto the model through Unity's Humanoid retargeting. Hit boxes, effects and the
   camera keep following the grey-box bones, which sit almost exactly where the model's limbs are.
-- The model's bones are matched by name for arms and legs, and by position for the spine (this model numbers its spine
-  `Spine02 > Spine01 > Spine` from the hips up, which name matching would get backwards).
+- The model's bones are matched by name for arms and legs, and by position for the spine.
+- If you use the generated model: it numbers its spine `Spine02 > Spine01 > Spine` from the hips up, which name matching
+  would get backwards; that's why the spine goes by position.
 - The animation clip baked into the `.glb` is switched off.
 - `.glb` files are stored with Git LFS (see `.gitattributes`). They can't be merged, so tell each other before
   replacing one.

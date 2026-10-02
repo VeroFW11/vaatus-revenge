@@ -577,11 +577,12 @@ namespace VaatusRevenge.Tests
             }
         }
 
-        // J5-04: an air finisher still in its air pose as the body lands (FinisherGravityScale gets it down early) stands
-        // on the floor from the first grounded frame: the legs take the landing pose and the pelvis sits onto them, no
-        // feet hanging 0.3 m up. A flying kick that leaves the ground on purpose (Leaps) keeps its own legs.
+        // J5-04 / J6-01: an air finisher still in its air pose as the body lands (FinisherGravityScale gets it down early)
+        // ends up standing on the floor, never with its feet hanging 0.3 m up, and never by pulling a foot down more than
+        // 0.15 m (root-relative) in one frame. With the floor known on the way down (the game casts a ray) the legs reach
+        // for it before the touchdown and are down on the first grounded frame; without it they come down over a few frames.
         [Test]
-        public void AirFinisherLandsWithItsFeetOnTheFloor()
+        public void AirFinisherLandsWithItsFeetOnTheFloor([Values(true, false)] bool floorKnown)
         {
             ElementMoveSet earth = ElementMoveSet.CreateEarthFluid();
             MoveData meteor = earth.AirChain[earth.AirChain.Length - 1];
@@ -592,20 +593,136 @@ namespace VaatusRevenge.Tests
             for (int i = 0; i < 20; i++) animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "" });
             for (int i = 0; i < 30; i++)
                 animator.Update(new FighterAnimInput { DeltaTime = Dt, Grounded = false, ActionKey = "", LocalVelocity = new Vector3(0f, 4f - i * 0.4f, 0f) });
-            float t = 0f;
-            for (int i = 0; i < 4; i++, t += Dt)
+            float t = 0f, height = 1.6f, worstDrop = 0f;
+            float[] last = { float.NaN, float.NaN };
+            void Track()
+            {
+                fk.Compute(animator.Pose, Vector3.Zero, 0f);
+                float[] now = { fk[BodyJoint.LeftFoot].Y, fk[BodyJoint.RightFoot].Y };
+                for (int f = 0; f < 2; f++)
+                {
+                    if (!float.IsNaN(last[f])) worstDrop = Math.Max(worstDrop, last[f] - now[f]);
+                    last[f] = now[f];
+                }
+            }
+            for (int i = 0; i < 8; i++, t += Dt)
             {
                 FighterAnimInput air = ActionInput(AnimationKeys.AirMeteor, t, meteor);
                 air.Grounded = false;
                 air.LocalVelocity = new Vector3(0f, -12f, 0f);
+                height = Math.Max(0f, height - 12f * Dt);
+                air.HasFloorBelow = floorKnown;
+                air.FloorBelow = height;
                 animator.Update(air);
+                if (i >= 4) Track();
             }
+            int downBy = floorKnown ? 0 : (int)Math.Ceiling(PoseLibrary.Default.Settings.LandingFitRise / Dt) + 1;
             for (int i = 0; i < 20; i++, t += Dt)
             {
                 animator.Update(ActionInput(AnimationKeys.AirMeteor, t, meteor));
-                fk.Compute(animator.Pose, Vector3.Zero, 0f);
+                Track();
                 float lowest = Math.Min(Math.Min(fk[BodyJoint.LeftToes].Y, fk[BodyJoint.RightToes].Y), Math.Min(fk[BodyJoint.LeftFoot].Y, fk[BodyJoint.RightFoot].Y));
-                Assert.That(lowest, Is.LessThan(0.08f), "both feet off the floor " + i + " frames after landing: " + lowest + " m");
+                if (i >= downBy) Assert.That(lowest, Is.LessThan(0.08f), "both feet off the floor " + i + " frames after landing: " + lowest + " m");
+            }
+            Assert.That(worstDrop, Is.LessThanOrEqualTo(0.15f), "a foot dropped " + worstDrop + " m in one frame around the touchdown");
+        }
+
+        // J6-01: a plunge in every element, through the real combat model and PlayerAnimationFeed, with the floor known (as
+        // PlayerController's ray gives it): from the frame before the touchdown to 12 frames after, no foot moves down more
+        // than 0.15 m relative to the root in one frame (the axe kick's raised leg used to drop 1.22 m in one), the feet are
+        // on the floor by the touchdown, and the body under the impact is crouched in the landing (hips below the stance's).
+        [Test]
+        public void PlungeTouchdownNeverSnapsAFoot([Values(ElementId.Fire, ElementId.Water, ElementId.Earth, ElementId.Air)] ElementId element)
+        {
+            PlayerDriver d = PlayerDriver.Elements();
+            Assert.IsTrue(d.Model.SetElementAtRest(element));
+            ElementMoveSet set = d.Model.MoveSet;
+            var feed = new PlayerAnimationFeed();
+            HumanoidSkeleton skeleton = HumanoidSkeleton.Create();
+            var animator = new FighterAnimator(PoseLibrary.Default, skeleton, set.AnimationStyle);
+            var fk = new ForwardKinematics(skeleton);
+            float[] last = { float.NaN, float.NaN };
+            float worstDrop = 0f, standingHips = float.NaN, impactHips = float.NaN, impactLowest = float.NaN;
+            int window = -1, touchdown = -1;
+            bool wasGrounded = true;
+            void Frame(Pad pad)
+            {
+                d.Step(pad);
+                for (int i = 0; i < d.Last.Events.Count; i++) feed.OnEvent(d.Last.Events[i]);
+                animator.Update(feed.Build(d.Model, d.Dt, false, d.World.Position, Vector3.Zero, d.World.Position.Y));
+                fk.Compute(animator.Pose, Vector3.Zero, 0f);
+                float[] now = { fk[BodyJoint.LeftFoot].Y, fk[BodyJoint.RightFoot].Y };
+                bool grounded = d.Model.IsGrounded;
+                if (grounded && !wasGrounded && d.Frame > 5)
+                {
+                    window = 13;
+                    touchdown = d.Frame;
+                    impactHips = fk[BodyJoint.Hips].Y;
+                    impactLowest = Math.Min(Math.Min(fk[BodyJoint.LeftToes].Y, fk[BodyJoint.RightToes].Y), Math.Min(now[0], now[1]) - 0.06f);
+                }
+                if (!grounded && d.World.Position.Y < 0.4f && window < 0) window = 16;   // the frames just before it too
+                if (window > 0)
+                {
+                    for (int f = 0; f < 2; f++) if (!float.IsNaN(last[f])) worstDrop = Math.Max(worstDrop, last[f] - now[f]);
+                    window--;
+                }
+                last[0] = now[0];
+                last[1] = now[1];
+                wasGrounded = grounded;
+            }
+            for (int i = 0; i < 30; i++) Frame(Pad.None);
+            fk.Compute(animator.Pose, Vector3.Zero, 0f);
+            standingHips = fk[BodyJoint.Hips].Y;
+            Frame(Pad.Jump);
+            Frame(Pad.None);
+            int guard = 0, waitFrames = (int)Math.Ceiling((set.Plunge.MinAirTime + 0.1f) / d.Dt);
+            while (d.Model.State != PlayerState.Plunging && guard++ < 60)
+                Frame(guard > waitFrames && guard % 2 == 0 ? Pad.Heavy : Pad.None);
+            Assert.AreEqual(PlayerState.Plunging, d.Model.State, element + ": plunged");
+            for (int i = 0; i < 60; i++) Frame(Pad.None);
+            Assert.GreaterOrEqual(touchdown, 0, element + ": landed");
+            Assert.AreEqual(1, d.Count(PlayerEventType.PlungeImpact), element + ": the plunge hit the floor");
+            Assert.That(worstDrop, Is.LessThanOrEqualTo(0.15f), element + ": a foot dropped " + worstDrop + " m in one frame at the touchdown");
+            Assert.That(impactLowest, Is.LessThan(0.08f), element + ": feet on the floor at the impact");
+            Assert.That(impactHips, Is.LessThan(standingHips - 0.05f), element + ": crouched into the landing at the impact (hips "
+                + impactHips + " vs standing " + standingHips + ")");
+        }
+
+        // J6-02: back out (an evade-out), stop, then walk and run straight back in: the gait faces the way it goes from its
+        // first step. The old normalised lerp from the backward heading swept through sideways: a 'strafe' crab with the
+        // feet 0.93 m apart while moving straight forward. Also a start to the side while the body turns to face it (15
+        // degrees a frame) never lags into a sideways step: the heading is smoothed in the world, not the body's frame.
+        [Test]
+        public void WalkingBackInAfterBackingOutNeverCrabs([Values("", "water", "earth", "air")] string style)
+        {
+            HumanoidSkeleton skeleton = HumanoidSkeleton.Create();
+            var animator = new FighterAnimator(PoseLibrary.Default, skeleton, style);
+            var fk = new ForwardKinematics(skeleton);
+            FighterAnimInput Move(Vector3 v, float yawDelta = 0f) =>
+                new FighterAnimInput { DeltaTime = Dt, Grounded = true, ActionKey = "", LocalVelocity = v, YawDelta = yawDelta };
+            for (int i = 0; i < 20; i++) animator.Update(Move(Vector3.Zero));
+            // An evade-out goes back and a little to the side (170 degrees off the facing, as the dodge carries it).
+            for (int i = 0; i < 20; i++) animator.Update(Move(new Vector3(0.7f, 0f, -3.94f)));
+            for (int i = 0; i < 15; i++) animator.Update(Move(Vector3.Zero));
+            float widest = 0f;
+            for (int i = 0; i < 40; i++)
+            {
+                animator.Update(Move(new Vector3(0f, 0f, Math.Min(4.8f, 0.6f * (i + 1)))));
+                fk.Compute(animator.Pose, Vector3.Zero, 0f);
+                Assert.AreNotEqual(AnimationKeys.Strafe, animator.LocomotionCue.Key, style + ": strafe key moving straight, frame " + i);
+                if (animator.LocomotionCue.Key == AnimationKeys.Run) widest = Math.Max(widest, Math.Abs(fk[BodyJoint.LeftFoot].X - fk[BodyJoint.RightFoot].X));
+            }
+            Assert.That(widest, Is.LessThanOrEqualTo(0.6f), style + ": feet apart across the body while running straight");
+
+            // Start sideways from a stand while the body turns 15 degrees a frame to face the way it goes.
+            for (int i = 0; i < 30; i++) animator.Update(Move(Vector3.Zero));
+            for (int i = 0; i < 12; i++)
+            {
+                float local = Math.Max(0f, 90f - 15f * i);       // the travel, seen from the turning body
+                float speed = Math.Min(3f, 0.5f * (i + 1));
+                var v = new Vector3((float)Math.Sin(local * Math.PI / 180.0), 0f, (float)Math.Cos(local * Math.PI / 180.0)) * speed;
+                animator.Update(Move(v, i > 0 && local > 0f ? 15f : 0f));
+                if (local <= 30f) Assert.AreNotEqual(AnimationKeys.Strafe, animator.LocomotionCue.Key, style + ": strafe key once facing the way it goes, frame " + i);
             }
         }
 
@@ -636,6 +753,8 @@ namespace VaatusRevenge.Tests
             foreach (string key in new[] { AnimationKeys.ZipKick, AnimationKeys.SprintKick, AnimationKeys.WindLeap, AnimationKeys.WindRunnerKick })
                 Assert.IsTrue(PoseLibrary.Default.Get(key).Leaps, key);
             Assert.IsFalse(PoseLibrary.Default.Get(AnimationKeys.AirMeteor).Leaps);
+            foreach (string key in new[] { AnimationKeys.AxeKick, AnimationKeys.SnakeDrop, AnimationKeys.QuakeDrop, AnimationKeys.AirLanding })
+                Assert.IsTrue(PoseLibrary.Default.Get(key).LandsItself, key + " lands its own legs (J6-01)");
         }
 
         // The combat rules snap the facing round at an attack's start (a jab at a foe behind you): the body whips round

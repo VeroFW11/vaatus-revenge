@@ -124,7 +124,9 @@ namespace VaatusRevenge
             float inner = width - padding * 2f;
             float y = panel.y + padding;
             p.Text(new Rect(x, y, inner, titleHeight * 0.7f), "Rhythm & Mixing", p.Heading, Color.white);
-            p.Text(new Rect(x, y, inner, titleHeight * 0.7f), pad ? "1 / 2   Y: controls" : "1 / 2   F1: controls", p.SmallRight, DimTextColor);
+            // Y pages only on the pause screen (in play Y is the zip strike): say so, or F1 (J6-S08 / C6-08).
+            string next = !pad ? "F1: controls" : TimeScaleController.IsPaused ? "Y: controls" : "Menu, then Y: controls";
+            p.Text(new Rect(x, y, inner, titleHeight * 0.7f), "1 / 2   " + next, p.SmallRight, DimTextColor);
             y += titleHeight;
 
             float patternWidth = inner * 0.38f;

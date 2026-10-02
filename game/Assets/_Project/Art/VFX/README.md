@@ -27,6 +27,16 @@ Anything under `Art/VFX/` is imported as sRGB, with mipmaps, at most 512 px, alp
 
 A missing slot is reported once, in one log line when play starts, never every frame.
 
+## How to get them
+
+Who: **David** (the art owner). The game never waits on them: every slot has a stand-in.
+
+- **The generated set:** allow the image host in the Claude environment's network policy (Build 05 spec, §8 open
+  question 3) and ask Claude to download and rename them, or download them by hand from the generation page and rename
+  them as in the table below.
+- **Or make your own:** any 256-512 px `.png` works (with alpha for blended effects, on black for glowing ones), named
+  after its slot.
+
 ## Generated art waiting to be added
 
 The 24 images generated for Build 05 could not be downloaded into the repository (nor could the player model, see

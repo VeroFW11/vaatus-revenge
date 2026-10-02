@@ -60,5 +60,7 @@ namespace VaatusRevenge.Core
 
         public int SwitchTargetDelta; // -1 = previous/left, +1 = next/right, 0 = none (edge-triggered)
         public ElementId ElementSelect; // None unless an element was picked this frame (edge-triggered; see ElementButtonLayout)
+        public bool ElementSelectOffAttack; // that pick was RB + a face other than the attack button (B, A or Y): a pick of
+                                            // the element you're already in is then refused, never played as an X (J6-S02)
     }
 }

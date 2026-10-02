@@ -124,7 +124,7 @@ namespace VaatusRevenge
                     break;
                 case PlayerEventType.Respawned: ResetAll(); break;
                 // Build 05: rhythm, switching, MIX, danger sense.
-                case PlayerEventType.BeatJudged: BeatJudged(in e, s); break;
+                case PlayerEventType.BeatConfirmed: BeatConfirmed(s); break;
                 case PlayerEventType.ComboHit: ComboHit(in e, model, s); break;
                 case PlayerEventType.PerfectString:
                     Flash(s.PerfectStringFlashColor, s.PerfectStringFlashTime);
@@ -376,10 +376,11 @@ namespace VaatusRevenge
 
         // ---------------------------------------------------------------- rhythm, switching, MIX
 
-        // An on-beat press: the chime and a tick you can feel (the HUD's beat ring bursts too).
-        void BeatJudged(in PlayerEvent e, PlayerFeedbackSettings s)
+        // An on-beat press whose move has started (BeatConfirmed): the chime and a tick you can feel (the HUD's beat ring
+        // bursts too). Not at the press (BeatJudged): a second press before the move starts turns it into a mash, and a
+        // sound or a rumble can't be taken back, so a masher would hear the chime for presses the HUD calls MASH (J6-05).
+        void BeatConfirmed(PlayerFeedbackSettings s)
         {
-            if (e.Grade != BeatGrade.OnBeat) return;
             PlaySound(SoundKind.Chime, s);
             Pulse(s.OnBeatTick);
         }

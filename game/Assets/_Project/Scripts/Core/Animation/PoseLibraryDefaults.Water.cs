@@ -355,7 +355,7 @@ namespace VaatusRevenge.Core
 
             // Snake Creeps Down (plunge): open into the single whip while hanging, ride the fall, then land in the snake's
             //    low posture (lead leg stretched along the floor, the hand reaching along it) and rise back to the stance.
-            clips.Add(new ClipBuilder(AnimationKeys.SnakeDrop, ClipMode.Action, air) { FadeIn = 0.06f }
+            clips.Add(new ClipBuilder(AnimationKeys.SnakeDrop, ClipMode.Action, air) { FadeIn = 0.06f, LandsItself = true }
                 .K(KeyPhase.Startup, 1f, PoseEase.Out, s =>
                 {
                     s.Set(PoseChannel.ArmFollow, 0f).Torso(-6f, 20f);

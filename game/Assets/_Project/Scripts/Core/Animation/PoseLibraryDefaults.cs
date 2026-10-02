@@ -630,7 +630,7 @@ namespace VaatusRevenge.Core
 
             // Falling Axe Kick (plunge): the right leg swings straight up overhead while hanging in the air, stays
             //    up through the fall, then chops down as you land, bowing into a low stance.
-            clips.Add(new ClipBuilder(AnimationKeys.AxeKick, ClipMode.Action, air) { FadeIn = 0.06f }
+            clips.Add(new ClipBuilder(AnimationKeys.AxeKick, ClipMode.Action, air) { FadeIn = 0.06f, LandsItself = true }
                 .K(KeyPhase.Startup, 1f, PoseEase.Out, s =>
                 {
                     s.Kick(R, 12f, 80f, 1f, 0f, 10f).Kick(L, 5f, -85f, 0.8f, 0f, 35f);
@@ -1088,6 +1088,7 @@ namespace VaatusRevenge.Core
             public bool Aims;
             public bool Glides;
             public bool Leaps;
+            public bool LandsItself;
             public float ArmSwing = 1f;
 
             public ClipBuilder(string key, ClipMode mode, PoseSpec start)
@@ -1146,7 +1147,7 @@ namespace VaatusRevenge.Core
                 return new PoseClip
                 {
                     Key = key, Mode = mode, LoopPeriod = LoopPeriod, DefaultDuration = DefaultDuration, StartupShare = StartupShare,
-                    ActiveShare = ActiveShare, FadeIn = FadeIn, UpperBodyOnly = UpperBodyOnly, Aims = Aims, Glides = Glides, Leaps = Leaps, ArmSwing = ArmSwing,
+                    ActiveShare = ActiveShare, FadeIn = FadeIn, UpperBodyOnly = UpperBodyOnly, Aims = Aims, Glides = Glides, Leaps = Leaps, LandsItself = LandsItself, ArmSwing = ArmSwing,
                     Keys = keys.ToArray()
                 };
             }

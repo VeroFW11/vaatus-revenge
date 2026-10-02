@@ -68,7 +68,10 @@ namespace VaatusRevenge.Core
         DangerNow,          // same fields as DangerWarning: press now
         DangerCleared,      // AttackerId, Count (hit index). The strike landed, missed or was called off
         DodgeChainLimited,  // Duration (cooldown left). Too many dodges in a row: no dodge until it runs out
-        HealedOnHit         // Amount (health restored), AttackId, Element, Move. A clean hit healed you (Water's HealOnHit)
+        HealedOnHit,        // Amount (health restored), AttackId, Element, Move. A clean hit healed you (Water's HealOnHit)
+        BeatConfirmed       // Grade (OnBeat), Count (confirmed on-beat streak), Move, AttackId, MoveInstanceId, Element. A string
+                            // move started from an on-beat press: its grade is final (a second press can no longer make it a
+                            // mash). The on-beat chime, rumble tick and HUD burst play on this, never at the press (J6-05)
     }
 
     public struct PlayerEvent

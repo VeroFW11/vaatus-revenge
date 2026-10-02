@@ -18,10 +18,11 @@ namespace VaatusRevenge.Core
         // Bumped when the default steps change, so the sandbox builder can offer to update an old saved tutorial.
         // A field missing from an old asset keeps its initialiser, so it reads 0.
         public int DataVersion = 0;
-        public const int CurrentDataVersion = 5;   // 2: Build 05 verify (pause finisher X X wait X X, beat taught as anticipation)
+        public const int CurrentDataVersion = 6;   // 2: Build 05 verify (pause finisher X X wait X X, beat taught as anticipation)
                                                    // 3: verify round 2 (shorter step 2 hint; hints wrap and stay under HintBudget)
                                                    // 4: verify round 3 (starts in Fire; slip-in step distance bar and hint)
                                                    // 5: verify round 5 (modifier first: "hold RB, then press" in every switch step)
+                                                   // 6: verify round 6 (step 4: press X soon after the dodge, J6-S07)
         // Longest hint, in characters (a {button} counts as 3): the panel wraps hints, and this keeps any of them to two
         // or three short lines. TutorialTrackerTests checks every default hint against it.
         public const int HintBudget = 140;
@@ -64,7 +65,7 @@ namespace VaatusRevenge.Core
                         Id = "4", Title = "Dodge keeps the combo", Goal = TutorialGoal.DodgeKeepsCombo, Count = 2, MinComboCount = 2,
                         PartnerAttacks = true,
                         Prompt = "Mid-combo, {B} when the mark flashes, keep pressing {X}",
-                        Hint = "Your partner swings back now. Dodging never breaks your combo: the counter keeps climbing."
+                        Hint = "Your partner swings back now. Dodging never breaks your combo: press {X} soon after the dodge and the string carries on."
                     },
                     new TutorialStepData
                     {

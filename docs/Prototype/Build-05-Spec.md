@@ -48,7 +48,7 @@ Each step shows the buttons as pictures, counts your progress, and chimes when y
 |---|---|
 | Left stick / Right stick | Move / camera. Flick the right stick to change target while locked on |
 | **X** | Attack. Tap in rhythm for the 5-hit string. **X X (wait) X X** = pause finisher (NEW). In the air: air string |
-| Hold **X** | Launcher (throws the enemy up, you follow); keep holding any string press before the finisher and that hit becomes the launcher |
+| Hold **X** | Launcher (throws the enemy up, you follow); keep holding any string press before the finisher for LauncherHoldTime (timed from when that hit starts) and the launcher follows that hit. Holding the finisher's press does nothing extra: the finisher always plays (J6-03) |
 | **Y** | Zip strike to a far enemy (keeps your combo going) |
 | **B** | Tap: dodge (stick decides slip-in, evade-out or side-step; NEW). Hold: sprint. **X late in a dodge = dodge strike** (NEW) |
 | **A** | Jump |
@@ -1033,6 +1033,7 @@ playback rate in `[Min, Max]`; every `DangerWarning` followed by impact or `Dang
 | Metalbending, bloodbending | Not in this build (player-only lost techniques, later) |
 | Past lives, Vaatu, technology | Untouched. Tutorial partner is a generic "Sparring Partner"; no electrified or gas gear in effects |
 | Martial-art move names (Tai Chi, Hung Gar, Bagua postures) | Real-world arts, not IP; kept in `DisplayName` data only |
+| Heal item "Spirit Water" (D-pad down) | **Open for David (J6-S11):** canon has spirit water (the Spirit Oasis water Katara carried in a vial) as a rare healing aid, not a refillable flask. Either keep it as a game abstraction (oasis water in a gourd, refilled at shrines) or rename it in data (the Combat HUD's *Heal Item Name* in the Inspector, e.g. "Healing Water"); no code change either way |
 
 ---
 
@@ -1258,3 +1259,44 @@ Still open:
    the move data; the F1 overlay has a pause row and a shorter MIX row; dodge counts per element and "that hit becomes the launcher" in
    How-To-Play, David's plan and §1; stale "X X, wait, X" comments fixed.
 
+
+### 8.7 Build 05 verify round 6 (2 Oct): landings without snaps, a gait that faces the way it goes, honest chimes
+
+1. **Landings never snap the legs** (J6-01). The landing ground fit no longer jumps to full weight on the touchdown frame (it
+   pulled a foot 0.26-1.22 m down in one frame): it rises over `AnimatorSettings.LandingFitRise` (0.1 s) at the fastest, and while
+   falling in an action pose with the floor known it starts `LandingFitLead` (0.12 s) before the predicted touchdown, so the legs
+   meet the floor with the body. The floor comes from a ray down (`CombatPhysics.FloorBelow` in `PlayerController`, the level's
+   ground in CombatSim) passed through `PlayerAnimationFeed.Build(..., floorBelow)` as `FighterAnimInput.HasFloorBelow` /
+   `FloorBelow`. The plunges (Falling Axe Kick, Snake Drop, Earthquake Drop, Air Burst Landing) are `PoseClip.LandsItself`: the feed
+   plays their recovery up to its landing key (`PlungeLandShare` 0.25 of the recovery, every plunge clip now keys its landing there)
+   during the last of the fall, up to `PlungeLandMaxRate` (2x) faster, so the axe kick's heel reaches the floor with the body and the
+   impact freeze holds the crouched landing (hips 0.69 m, was a straight stand at 0.96). The `anim` scenario no longer exempts
+   landings: from the touchdown for 12 frames, in a plunge and in the land poses a foot may drop at most 0.15 m (root-relative) per
+   frame; `AnimationTests.PlungeTouchdownNeverSnapsAFoot` checks every element through the real model and feed.
+2. **Walking back in after an evade-out faces the way it goes** (J6-02). The gait's heading is smoothed along the shortest arc in
+   the world (a body turning to face its travel carries the old heading round with it), taken at once from a standstill and on a
+   reversal sharper than `GaitSettings.ReverseSnapDot`; the old normalised lerp swept through sideways and played a 'strafe' crab
+   for ~15 frames on every in-and-out. `anim` now fails a strafe key or a run stance over 0.6 m across the body while moving within
+   30 degrees of the facing, and 4+ walking/running frames with both soles 0.1 m off the floor; `dodgeflow` has an "evade-out, stop,
+   walk back in" table with the animator on the body.
+3. **Holding the finisher's X never swaps it for the launcher** (J6-03). The launcher hold works on the hits before the finisher and
+   is timed from when that hit began (a press buffered during the hit before no longer converts the hit it has just started). The
+   finisher, its perfect-string bonus and the MIX finisher always land (`VerifyRound6Tests`, every element, both presets).
+4. **RB + a face after the air string's finisher switches at once** (J6-04). A spent air string (its finisher running, or the
+   per-jump cap reached) isn't a live string: the pick is a plain switch in the air on both presets, never dropped (Fluid did) and
+   never a ground hit on landing (Punishing did). A switch strike queued for an air string that touches down first becomes the plain
+   switch too.
+5. **The on-beat chime, rumble tick, gold burst and ON BEAT pips wait for the move to start** (J6-05). They fired at the press and a
+   second press then downgraded most of a masher's "on beat" presses to MASH (3 of 4 chimes at 7.5 presses/s). The model now raises
+   `BeatConfirmed` when a move graded on the beat starts (the grade is final then) and `RhythmView.ConfirmedStreak` counts only those;
+   `PlayerFeedback`, `HudBeatPulse` and `HudComboCounter` use them. `rhythm` reports chimes per bot and checks they never exceed the
+   final on-beat rate.
+6. Should-fix: RB still held and B in Fire, A in Earth or Y in Air mid-string is no attack, just the wheel's same-element shake
+   (`PlayerInputFrame.ElementSelectOffAttack`, J6-S02); How-To-Play and tutorial step 4 say to press X soon after a dodge, the launcher
+   wording and the Punishing switch advice are settled (J6-S07; `TutorialScript.CurrentDataVersion` 6, the sandbox builder offers the
+   update); the F1 header says "Menu, then Y" when not paused, the wheel's "RB +" pill waits like its grow, Inspector texts say "hold
+   RB, then press" (J6-S08); the art READMEs say who fetches the model and pictures and how, and §7 asks David about "Spirit Water"
+   (J6-S11). Left for later: MIX 3's launch vs the perfect string on Fluid (J6-S01, Jeremy's tuning call), the backstep's planted-foot
+   skate (S03), a reduced-speed turn after an evade-out with the stick held (S04: the sideways sprint is down from 1.08 m to 0.92 m
+   apart with the world-space heading), the side-slip and zip-strike polish (S05), CombatSim's sticky-RB pad (S09) and the colour
+   polish (S10).

@@ -54,6 +54,7 @@ namespace VaatusRevenge.Core
         bool earlyPressSeen;
         BeatGrade lastGrade;
         int onBeatStreak;
+        int confirmedStreak;          // onBeatStreak as of the last string move's start (presses that can't be downgraded)
         bool stringPerfect;           // every follow-up of this string so far was on the beat
         int stringFollowUps;          // ...and how many there were
 
@@ -131,6 +132,7 @@ namespace VaatusRevenge.Core
             earlyPressSeen = false;
             lastGrade = BeatGrade.None;
             onBeatStreak = 0;
+            confirmedStreak = 0;
             stringPerfect = false;
             stringFollowUps = 0;
             attackPlaybackRate = 1f;
@@ -317,6 +319,7 @@ namespace VaatusRevenge.Core
         void BreakStreak()
         {
             onBeatStreak = 0;
+            confirmedStreak = 0;
             stringPerfect = false;
         }
 
@@ -402,6 +405,7 @@ namespace VaatusRevenge.Core
                 EarlyWindow = beatEarly,
                 LateWindow = beatLate + (pendingSwitch ? SwitchRules.SwitchStrikeBeatLateBonus : 0f),
                 Streak = onBeatStreak,
+                ConfirmedStreak = confirmedStreak,
                 LastGrade = lastGrade,
                 PlaybackRate = state == PlayerState.Attacking ? attackPlaybackRate : 1f,
                 PauseReady = IsPauseReady

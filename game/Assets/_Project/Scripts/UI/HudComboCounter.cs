@@ -108,7 +108,9 @@ namespace VaatusRevenge
 
             // On the beat: a gold streak.
             RhythmView rhythm = model.Rhythm;
-            int streak = Mathf.Min(rhythm.Streak, StreakPips);
+            // Confirmed presses only (their move has started), so a press a second press turns into a mash never lights
+            // a pip (J6-05).
+            int streak = Mathf.Min(rhythm.ConfirmedStreak, StreakPips);
             if (streak > 0 && alpha >= 1f)
             {
                 p.Text(new Rect(x, y, width, p.U(22f)), "ON BEAT", p.SmallCenter, BeatGold);

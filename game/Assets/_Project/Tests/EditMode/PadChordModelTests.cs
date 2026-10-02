@@ -60,6 +60,7 @@ namespace VaatusRevenge.Tests
                     AbilityNorth = chord.AbilityNorth,
                     AbilityEast = chord.AbilityEast,
                     ElementSelect = chord.ElementSelect,
+                    ElementSelectOffAttack = chord.ElementSelectOffAttack,
                 };
                 D.StepFrame(frame);
             }
@@ -236,6 +237,35 @@ namespace VaatusRevenge.Tests
             p.Run(90);
             Assert.AreEqual(memory ? 1 : 0, p.D.Started - before, Describe(p.D, from));
             Assert.AreEqual(ElementId.Water, p.D.Model.ActiveElement);
+        }
+
+        // J6-S02: RB still held mid-string and the face of the element you're already in, when that face isn't X: B in
+        // Fire, A in Earth, Y in Air. It's no attack (only X carries the string on), just the wheel's same-element shake.
+        [Test]
+        public void SameElementNonAttackFaceMidStringIsNoAttack([Values(ElementId.Fire, ElementId.Earth, ElementId.Air)] ElementId element,
+            [Values(false, true)] bool punishing)
+        {
+            var p = new PadProbe(punishing);
+            p.D.Select = element;
+            p.D.Step();
+            p.Run(30);
+            Assert.AreEqual(element, p.D.Model.ActiveElement);
+            int face = -1;
+            for (int f = 0; f < 4; f++) if (p.Layout.PadSlot(f) == element) face = f;
+            Assert.AreNotEqual(PadChordReader.FaceWest, face);
+            p.Tap(PadChordReader.FaceWest, 2);
+            p.RunUntilStarted(1);
+            int from = p.D.Log.Count;
+            // On the beat of hit 1, RB then the element's own face.
+            for (int i = 0; i < 120 && p.D.Model.Rhythm.Active && p.D.Model.Rhythm.TimeToBeat > p.D.Dt * 0.5f; i++) p.Step();
+            p.Chord(face, 1);
+            p.Run(90);
+            Assert.AreEqual(1, p.D.Started, "no attack from RB + " + face + ": " + Describe(p.D, from));
+            int denied = 0;
+            for (int i = from; i < p.D.Log.Count; i++)
+                if (p.D.Log[i].Type == PlayerEventType.ElementSwitchDenied && p.D.Log[i].DenyReason == SwitchDeniedReason.SameElement) denied++;
+            Assert.AreEqual(1, denied, "the wheel shakes once");
+            Assert.AreEqual(0, p.D.Count(PlayerEventType.DodgeStarted) + p.D.Count(PlayerEventType.Jumped), "the face was the chord's, nothing else");
         }
 
         // J5-01: no added latency on the pad. Each face press starts its action on the frame it was pressed, exactly like

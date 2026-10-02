@@ -21,6 +21,13 @@ namespace VaatusRevenge.Core
         public float ParrySuccessDuration = 0.42f;
         public float ElementSwitchDuration = 0.4f;
         public float HitStrengthPerDamage = 1f / 20f;     // a 20-damage hit is a full-strength flinch
+        // The plunge clips (PoseClip.LandsItself) put their landing pose (heel or feet on the floor, knees bent) at this
+        // share of the move's recovery. With the floor known, that much of the recovery plays during the last of the fall,
+        // timed to reach the landing pose on the impact frame, so the impact freeze shows the landing, not the air pose,
+        // and nothing snaps to the floor in one frame (J6-01).
+        public float PlungeLandShare = 0.25f;
+        public float PlungeLandMaxRate = 2f;               // ...played at most this much faster than authored (a short drop
+                                                          // finishes the rest of the chop after the impact, not in one frame)
 
         FighterAnimInput input;
         bool hasFacing;
@@ -48,6 +55,8 @@ namespace VaatusRevenge.Core
         // plunge (falling axe kick)
         bool plungeLanded;
         float plungeLandTime;
+        float plungePreLand;           // seconds of the plunge's recovery already played on the way down
+        float floorBelow = -1f;        // this frame's distance from the feet to the floor (< 0 = unknown)
 
         // this frame's events
         bool hitThisFrame;
@@ -65,6 +74,7 @@ namespace VaatusRevenge.Core
             reactionKey = "";
             reactionStarted = false;
             plungeLanded = false;
+            plungePreLand = 0f;
             hitThisFrame = false;
             switchFlourishPending = false;
             dodgeKey = AnimationKeys.Dodge;
@@ -90,6 +100,7 @@ namespace VaatusRevenge.Core
                 case PlayerEventType.ChargeStarted:
                 case PlayerEventType.HealStarted:
                     plungeLanded = false;
+                    plungePreLand = 0f;
                     serial++;
                     ClearReaction();
                     switchFlourishPending = false;
@@ -128,10 +139,14 @@ namespace VaatusRevenge.Core
         }
 
         // With a target (lock-on, soft lock or the nearest enemy): strikes are aimed at its chest. feet = the
-        // player's own position, targetChest = the target's aim point, both in world space.
-        public FighterAnimInput Build(PlayerCombatModel model, float dt, bool hasTarget, Vector3 feet, Vector3 targetChest)
+        // player's own position, targetChest = the target's aim point, both in world space. floorBelow: metres from the
+        // feet down to the floor (a ray down; < 0 = unknown): airborne, the legs reach for the floor as it comes and a
+        // plunge starts its landing in time (J6-01).
+        public FighterAnimInput Build(PlayerCombatModel model, float dt, bool hasTarget, Vector3 feet, Vector3 targetChest,
+            float floorBelow = -1f)
         {
             if (model == null) return default;
+            this.floorBelow = AnimMath.IsFinite(floorBelow) ? floorBelow : -1f;
             if (!AnimMath.IsFinite(dt) || dt < 0f) dt = 0f;
             float facing = model.FacingYaw;
             float yawDelta = hasFacing ? Wrap180(facing - lastFacing) : 0f;
@@ -162,6 +177,11 @@ namespace VaatusRevenge.Core
                 ActionSerial = serial,
                 Style = StyleOf(model),
             };
+            if (!model.IsGrounded && this.floorBelow >= 0f)
+            {
+                input.HasFloorBelow = true;
+                input.FloorBelow = this.floorBelow;
+            }
 
             // A plain switch while standing free, with no string to carry on: a short flourish of the new element (the legs
             // keep doing what locomotion wants). Mid-combo, airborne or busy: no flourish, the stance just blends over.
@@ -225,7 +245,7 @@ namespace VaatusRevenge.Core
                     if (move != null) SetAttack(model, move);
                     break;
                 case PlayerState.Plunging:
-                    if (move != null) SetPlunge(model, move);
+                    if (move != null) SetPlunge(model, move, dt);
                     break;
             }
 
@@ -285,8 +305,10 @@ namespace VaatusRevenge.Core
         }
 
         // Falling axe kick: the hang is the "startup", the fall holds the raised leg (as long as it takes), and the
-        // landing is the recovery, when the leg chops down.
-        void SetPlunge(PlayerCombatModel model, MoveData move)
+        // landing is the recovery, when the leg chops down. With the floor known, the recovery up to its landing pose
+        // (PlungeLandShare) plays over the last of the fall, timed to reach that pose on the impact frame (squeezed into a
+        // shorter fall): the chop lands with the body and the impact freeze holds the landing pose (J6-01).
+        void SetPlunge(PlayerCombatModel model, MoveData move, float dt)
         {
             int id = model.CurrentAttackId;
             if (id != lastAttackId)
@@ -299,7 +321,22 @@ namespace VaatusRevenge.Core
             const float fallHold = 10f;
             float t = model.ActionTime;
             if (plungeLanded && plungeLandTime < 0f) plungeLandTime = t;
-            float time = plungeLanded ? hang + fallHold + Math.Max(0f, t - plungeLandTime) : Math.Min(t, hang + fallHold * 0.99f);
+            float lead = Math.Max(0f, PlungeLandShare) * Math.Max(0f, move.Recovery);
+            float fallSpeed = -model.Velocity.Y;
+            if (!plungeLanded && t > hang && floorBelow >= 0f && fallSpeed > 1f && dt > 0f && plungePreLand < lead)
+            {
+                // Seconds to the floor at this speed; the recovery runs fast enough to reach its landing pose by then.
+                float remaining = lead - plungePreLand;
+                float toFloor = floorBelow / fallSpeed;
+                if (toFloor <= remaining)
+                {
+                    float rate = Math.Min(Math.Max(1f, PlungeLandMaxRate), remaining / Math.Max(toFloor, dt));
+                    plungePreLand = Math.Min(lead, plungePreLand + dt * rate);
+                }
+            }
+            float time = plungeLanded ? hang + fallHold + plungePreLand + Math.Max(0f, t - plungeLandTime)
+                : plungePreLand > 0f ? hang + fallHold + plungePreLand
+                : Math.Min(t, hang + fallHold * 0.99f);
             input.ActionKey = string.IsNullOrEmpty(move.AnimationKey) ? AnimationKeys.AxeKick : move.AnimationKey;
             input.ActionTime = time;
             input.HasFrameData = true;
