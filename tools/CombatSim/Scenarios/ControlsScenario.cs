@@ -14,6 +14,7 @@ namespace VaatusRevenge.CombatSim
         {
             Out.Heading("Controls");
             TapHold(o);
+            RunPastEnemy(o);
             DeadZone(o);
             CameraMidDodge(o);
             SprintAttack(o);
@@ -48,6 +49,31 @@ namespace VaatusRevenge.CombatSim
             }
             t.Print();
             Out.Line("Reading: \"dodge @12f\" = the dash started 12 frames after the button went down (on-release dodges wait for the release).");
+        }
+
+        // Round 7, J7-05: on Fluid B dodges on the press and a hold sprints, so every sprint starts with a dodge. Running
+        // past an enemy (nobody locked, nothing incoming) and holding B must not swing you round it.
+        static void RunPastEnemy(Options o)
+        {
+            Out.Sub("Hold B while running past an enemy (run 0.5 s along +Z, a still dummy 3 m away at the angle, then B held 0.67 s)");
+            var t = new Table("Preset", "Enemy at", "Dodge kind", "Sideways pull", "Forward", "Then", "Target: sideways <= 0.5 m");
+            foreach (Preset p in o.Presets)
+            {
+                foreach (float angle in new[] { 45f, 90f, -45f, -90f })
+                {
+                    var s = new Session(p, o.Fps, camera: false);
+                    for (int f = 0; f < 30; f++) s.Step(new Pad { Move = new Vector2(0f, 1f) });
+                    Vector3 start = s.Player.Feet;
+                    s.World.AddEnemy(EnemyTuning.CreateSparringDummy(), start + Directions.FromYaw(angle) * 3f, angle + 180f, 1);
+                    string kind = "none";
+                    s.World.PlayerEvent += e => { if (e.Type == PlayerEventType.DodgeStarted && kind == "none") kind = e.DodgeKind.ToString(); };
+                    for (int f = 0; f < 40; f++) s.Step(new Pad { Move = new Vector2(0f, 1f), Dodge = true });
+                    Vector3 moved = Directions.Flatten(s.Player.Feet - start);
+                    float sideways = Math.Abs(moved.X);
+                    t.Row(p, Out.N(angle, 0) + "°", kind, Out.N(sideways, 2) + " m", Out.N(moved.Z, 2) + " m", s.Model.State, Out.Target(sideways <= 0.5f));
+                }
+            }
+            t.Print();
         }
 
         static bool IsDefault(Preset p, DodgeTrigger t)

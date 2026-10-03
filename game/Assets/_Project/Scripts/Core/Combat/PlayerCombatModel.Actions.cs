@@ -7,13 +7,14 @@ namespace VaatusRevenge.Core
     // ending them cleanly.
     //
     // WHEN CAN A BUFFERED PRESS RUN? ("the earliest legal point")
-    //   Light / Heavy / Skill: when free (Locomotion, Sprinting, Guarding); during an attack from its
-    //     ChainCancelAt; during a dodge from Dodge.AttackCancelAt; after a plunge landing from its ChainCancelAt.
+    //   Light / Heavy / Skill / ZipStrike: when free (Locomotion, Sprinting, Guarding); during an attack from its
+    //     ChainCancelAt; during a dodge from its kind's attack cancel point (Dodge.SlipInAttackCancelAt for a slip-in,
+    //     else Dodge.EvadeAttackCancelAt); after a plunge landing from its ChainCancelAt.
     //     In the air, Light/Heavy become the plunge once you've been off the ground for Plunge.MinAirTime
     //     (earlier presses are dropped, not saved for later). Skill waits for the ground.
     //   Dodge: when free on the ground; during an attack from DodgeCancelAt; during a dodge from NextDodgeAt;
     //     while charging if Charge.CanDodgeCancelCharge; after a plunge landing from its DodgeCancelAt.
-    //   Jump: like Dodge (a dodge allows it from AttackCancelAt), and only with ground under you or within coyote time.
+    //   Jump: like Dodge (a dodge allows it from its attack cancel point), and only with ground under you or within coyote time.
     //   Guard (the press): like Dodge, but not out of a charge or in the air. Held guard raises it when free; a
     //     buffered press only raises it if guard is still held or its deflect window (timed from the real press)
     //     hasn't run out.
@@ -21,8 +22,33 @@ namespace VaatusRevenge.Core
     //   Nothing runs while staggered, healing, mid-plunge, or dead; presses there still wait in the buffer.
     // LIGHT CHAIN: a light press arriving (or still buffered) while the current light move is inside its combo
     //   window is queued as the next move and fires at the cancel point (or is dropped once it's older than
-    //   QueuedPressMaxAge). A press after the window restarts the chain from the first move. After the last
-    //   move the chain loops.
+    //   QueuedPressMaxAge). With rhythm on, every follow-up press is judged against the move's beat and queued at once
+    //   (see .Rhythm). A press after the window restarts the chain from the first move (or takes the pause branch).
+    //   After the last move the chain loops. Which move a press starts (ResolveNextStringMove), first match wins:
+    //   1. pressed during a dodge (or DodgeStrikeGrace after it) with a target near: the dodge strike, in the string's
+    //      next slot (a finisher slot plays the finisher: a dodge never skips your finisher)
+    //   2. queued during the running string move: the next slot of its chain
+    //   3. the pause press: PauseChain[0]
+    //   4. string memory live (after a dodge, zip, ability...): the remembered slot, in the ACTIVE element's chain
+    //   5. otherwise the first move
+    //   A switch strike (RB + an element's button mid-string) resolves the same way in the new element, which it
+    //   switches to as the move starts; the slot carries over (a shorter chain plays its finisher).
+    // FREE-FLOW LUNGE: a light attack aimed at a target (lock-on, else soft lock) that's out of reach lunges further
+    //   than the move's own LungeDistance, by up to PlayerTuning.GapCloseDistance, stopping short of the target.
+    // ZIP STRIKE: needs PlayerWorldState.HasZipTarget; without one the press is dropped and costs nothing. The dash
+    //   covers the whole gap to the target during the move's startup and active frames. Not in the air.
+    // LAUNCHER: keep holding the attack press that started a ground-string move (any hit of the main chain before its
+    //   finisher, Spider-Man's hold-square works at any point in a combo) for AerialSettings.LauncherHoldTime, timed from
+    //   when that move began, and that move turns into the launcher:
+    //   the hit throws the target up and SelfLift carries you after it when the strike lands.
+    // AIR STRING: attack while in the air (jumping, launched, after a zip) walks the AirChain, which does not loop and is
+    //   capped at AerialSettings.AirAttacksPerJump strikes before touching down. Air strikes lift you (SelfLift) and
+    //   gravity is scaled by AirAttackGravityScale while one runs, so you hang as you strike. Heavy in the air = plunge.
+    // AIR DASH: dodge in the air, up to AirDashesPerJump times before landing: a flat dash with no gravity.
+    // ABILITIES: AbilityNorth / AbilityEast run like the skill (grounded, from the usual cancel points).
+    // MULTI-HIT MOVES (MoveData.HitCount > 1): sub-hit k goes live at ActiveStart + k x HitInterval and stays live until
+    //   the next one; each has its own AttackId (one Active start/end pair each) and shares the first one's MoveInstanceId.
+    // ORBIT (MoveData.OrbitDegrees): the lunge curves round the target, ending that many degrees round it (Air).
     // SPRINT ATTACK: light while sprinting for SprintAttackMinSprintTime, or within SprintAttackGrace after such
     //   a sprint ends while still moving at full running speed (strafe speed when locked on).
     public sealed partial class PlayerCombatModel
@@ -34,15 +60,20 @@ namespace VaatusRevenge.Core
                 buffer.Clear();
                 return;
             }
+            TryLauncherHold(world);
             switch (buffer.Command)
             {
-                case PlayerCommand.Light: TryLight(world); break;
+                case PlayerCommand.Light:
+                case PlayerCommand.SwitchStrike: TryLight(world); break;
+                case PlayerCommand.AbilityNorth: TryAbility(moveSet.AbilityNorth, world); break;
+                case PlayerCommand.AbilityEast: TryAbility(moveSet.AbilityEast, world); break;
                 case PlayerCommand.Heavy: TryHeavy(world); break;
                 case PlayerCommand.Skill: TrySkill(world); break;
                 case PlayerCommand.Dodge: TryDodge(world); break;
                 case PlayerCommand.Jump: TryJump(); break;
                 case PlayerCommand.Heal: TryHeal(); break;
                 case PlayerCommand.Guard: TryGuardPress(); break;
+                case PlayerCommand.ZipStrike: TryZipStrike(world); break;
             }
         }
 
@@ -61,13 +92,16 @@ namespace VaatusRevenge.Core
                 case PlayerState.Attacking:
                     return action.Time >= currentMove.ChainCancelAt;
                 case PlayerState.Dodging:
-                    return action.Time >= Dodge.AttackCancelAt;
+                    return action.Time >= DodgeAttackCancelAt;
                 case PlayerState.Plunging:
                     return plungeLanded && PlungeTimeSinceLanding >= currentMove.ChainCancelAt;
                 default:
                     return false;
             }
         }
+
+        // A slip-in is already close: it can strike sooner than the other dodge kinds.
+        float DodgeAttackCancelAt => dodgeKind == DodgeKind.SlipIn ? Dodge.SlipInAttackCancelAt : Dodge.EvadeAttackCancelAt;
 
         // Dodge, jump and guard can cut other actions short from these points.
         bool CanDefensiveCancel(bool isDodge)
@@ -81,7 +115,7 @@ namespace VaatusRevenge.Core
                 case PlayerState.Attacking:
                     return action.Time >= currentMove.DodgeCancelAt;
                 case PlayerState.Dodging:
-                    return action.Time >= (isDodge ? Dodge.NextDodgeAt : Dodge.AttackCancelAt);
+                    return action.Time >= (isDodge ? Dodge.NextDodgeAt : DodgeAttackCancelAt);
                 case PlayerState.Charging:
                     return isDodge && Charge.CanDodgeCancelCharge;
                 case PlayerState.Plunging:
@@ -91,37 +125,145 @@ namespace VaatusRevenge.Core
             }
         }
 
+        // In the air for the purpose of choosing moves: airborne, or attacking / dashing with no ground under us.
+        bool Aloft => state == PlayerState.Airborne
+            || (!grounded && (state == PlayerState.Attacking || state == PlayerState.Dodging || state == PlayerState.Plunging));
+
         void TryLight(in PlayerWorldState world)
         {
-            if (state == PlayerState.Airborne)
+            bool switching = buffer.Command == PlayerCommand.SwitchStrike && IsSwitchUsable(pendingSwitchElement);
+            if (Aloft)
             {
-                TryPlunge(world);
+                TryAirAttack(world, switching);
+                return;
+            }
+            if (buffer.Command == PlayerCommand.SwitchStrike && switchStrikeQueuedAloft)
+            {
+                // Pressed as the next hit of an air string, and the player touched down first: the air string is over, so
+                // it's the switch alone, never a ground hit nobody asked for (J6-04; matches what both presets do).
+                SwitchStrikeExpired();
+                buffer.Clear();
                 return;
             }
             if (!CanStartAttack()) return;
 
-            int next = IsFree && clock <= chainGraceUntil + 1e-6 ? chainGraceNext : 0;
-            if (state == PlayerState.Attacking && attackKind == PlayerAttackKind.Light)
-            {
-                // Still inside (or before) the combo window: wait, the window decides chain vs restart.
-                if (!buffer.Locked && action.Time <= currentMove.ComboWindowEnd) return;
-                if (buffer.Locked) next = (chainIndex + 1) % Math.Max(1, ChainLength);
-            }
+            bool stringRunning = state == PlayerState.Attacking && (attackKind == PlayerAttackKind.Light || attackKind == PlayerAttackKind.DodgeStrike);
+            // Still inside (or before) the combo window and not queued: wait, the window decides chain vs restart.
+            if (stringRunning && !buffer.Locked && action.Time <= currentMove.ComboWindowEnd) return;
             if (!stamina.CanAct) return;
 
-            if (moveSet.SprintAttack != null && WantsSprintAttack(world))
+            if (!switching && !stringRunning && moveSet.SprintAttack != null && WantsSprintAttack(world))
             {
                 buffer.Clear();
                 StartAttack(moveSet.SprintAttack, PlayerAttackKind.Sprint, -1, ChargeTier.None, ConsumeCounterWindow(), true, world);
                 return;
             }
-            if (ChainLength == 0 || moveSet.LightChain[next] == null)
+            ElementMoveSet set = switching ? loadout.Get(pendingSwitchElement) : moveSet;
+            if (!ResolveNextStringMove(set, world, stringRunning, out MoveData move, out PlayerAttackKind kind, out int index,
+                    out ComboBranch chain, out ComboBranch branch, out BeatGrade grade))
             {
                 buffer.Clear();
                 return;
             }
             buffer.Clear();
-            StartAttack(moveSet.LightChain[next], PlayerAttackKind.Light, next, ChargeTier.None, ConsumeCounterWindow(), true, world);
+            StartStringMove(move, kind, index, chain, branch, grade, switching ? pendingSwitchElement : ElementId.None, world);
+        }
+
+        // Which string move a ground press starts (see the top of the file). False = nothing to start (no chain).
+        bool ResolveNextStringMove(ElementMoveSet set, in PlayerWorldState world, bool stringRunning, out MoveData move,
+            out PlayerAttackKind kind, out int index, out ComboBranch chain, out ComboBranch branch, out BeatGrade grade)
+        {
+            kind = PlayerAttackKind.Light;
+            grade = BeatGrade.None;
+            ElementRhythm rhythm = RhythmOf(set);
+
+            // 1. The dodge strike: takes the string's next slot (the first one when there's no string).
+            if (WantsDodgeStrike(world))
+            {
+                chain = IsStringMemoryLive && stringBranch != ComboBranch.Air ? stringBranch : ComboBranch.Main;
+                int slot = IsStringMemoryLive && stringBranch != ComboBranch.Air ? stringNext : 0;
+                MoveData[] slots = ChainOf(set, chain);
+                index = Math.Min(slot, Math.Max(0, LengthOf(slots) - 1));
+                grade = IsCounterWindowOpen || rhythm.DodgeKeepsBeat ? BeatGrade.Auto : BeatGrade.None;
+                if (LengthOf(slots) > 0 && index == slots.Length - 1)
+                {
+                    move = slots[index];               // a dodge never skips your finisher
+                    branch = chain;
+                    return move != null;
+                }
+                if (set.DodgeStrike != null)
+                {
+                    move = set.DodgeStrike;
+                    kind = PlayerAttackKind.DodgeStrike;
+                    branch = ComboBranch.DodgeStrike;
+                    return true;
+                }
+            }
+
+            if (stringRunning && buffer.Locked)
+            {
+                // 2. Queued during the running string move: its chain's next slot.
+                NextSlot(chainBranch, chainIndex, moveIsChainFinisher, out chain, out index);
+                grade = followUpGrade;
+            }
+            else if (followUpGrade == BeatGrade.Pause && (stringRunning || IsPauseBandLive) && LengthOf(set.PauseChain) > 0)
+            {
+                // 3. The pause press.
+                chain = ComboBranch.Pause;
+                index = 0;
+                grade = BeatGrade.Pause;
+            }
+            else if (!stringRunning && IsStringMemoryLive && stringBranch != ComboBranch.Air)
+            {
+                // 4. String memory: carry on where the string was. A dodge in between breaks the beat (Air keeps it).
+                chain = stringBranch;
+                index = stringNext;
+                if (stringKeptByDodge && rhythm.DodgeKeepsBeat) streakKeptByDodge = true;
+                else BreakStreak();
+            }
+            else
+            {
+                // 5. A fresh string.
+                chain = ComboBranch.Main;
+                index = 0;
+            }
+            MoveData[] moves = ChainOf(set, chain);
+            if (LengthOf(moves) == 0 && chain == ComboBranch.Pause)
+            {
+                chain = ComboBranch.Main;              // no pause chain: just the first hit
+                index = 0;
+                moves = ChainOf(set, chain);
+            }
+            int length = LengthOf(moves);
+            branch = chain;
+            if (length == 0)
+            {
+                move = null;
+                return false;
+            }
+            index = Math.Min(Math.Max(0, index), length - 1);   // a shorter chain: its finisher
+            move = moves[index];
+            return move != null;
+        }
+
+        // A press during a ground dodge, or within DodgeStrikeGrace after one, with a target near enough to hit.
+        bool WantsDodgeStrike(in PlayerWorldState world)
+        {
+            bool duringDodge = state == PlayerState.Dodging && !dodgeInAir;
+            bool justAfter = IsFree && !lastDodgeWasAir && buffer.PressTime >= dodgeStartClock - Epsilon
+                && clock <= lastDodgeEndClock + Math.Max(0f, tuning.DodgeStrikeGrace) + 1e-6;
+            if (!duringDodge && !justAfter) return false;
+            if (!TryGetFocusTarget(world, out FocusTarget focus)) return false;
+            float distance = Directions.Flatten(focus.Position - world.Position).Length() - Math.Max(0f, focus.Radius);
+            return distance <= tuning.SoftLockRange;
+        }
+
+        // Starts a string move (light, pause, air chain or the dodge strike) with everything the press earned.
+        void StartStringMove(MoveData move, PlayerAttackKind kind, int index, ComboBranch chain, ComboBranch branch, BeatGrade grade,
+            ElementId switchTo, in PlayerWorldState world)
+        {
+            nextMove = new NextMoveInfo { ChainBranch = chain, Branch = branch, Grade = grade, SwitchTo = switchTo };
+            StartAttack(move, kind, index, ChargeTier.None, ConsumeCounterWindow(), true, world);
         }
 
         bool WantsSprintAttack(in PlayerWorldState world)
@@ -135,9 +277,76 @@ namespace VaatusRevenge.Core
             return Directions.Flatten(moveVelocity).Length() >= fullSpeed - Epsilon;
         }
 
+        void TryAirAttack(in PlayerWorldState world, bool switching)
+        {
+            if (state == PlayerState.Dodging) return;          // after the air dash (the press waits in the buffer)
+            bool airRunning = state == PlayerState.Attacking && attackKind == PlayerAttackKind.Air;
+            if (state != PlayerState.Airborne && !CanStartAttack()) return;
+            // Still inside (or before) the combo window and not queued: wait, the window decides.
+            if (airRunning && !buffer.Locked && action.Time <= currentMove.ComboWindowEnd) return;
+
+            ElementMoveSet set = switching ? loadout.Get(pendingSwitchElement) : moveSet;
+            MoveData[] chain = set.AirChain;
+            int next = 0;
+            BeatGrade grade = BeatGrade.None;
+            if (airRunning && buffer.Locked)
+            {
+                NextSlot(ComboBranch.Air, chainIndex, moveIsChainFinisher, out _, out next);
+                grade = followUpGrade;
+            }
+            else if (IsStringMemoryLive && stringBranch == ComboBranch.Air)
+            {
+                next = stringNext;                       // an air dash or a zip in between keeps the air string
+            }
+            // Another element's shorter air chain plays its finisher; after a finisher the air string is spent.
+            if (next >= 0 && LengthOf(chain) > 0) next = Math.Min(next, chain.Length - 1);
+            // The cap is shared by every element (switching can't stretch a juggle): the active element's limit.
+            AerialSettings aerial = set.Aerial ?? FallbackAerial;
+            if (LengthOf(chain) == 0 || next < 0 || chain[next] == null || airAttacksUsed >= Math.Max(0, aerial.AirAttacksPerJump))
+            {
+                // The air string is spent until you land. A switch strike still switches (J3-S03: RB + a face is never
+                // dropped without a trace; J6-04).
+                if (buffer.Command == PlayerCommand.SwitchStrike) SwitchStrikeExpired();
+                buffer.Clear();
+                return;
+            }
+            if (!stamina.CanAct) return;
+            buffer.Clear();
+            airAttacksUsed++;
+            StartStringMove(chain[next], PlayerAttackKind.Air, next, ComboBranch.Air, ComboBranch.Air, grade,
+                switching ? pendingSwitchElement : ElementId.None, world);
+        }
+
+        // Holding the press that started a ground-string move (any hit of the main chain) turns it into the launcher.
+        void TryLauncherHold(in PlayerWorldState world)
+        {
+            if (state != PlayerState.Attacking || attackKind != PlayerAttackKind.Light || chainBranch != ComboBranch.Main || moveSet.Launcher == null) return;
+            // The finisher is never converted (J6-03): holding its press must still land it, with its perfect-string and
+            // MIX payoff. "Any hit before the finisher" is what the guide promises.
+            if (moveIsChainFinisher) return;
+            if (!lightHeld || !grounded) return;
+            // The held press must be the one that started this move (buffered presses count from a little earlier).
+            if (lightPressClock < attackBeganClock - tuning.InputBufferWindow - Epsilon) return;
+            // The hold is timed from when this move began, not from a press buffered during the move before: a press made
+            // early and kept down a moment never converts the hit it has only just started (J6-03).
+            double holdFrom = Math.Max(lightPressClock, attackBeganClock);
+            if (clock - holdFrom < Aerial.LauncherHoldTime - Epsilon) return;
+            if (!stamina.CanAct) return;
+            if (buffer.Command == PlayerCommand.Light) buffer.Clear();
+            StartAttack(moveSet.Launcher, PlayerAttackKind.Launcher, -1, ChargeTier.None, isCounter || ConsumeCounterWindow(), true, world);
+            lightPressClock = double.NegativeInfinity;       // one launcher per hold
+        }
+
+        void TryAbility(MoveData move, in PlayerWorldState world)
+        {
+            if (Aloft || !CanStartAttack() || !stamina.CanAct) return;   // grounded only: waits in the buffer for the landing
+            buffer.Clear();
+            if (move != null) StartAttack(move, PlayerAttackKind.Ability, -1, ChargeTier.None, ConsumeCounterWindow(), true, world);
+        }
+
         void TryHeavy(in PlayerWorldState world)
         {
-            if (state == PlayerState.Airborne)
+            if (Aloft)
             {
                 TryPlunge(world);
                 return;
@@ -149,13 +358,25 @@ namespace VaatusRevenge.Core
 
         void TrySkill(in PlayerWorldState world)
         {
-            if (!CanStartAttack() || !stamina.CanAct) return;
+            if (Aloft || !CanStartAttack() || !stamina.CanAct) return;   // grounded only: waits in the buffer for the landing
             buffer.Clear();
             if (moveSet.Skill != null) StartAttack(moveSet.Skill, PlayerAttackKind.Skill, -1, ChargeTier.None, ConsumeCounterWindow(), true, world);
         }
 
+        void TryZipStrike(in PlayerWorldState world)
+        {
+            bool canStart = state == PlayerState.Airborne || CanStartAttack();   // a zip works from the air too
+            if (!canStart || !stamina.CanAct) return;
+            buffer.Clear();
+            if (moveSet.ZipStrike == null || !world.HasZipTarget) return;
+            StartAttack(moveSet.ZipStrike, PlayerAttackKind.ZipStrike, -1, ChargeTier.None, ConsumeCounterWindow(), true, world);
+        }
+
         void TryPlunge(in PlayerWorldState world)
         {
+            // Mid air strike or air dash: wait for its cancel point (the press stays buffered).
+            if (state == PlayerState.Dodging) return;
+            if (state == PlayerState.Attacking && !CanStartAttack()) return;
             // Too soon after leaving the ground: the press does nothing, and isn't saved to plunge later either.
             if (airTime < Plunge.MinAirTime)
             {
@@ -193,10 +414,24 @@ namespace VaatusRevenge.Core
 
         // ---------------------------------------------------------------- attacks
 
+        // What a string press earned for the move it starts (set by StartStringMove, read once by StartAttack).
+        struct NextMoveInfo
+        {
+            public ComboBranch ChainBranch;
+            public ComboBranch Branch;
+            public BeatGrade Grade;
+            public ElementId SwitchTo;            // a switch strike: the element to switch to as the move starts
+        }
+
+        NextMoveInfo nextMove;
+
         void StartAttack(MoveData move, PlayerAttackKind kind, int chain, ChargeTier tier, bool counter, bool payStamina,
             in PlayerWorldState world)
         {
+            NextMoveInfo info = nextMove;
+            nextMove = default;
             ExitAction(true);
+            if (info.SwitchTo != ElementId.None) ApplySwitchStrike(info.SwitchTo, info.Branch);
             state = PlayerState.Attacking;
             currentMove = move;
             attackKind = kind;
@@ -204,28 +439,387 @@ namespace VaatusRevenge.Core
             chargeTier = tier;
             isCounter = counter;
             activeOpen = false;
-            if (payStamina) SpendStamina(move.StaminaCost);
+            bool stringMove = IsStringKind(kind);
+            chainBranch = stringMove ? info.ChainBranch : ComboBranch.Other;
+            currentBranch = stringMove ? info.Branch : kind == PlayerAttackKind.Launcher ? ComboBranch.Launcher : ComboBranch.Other;
+            BeatGrade grade = stringMove ? (counter ? BeatGrade.Auto : info.Grade) : BeatGrade.None;
+            moveGrade = grade;
+            MoveData[] chainMoves = stringMove ? ChainOf(actionSet, chainBranch) : null;
+            moveIsChainFinisher = stringMove && kind != PlayerAttackKind.DodgeStrike && chain >= 0 && chain == LengthOf(chainMoves) - 1;
+            moveIsSwitchStrike = info.SwitchTo != ElementId.None;
+            attackPlaybackRate = stringMove ? PlaybackRateFor(grade, actionSet) : 1f;
+            attackStartClock = clock;
+            attackBeganClock = clock;
+            if (payStamina)
+            {
+                bool mashed = grade == BeatGrade.Early || grade == BeatGrade.Mashed;
+                SpendStamina(move.StaminaCost + (mashed && RhythmOn ? Math.Max(0f, RhythmRules.MashStaminaSurcharge) : 0f));
+            }
+            // The string: a string move is the string now; an action that holds it keeps it waiting; anything else ends it.
+            if (stringMove) ClearStringMemory();
+            else if (HoldsString(state, kind)) HoldStringIfLive(false);
+            else ClearStringMemory();
+            ApplyBeatRewards(grade, stringMove);
+            // Free-flow snap (Spider-Man): a string, air or launcher strike at a target turns you to face it at once, so an
+            // enemy behind you gets hit instead of the swing going wide (report 04, W-02). Startup tracking does the rest.
+            if ((stringMove || kind == PlayerAttackKind.Launcher) && TryGetWorldLungeTarget(world, out Vector3 snapTarget, out _))
+            {
+                facingYaw = YawTowards(world.Position, snapTarget);
+            }
+            lungeDistance = PlanLunge(move, kind, world);
+            PlanOrbit(move, world);
+            PlanArrival(move, kind, world);
+            // Air strikes lift you as they start (you hang while striking); the launcher lifts you when its kick lands.
+            // An air strike stalls you: your rise is replaced by its own small lift (or none, over a standing foe), so a
+            // jump's speed can't carry you sky-high under the lighter air-strike gravity.
+            if (kind == PlayerAttackKind.Air && !grounded) verticalVelocity = Math.Min(verticalVelocity, 0f);
+            if (move.SelfLift > 0f && kind != PlayerAttackKind.Launcher && !AboveGroundedTarget(world)) ApplySelfLift(move.SelfLift);
             currentAttackId = CombatIds.Next();
-            RememberAttack(currentAttackId, tier == ChargeTier.FaJin ? Charge.FaJinMomentumGain : move.MomentumGain);
+            moveInstanceId = currentAttackId;
+            subHitIndex = 0;
+            RememberAttack(currentAttackId, tier == ChargeTier.FaJin ? Charge.FaJinMomentumGain : move.MomentumGain, true);
             moveVelocity = Vector3.Zero;
             action.Begin();
             EmitMoveEvent(PlayerEventType.AttackStarted);
+            if (stringMove)
+            {
+                // The press that started this move can no longer be downgraded to a mash: confirm it (J6-05).
+                confirmedStreak = onBeatStreak;
+                if (grade == BeatGrade.OnBeat)
+                {
+                    PlayerEvent confirmed = MoveEvent(PlayerEventType.BeatConfirmed);
+                    confirmed.Count = confirmedStreak;
+                    Emit(confirmed);
+                }
+            }
+            BeginBeat(actionSet);
             UpdateAttack(world);   // moments at time 0 (a move with no startup is active at once)
+        }
+
+        // What the press that started a string move earned: the on-beat damage, the element's perk, the streak, and the
+        // perfect-string finisher. The per-move scales go into this move's attack record (BuildDamage reads them).
+        void ApplyBeatRewards(BeatGrade grade, bool stringMove)
+        {
+            moveDamageScale = 1f;
+            movePoiseScale = 1f;
+            moveLaunchSpeed = 0f;
+            moveOnBeatArmor = false;
+            if (!stringMove) return;
+            ElementSwitchTuning switchRules = SwitchRules;
+            if (moveIsSwitchStrike)
+            {
+                moveDamageScale *= Math.Max(0f, switchRules.SwitchStrikeDamageMultiplier);
+                movePoiseScale *= Math.Max(0f, switchRules.SwitchStrikePoiseMultiplier);
+            }
+            bool freshString = chainBranch == ComboBranch.Main && chainIndex == 0 && attackKind == PlayerAttackKind.Light;
+            // A move nobody judged (a fresh string, a continue after a dodge) starts the streak over, unless the element's
+            // step is its beat (Air).
+            if (grade == BeatGrade.None && !streakKeptByDodge) onBeatStreak = 0;
+            streakKeptByDodge = false;
+            if (freshString)
+            {
+                stringPerfect = true;
+                stringFollowUps = 0;
+            }
+            else if (grade != BeatGrade.Pause)
+            {
+                stringFollowUps++;
+                if (!IsOnBeat(grade)) stringPerfect = false;
+            }
+            if (!RhythmOn) return;
+            if (IsOnBeat(grade))
+            {
+                RhythmTuning rules = RhythmRules;
+                ElementRhythm element = RhythmOf(actionSet);
+                if (grade == BeatGrade.Auto) onBeatStreak++;
+                moveDamageScale *= Math.Max(0f, rules.OnBeatDamageMultiplier + element.OnBeatDamageBonus);
+                if (element.OnBeatMomentumBonus > 0f) MeterOf(actionSet.Element).Gain(element.OnBeatMomentumBonus, MomentumRulesOf(actionSet.Element));
+                if (element.OnBeatStaminaRefund > 0f) stamina.Set(stamina.Current + element.OnBeatStaminaRefund, MaxStamina);
+                moveOnBeatArmor = element.OnBeatHyperArmor;
+            }
+            bool finisher = moveIsChainFinisher && (chainBranch == ComboBranch.Main || chainBranch == ComboBranch.Pause);
+            if (finisher && stringPerfect && stringFollowUps > 0)
+            {
+                RhythmTuning rules = RhythmRules;
+                moveDamageScale *= Math.Max(0f, rules.PerfectStringDamageMultiplier);
+                moveLaunchSpeed = Math.Max(moveLaunchSpeed, rules.PerfectStringLaunchSpeed);
+                Emit(new PlayerEvent { Type = PlayerEventType.PerfectString, Move = currentMove, Element = actionSet.Element });
+            }
+        }
+
+        // How far this attack travels forward. LimitApproach still stops every step short of the target's body.
+        float PlanLunge(MoveData move, PlayerAttackKind kind, in PlayerWorldState world)
+        {
+            float own = Math.Max(0f, move.LungeDistance);
+            lungeHoming = false;
+            if (kind == PlayerAttackKind.ZipStrike)
+            {
+                lungeHoming = world.HasZipTarget;
+                if (world.HasZipTarget)
+                {
+                    lungeTargetFeet = world.ZipTargetPosition;
+                    lungeTargetRadius = world.ZipTargetRadius;
+                }
+                return world.HasZipTarget ? GapTo(world.ZipTargetPosition, world.ZipTargetRadius, world) : 0f;
+            }
+            // Free-flow gap close: string moves only (the dodge strike too: evade out, then X dashes back in).
+            bool closes = kind == PlayerAttackKind.Light || kind == PlayerAttackKind.Air || kind == PlayerAttackKind.DodgeStrike;
+            if (!closes || !(tuning.GapCloseDistance > 0f)) return own;
+            float gap;
+            if (world.HasLockTarget)
+            {
+                gap = GapTo(world.LockTargetPosition, world.LockTargetRadius, world);
+                lungeTargetFeet = world.LockTargetPosition;
+                lungeTargetRadius = world.LockTargetRadius;
+            }
+            else if (world.HasSoftTarget)
+            {
+                gap = GapTo(world.SoftTargetPosition, world.SoftTargetRadius, world);
+                lungeTargetFeet = world.SoftTargetPosition;
+                lungeTargetRadius = world.SoftTargetRadius;
+            }
+            else return own;
+            // Only a stretched lunge homes in; a normal step keeps following the facing as it always has.
+            lungeHoming = gap > own;
+            return Math.Max(own, Math.Min(own + tuning.GapCloseDistance, gap));
+        }
+
+        // ARRIVING LUNGES (Build 05 verify J-06): a lunge stretched to close a gap (free-flow, the dodge strike dashing back
+        // in) and an own lunge longer than ArriveLungeMinDistance (sprint attacks) end as the strike goes active, like the
+        // zip strike, so the hit lands with the limb on the target instead of from metres away followed by a glide in. To
+        // keep the dash believable it never goes faster than ArriveLungeMaxSpeed: the startup is stretched (played slower)
+        // by up to ArriveLungeMaxExtraStartup to make room, and attackStartClock moves by that much so the beat, the combo
+        // window and every later mark keep their place relative to the strike. A circling (orbit) lunge keeps circling through
+        // its active frames, but closes in on the target by the strike.
+        //
+        // The dash's speed is eased (J4-02): it starts from the way you were already moving along it (a dodge's exit, even
+        // backwards out of an evade, never reversed in one frame), rises over ArriveLungeRampIn, and slows over the last
+        // ArriveLungeRampOut to arrive at no more than ArriveLungeEndSpeed (no 20 m/s dead stop on contact). The stretched
+        // startup is solved for that eased profile, so the peak still stays under ArriveLungeMaxSpeed and the dash still
+        // ends exactly at the contact point.
+        void PlanArrival(MoveData move, PlayerAttackKind kind, in PlayerWorldState world)
+        {
+            lungeArrives = false;
+            approachScale = 1f;
+            arrival = default(ArrivalProfile);
+            orbitTurnEase = default(ArrivalProfile);
+            arrivalCarry = default(ArrivalCarry);
+            if (kind == PlayerAttackKind.ZipStrike || !(lungeDistance > 0f)) return;
+            float minOwn = tuning.ArriveLungeMinDistance;
+            bool longOwn = minOwn > 0f && move.LungeDistance > minOwn;
+            if (!lungeHoming && !longOwn) return;
+            lungeArrives = true;
+            float distance = lungeDistance;
+            if (orbiting)
+            {
+                // The path to the strike, not just how far in: the arc travelled round the target by ActiveStart (the turn
+                // runs over the whole startup + active window) at the mean radius, plus the radial change. Counting only
+                // the radial part let Air's Circle Step Palm dash at 25 m/s (verify R2-S03).
+                float turnShare = move.ActiveEnd > 0f ? Angles.Clamp(move.ActiveStart / move.ActiveEnd, 0f, 1f) : 1f;
+                float meanRadius = 0.5f * (orbitStartRadius + orbitEndRadius);
+                float arc = meanRadius * move.OrbitDegrees * Directions.Deg2Rad * turnShare;
+                distance = Math.Max(0f, orbitStartRadius - orbitEndRadius) + arc;
+            }
+            else if (TryGetLungeTarget(world, out Vector3 target, out float targetRadius)) distance = Math.Min(distance, GapTo(target, targetRadius, world));
+            float rate = Math.Max(attackPlaybackRate, Epsilon);
+            float startup = move.ActiveStart / rate;
+            float maxSpeed = tuning.ArriveLungeMaxSpeed;
+            if (!(maxSpeed > 0f) || !(startup > 0f)) return;
+
+            // The eased profile's speeds (m/s): in from the current motion along the dash, out to the arrival speed.
+            float rampIn = Math.Max(0f, tuning.ArriveLungeRampIn), rampOut = Math.Max(0f, tuning.ArriveLungeRampOut);
+            Vector3 carried = Directions.Flatten(lastVelocity) * Angles.Clamp(tuning.ArriveLungeEntryCarry, 0f, 1f);
+            if (carried.Length() > maxSpeed) carried = Vector3.Normalize(carried) * maxSpeed;
+            // A straight dash eases in from your speed along it (backwards included); a circling one from standing still.
+            // Whatever motion that leaves (sideways, or all of it for a circle) carries on and dies away (ArrivalCarry).
+            Vector3 along = LungeDirection(world);
+            float entry = orbiting ? 0f : Vector3.Dot(carried, along);
+            float exit = Math.Max(0f, tuning.ArriveLungeEndSpeed);
+            bool eased = (rampIn > 0f || rampOut > 0f) && distance > 1e-3f;
+            // Time needed for the profile's peak to stay under maxSpeed (the ramps cover less ground than full speed).
+            float needed = distance / maxSpeed;
+            if (eased && orbiting) needed = distance / maxSpeed + rampIn;   // the circle eases in (its turn runs on, so a full ramp)
+            else if (eased) needed = (distance - entry * rampIn * 0.5f - Math.Min(exit, maxSpeed) * rampOut * 0.5f) / maxSpeed + 0.5f * (rampIn + rampOut);
+            float extra = Angles.Clamp(needed - startup, 0f, Math.Max(0f, tuning.ArriveLungeMaxExtraStartup));
+            if (extra > 1e-4f)
+            {
+                approachScale = startup / (startup + extra);
+                attackStartClock += extra;
+            }
+            else extra = 0f;
+            if (!eased) return;
+            float time = startup + extra;
+            // The ramps are only as long as the speed change needs at ArriveLungeMaxAccel (a short gap-closer from standing
+            // barely eases; a dodge strike flying backwards takes the full ramp), so a short dash isn't turned into a peaky
+            // triangle faster than it was.
+            if (orbiting)
+            {
+                // The circle's closing in eases like a straight dash; its turn (which runs on through the active frames)
+                // eases in over the same time.
+                float close = Math.Max(0f, orbitStartRadius - orbitEndRadius);
+                float closeExit = close > 1e-3f ? Math.Min(exit, close / time) : 0f;
+                arrival = PlanEased(Math.Max(close, 1e-3f), time, 0f, closeExit, rampIn, rampOut);
+                float turnTime = move.ActiveEnd > 0f ? move.ActiveEnd / rate + extra : time;
+                float turnIn = tuning.ArriveLungeMaxAccel > 0f ? Math.Min(rampIn, distance / time / tuning.ArriveLungeMaxAccel) : rampIn;
+                orbitTurnEase = ArrivalProfile.Plan(1f, turnTime, 0f, 1f / turnTime, turnIn, 0f);
+            }
+            else arrival = PlanEased(distance, time, entry, exit, rampIn, rampOut);
+            Vector3 residual = carried - along * entry;
+            float carryRamp = tuning.ArriveLungeMaxAccel > 0f ? Math.Min(rampIn, residual.Length() / tuning.ArriveLungeMaxAccel) : rampIn;
+            arrivalCarry = ArrivalCarry.Plan(residual, time, carryRamp);
+        }
+
+        // An eased profile whose ramps are as long as its speed changes need at ArriveLungeMaxAccel, at most rampIn / rampOut.
+        ArrivalProfile PlanEased(float distance, float time, float entry, float exit, float rampIn, float rampOut)
+        {
+            float accel = tuning.ArriveLungeMaxAccel;
+            float inTime = rampIn, outTime = rampOut;
+            for (int pass = 0; pass < 2 && accel > 0f; pass++)
+            {
+                float peak = ArrivalProfile.Plan(distance, time, entry, exit, inTime, outTime).PeakSpeed(distance, time);
+                inTime = Math.Min(rampIn, Math.Abs(peak - entry) / accel);
+                outTime = Math.Min(rampOut, Math.Max(0f, peak - exit) / accel);
+            }
+            return ArrivalProfile.Plan(distance, time, entry, exit, inTime, outTime);
+        }
+
+        // The motion you had as an arriving lunge starts that its eased profile doesn't take over (sideways, or all of it
+        // for a circling strike): it carries on and dies away over the ramp-in, then is paid back evenly by the strike, so
+        // the body never changes direction in one frame and still arrives exactly where the lunge was aimed.
+        struct ArrivalCarry
+        {
+            public bool Active;
+            Vector3 velocity;
+            float time, share;
+
+            public static ArrivalCarry Plan(Vector3 velocity, float time, float rampIn)
+            {
+                var c = new ArrivalCarry();
+                if (!(velocity.LengthSquared() > 1e-4f) || !(time > 1e-4f) || !(rampIn > 0f)) return c;
+                c.Active = true;
+                c.velocity = velocity;
+                c.time = time;
+                c.share = Math.Min(rampIn / time, 0.6f);
+                return c;
+            }
+
+            // Offset from the planned path at u (0..1 through the startup): rises over the ramp, back to 0 by the strike.
+            public Vector3 Offset(float u)
+            {
+                if (u <= 0f || u >= 1f) return Vector3.Zero;
+                float a = share;
+                float metres = u <= a ? time * (u - u * u / (2f * a)) : time * (0.5f * a) * (1f - (u - a) / (1f - a));
+                return velocity * metres;
+            }
+        }
+
+        // An arriving lunge's speed over its (stretched) startup, normalised: time and distance both run 0..1. Speed ramps
+        // linearly from Start to Peak over [0, In], holds, then ramps to End over [1 - Out, 1]; the area under it is 1.
+        struct ArrivalProfile
+        {
+            const float MaxRampShare = 0.4f;
+            public bool Active;
+            float start, peak, end, rampIn, rampOut;
+
+            public static ArrivalProfile Plan(float distance, float time, float entrySpeed, float exitSpeed, float rampInTime, float rampOutTime)
+            {
+                var p = new ArrivalProfile();
+                if (!(distance > 1e-4f) || !(time > 1e-4f)) return p;
+                // Ramps take at most MaxRampShare of the dash each, so a short dash isn't a peaky triangle (twice its mean speed).
+                float a = Math.Min(rampInTime / time, MaxRampShare), b = Math.Min(rampOutTime / time, MaxRampShare);
+                float scale = time / distance;                       // m/s -> normalised speed
+                float w0 = entrySpeed * scale, we = exitSpeed * scale;
+                float body = 1f - 0.5f * (a + b);
+                if (!(body > 1e-3f)) return p;
+                float peak = (1f - 0.5f * w0 * a - 0.5f * we * b) / body;
+                if (peak < we) we = peak = (1f - 0.5f * w0 * a) / (1f - 0.5f * a);   // too short to slow down: hold the speed
+                if (!(peak > 0f)) return p;
+                p.Active = true;
+                p.start = w0;
+                p.peak = peak;
+                p.end = we;
+                p.rampIn = a;
+                p.rampOut = b;
+                return p;
+            }
+
+            // The fastest it goes, in m/s, for a dash of this distance and time.
+            public float PeakSpeed(float distance, float time)
+            {
+                return Active && time > 0f ? Math.Max(peak, Math.Max(start, end)) * distance / time : (time > 0f ? distance / time : 0f);
+            }
+
+            // Share of the dash covered at u (0..1 through the startup).
+            public float Progress(float u)
+            {
+                if (u <= 0f) return 0f;
+                if (u >= 1f) return 1f;
+                float a = rampIn, b = rampOut;
+                if (u <= a) return start * u + (peak - start) * u * u / (2f * Math.Max(a, 1e-6f));
+                float atA = 0.5f * (start + peak) * a;
+                float cruiseEnd = 1f - b;
+                if (u <= cruiseEnd) return atA + peak * (u - a);
+                float s = u - cruiseEnd;
+                return atA + peak * (cruiseEnd - a) + peak * s - (peak - end) * s * s / (2f * Math.Max(b, 1e-6f));
+            }
+        }
+
+        // How far the running attack's clock moves this frame: dt x its playback rate, slower before the strike while a
+        // stretched startup runs (PlanArrival).
+        float AttackAdvance(float dt)
+        {
+            float rate = attackPlaybackRate;
+            if (!(approachScale < 1f) || currentMove == null || action.Time >= currentMove.ActiveStart) return dt * rate;
+            float slow = rate * approachScale;
+            float left = currentMove.ActiveStart - action.Time;
+            float toStrike = left / Math.Max(slow, Epsilon);
+            return dt <= toStrike ? dt * slow : left + (dt - toStrike) * rate;
+        }
+
+        // An air strike only lifts you when there's something up here to hit: against a foe standing on the ground (you
+        // jumped at it), rising above its head would be silly (report 03, V-10). No target at all: it lifts (air practice).
+        bool AboveGroundedTarget(in PlayerWorldState world)
+        {
+            Vector3 target;
+            if (world.HasLockTarget) target = world.LockTargetPosition;
+            else if (world.HasSoftTarget) target = world.SoftTargetPosition;
+            else return false;
+            return world.Position.Y > target.Y + Aerial.AirLiftMaxHeightAboveTarget;
+        }
+
+        // Flat distance we could travel toward a target before reaching LungeStopGap from its body.
+        float GapTo(Vector3 target, float targetRadius, in PlayerWorldState world)
+        {
+            float distance = Directions.Flatten(target - world.Position).Length();
+            return Math.Max(0f, distance - Math.Max(0f, world.SelfRadius) - Math.Max(0f, targetRadius) - tuning.LungeStopGap);
         }
 
         void UpdateAttack(in PlayerWorldState world)
         {
             MoveData move = currentMove;
-            if (action.Crossed(move.Startup))
+            int hits = Math.Max(1, move.HitCount);
+            // Each sub-hit opens as the one before closes; the last closes when the active frames end.
+            for (int k = subHitIndex; k < hits; k++)
             {
+                if (!action.Crossed(SubHitStart(move, k))) break;
+                if (activeOpen) CloseActive();
+                if (k > 0)
+                {
+                    currentAttackId = CombatIds.Next();
+                    RememberAttack(currentAttackId, 0f, false);   // Momentum is earned once per move, by its first sub-hit
+                }
+                subHitIndex = k + 1;
                 if (move.LaunchesProjectile) LaunchProjectile(world);
                 else OpenActive(world);
             }
-            if (activeOpen && action.Crossed(move.ActiveEnd)) CloseActive();
+            if (activeOpen && subHitIndex >= hits && action.Crossed(move.ActiveEnd)) CloseActive();
             action.MarkChecked();
+            AnnounceBeatWindow();
 
-            // A light press inside the combo window is accepted as the chain follow-up (see top of file).
-            if (attackKind == PlayerAttackKind.Light && buffer.Command == PlayerCommand.Light && !buffer.Locked
+            // A light press inside the combo window is accepted as the chain follow-up (see top of file). With rhythm on,
+            // the press was already judged and queued when it was made.
+            bool stringMove = IsStringKind(attackKind);
+            if (stringMove && !RhythmOn && buffer.Command == PlayerCommand.Light && !buffer.Locked
                 && action.Time >= move.ComboWindowStart && action.Time <= move.ComboWindowEnd)
             {
                 buffer.Lock();
@@ -233,29 +827,31 @@ namespace VaatusRevenge.Core
 
             if (action.Time >= move.TotalDuration)
             {
-                // If the combo window reaches past the end of the move (e.g. its recovery was tuned shorter),
-                // a light press shortly after it ends, or one already queued, still continues the chain.
-                bool wasLight = attackKind == PlayerAttackKind.Light;
-                bool queued = buffer.Locked && buffer.Command == PlayerCommand.Light;
-                int next = (chainIndex + 1) % Math.Max(1, ChainLength);
-                float grace = Math.Max(0f, move.ComboWindowEnd - move.TotalDuration);
+                // The move ran its course. RememberString (in ExitAction) keeps the string for the move's grace; a pause-
+                // eligible move with no press opens the pause band.
+                // A press judged Pause on this very frame counts too (it was made while the move still ran), or it would fall
+                // through to main hit 3 (verify S-07).
+                bool pauseEligible = stringMove && (followUpCount == 0 || followUpGrade == BeatGrade.Pause) && IsPauseEligible;
+                double startClock = attackStartClock;
+                float rate = attackPlaybackRate;
                 FinishAction();
-                if (wasLight && (grace > 0f || queued))
-                {
-                    chainGraceUntil = clock + grace;
-                    chainGraceNext = next;
-                }
+                OpenPauseBandIfEligible(startClock, move, rate, pauseEligible);
             }
+        }
+
+        static float SubHitStart(MoveData move, int k)
+        {
+            return move.ActiveStart + k * Math.Max(0f, move.HitInterval);
         }
 
         void OpenActive(in PlayerWorldState world)
         {
             activeOpen = true;
-            Emit(new PlayerEvent
-            {
-                Type = PlayerEventType.AttackActiveStart, Move = currentMove, AttackKind = attackKind, AttackId = currentAttackId,
-                Origin = GetStrikeOrigin(world.Position), Direction = Forward, ChargeTier = chargeTier, IsCounter = isCounter
-            });
+            if (attackKind == PlayerAttackKind.Launcher && currentMove.SelfLift > 0f && subHitIndex <= 1) ApplySelfLift(currentMove.SelfLift);
+            PlayerEvent e = MoveEvent(PlayerEventType.AttackActiveStart);
+            e.Origin = GetStrikeOrigin(world.Position);
+            e.Direction = Forward;
+            Emit(e);
         }
 
         void CloseActive()
@@ -274,11 +870,10 @@ namespace VaatusRevenge.Core
                 float pitch = Directions.PitchOf(aimPoint - origin);
                 direction = Directions.FromYawPitch(facingYaw, pitch);
             }
-            Emit(new PlayerEvent
-            {
-                Type = PlayerEventType.ProjectileLaunched, Move = currentMove, AttackKind = attackKind, AttackId = currentAttackId,
-                Origin = origin, Direction = direction, IsCounter = isCounter
-            });
+            PlayerEvent e = MoveEvent(PlayerEventType.ProjectileLaunched);
+            e.Origin = origin;
+            e.Direction = direction;
+            Emit(e);
         }
 
         bool TryGetAimTarget(in PlayerWorldState world, out Vector3 aimPoint)
@@ -303,6 +898,7 @@ namespace VaatusRevenge.Core
         {
             ExitAction(true);
             state = PlayerState.Charging;
+            HoldStringIfLive(false);
             currentMove = moveSet.Heavy;
             attackKind = PlayerAttackKind.Heavy;
             chainIndex = -1;
@@ -371,6 +967,7 @@ namespace VaatusRevenge.Core
         {
             ExitAction(true);
             state = PlayerState.Plunging;
+            ClearStringMemory();                  // a plunge ends the string (the landing starts a new one)
             currentMove = moveSet.PlungeAttack;
             attackKind = PlayerAttackKind.Plunge;
             chainIndex = -1;
@@ -381,7 +978,8 @@ namespace VaatusRevenge.Core
             landingTime = 0f;
             SpendStamina(currentMove.StaminaCost);
             currentAttackId = CombatIds.Next();
-            RememberAttack(currentAttackId, currentMove.MomentumGain);
+            moveInstanceId = currentAttackId;
+            RememberAttack(currentAttackId, currentMove.MomentumGain, true);
             moveVelocity = Vector3.Zero;
             action.Begin();
             EmitMoveEvent(PlayerEventType.AttackStarted);
@@ -396,11 +994,10 @@ namespace VaatusRevenge.Core
             {
                 plungeLanded = true;
                 landingTime = action.Time;
-                Emit(new PlayerEvent
-                {
-                    Type = PlayerEventType.PlungeImpact, Move = currentMove, AttackKind = attackKind, AttackId = currentAttackId,
-                    Origin = world.Position, Radius = plunge.RingRadius, IsCounter = isCounter
-                });
+                    PlayerEvent impact = MoveEvent(PlayerEventType.PlungeImpact);
+                impact.Origin = world.Position;
+                impact.Radius = plunge.RingRadius;
+                Emit(impact);
                 Emit(new PlayerEvent { Type = PlayerEventType.Landed, Amount = plunge.FallSpeed });
             }
             action.MarkChecked();
@@ -440,6 +1037,9 @@ namespace VaatusRevenge.Core
         {
             if (state == PlayerState.Dead) return;
             ExitAction(true);
+            EndCombo(ComboEndReason.Staggered);
+            ClearStringMemory();
+            CancelPendingSwitch();
             state = PlayerState.Staggered;
             staggerDuration = Math.Max(0f, duration);
             moveVelocity = Vector3.Zero;
@@ -457,6 +1057,9 @@ namespace VaatusRevenge.Core
         void Die()
         {
             ExitAction(true);
+            EndCombo(ComboEndReason.Died);
+            ClearStringMemory();
+            CancelPendingSwitch();
             state = PlayerState.Dead;
             health = 0f;
             moveVelocity = Vector3.Zero;
@@ -471,7 +1074,8 @@ namespace VaatusRevenge.Core
         {
             actionStep = Vector3.Zero;
             if (!action.IsRunning) return;
-            action.Advance(dt);
+            // A string move plays at the speed its press earned (rhythm); every time in its MoveData scales with it.
+            action.Advance(state == PlayerState.Attacking ? AttackAdvance(dt) : dt);
             // Worked out before the action gets a chance to end this frame, so its last slice of movement
             // (the end of a dash or lunge) is never lost, whatever the frame rate.
             actionStep = ActionStep(world);
@@ -483,7 +1087,7 @@ namespace VaatusRevenge.Core
                     UpdateCharge(world);
                     break;
                 case PlayerState.Plunging: UpdatePlunge(world); break;
-                case PlayerState.Dodging: UpdateDodge(); break;
+                case PlayerState.Dodging: UpdateDodge(world); break;
                 case PlayerState.Healing: UpdateHeal(); break;
                 case PlayerState.Staggered: UpdateStagger(); break;
             }
@@ -506,12 +1110,16 @@ namespace VaatusRevenge.Core
         // lingering hitbox, glow or i-frame look.
         void ExitAction(bool interrupted)
         {
+            bool heldString = HoldsString(state, attackKind);
+            pauseBandOpen = false;                    // anything happening ends the pause band (the string memory stays)
             switch (state)
             {
                 case PlayerState.Attacking:
                     if (activeOpen) CloseActive();
                     EmitMoveEvent(PlayerEventType.AttackEnded);
                     buffer.Unlock();
+                    if (IsStringKind(attackKind)) RememberString(interrupted);
+                    beatActive = false;
                     break;
                 case PlayerState.Charging:
                     if (!releasingCharge) EmitMoveEvent(PlayerEventType.ChargeCancelled);
@@ -521,6 +1129,7 @@ namespace VaatusRevenge.Core
                     break;
                 case PlayerState.Dodging:
                     EndDodgeIFrames();
+                    EndDodgeChain();
                     Emit(PlayerEventType.DodgeEnded);
                     break;
                 case PlayerState.Healing:
@@ -539,9 +1148,10 @@ namespace VaatusRevenge.Core
                     sprintTime = 0f;
                     break;
             }
+            if (heldString) ReleaseHeldString();
             action.Stop();
             activeOpen = false;
-            chainGraceUntil = double.NegativeInfinity;
+            attackPlaybackRate = 1f;
             if (!releasingCharge)
             {
                 currentMove = null;
@@ -551,6 +1161,7 @@ namespace VaatusRevenge.Core
             }
             chainIndex = -1;
             if (interrupted && state == PlayerState.Charging) chargeTime = 0f;
+            actionSet = moveSet;   // the next action (or none) uses the active element
         }
     }
 }

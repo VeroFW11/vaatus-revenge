@@ -21,7 +21,7 @@ namespace VaatusRevenge.CombatSim
     public static class DuelsScenario
     {
         public static DuelResult Play(Options o, Preset preset, string botName, string enemies, int seed, double seconds, Recorder rec,
-            bool stopWhenEnemiesDead = true, bool invariants = true)
+            bool stopWhenEnemiesDead = true, bool invariants = true, Action<Session> setup = null)
         {
             var s = new Session(preset, o.Fps, SimLevel.SandboxArena(), camera: true, playerAt: new Vector3(0f, 0f, -5f), playerYaw: 0f);
             s.World.Recorder = rec;
@@ -46,6 +46,7 @@ namespace VaatusRevenge.CombatSim
                 else throw new ArgumentException("unknown enemy '" + raw + "' (use soldier, crossbow, platform, dummy)");
             }
             s.World.LockOn.SnapBehindPlayer();
+            setup?.Invoke(s);
             Bot bot = Bots.Create(botName);
             bot.Attach(s, seed * 977 + 13);
             int maxAtt = 0;
@@ -82,8 +83,9 @@ namespace VaatusRevenge.CombatSim
             Out.Heading("Duels: bots vs the sandbox enemies (" + o.Seeds + " seeds each, 120 s limit)");
             Out.Line("Bots: masher (mashes light, never defends), react (dodges on seeing a wind-up, ~0.25 s reaction), anticipate (knows each attack's timing, "
                      + "dodges ~0.06 s before the strike ± 0.05 s, dashes into attacks), guard (holds guard, re-presses to deflect ± 0.05 s), aggressive "
-                     + "(stays close, chains, sprint-kicks in, fa jin on staggers), fajin (waits for openings, fa jin with ± 0.05 s timing). "
-                     + "All use lock-on and move relative to the real camera.");
+                     + "(stays close, chains, sprint-kicks in, fa jin on staggers), fajin (waits for openings, fa jin with ± 0.05 s timing), "
+                     + "rhythm (Build 05: on-beat strings ± 0.03 s, defends like anticipate), switcher (on-beat strings that mix all four "
+                     + "elements), sense (on-beat strings, dodges on the danger sense's white cue). All use lock-on and move relative to the real camera.");
             // The last group is the whole sandbox ring: both soldiers and both crossbowmen (one on the platform).
             string[] groups = { "soldier", "soldier,soldier", "crossbow", "soldier,soldier,crossbow", "soldier,soldier,crossbow,platform" };
             if (!string.IsNullOrEmpty(o.Groups)) groups = o.Groups.Split('/', StringSplitOptions.RemoveEmptyEntries);
@@ -114,7 +116,57 @@ namespace VaatusRevenge.CombatSim
                 }
                 t.Print();
             }
+            PadParity(o);
             Invariant.Flush();
+        }
+
+        // The Xbox path (J5-01): the defending bots again with every press through the game's PadChordReader (element picks
+        // played as RB and the face together). Since round 5 a face press reaches the rules on its own frame, so the pad
+        // must fight as well as the keyboard: perfect-dodge rate within 3 points, damage within 10 %.
+        static void PadParity(Options o)
+        {
+            int seeds = Math.Min(o.Seeds, 12);
+            Out.Sub("Xbox pad vs keyboard (" + seeds + " seeds; target: pad perfect-dodge rate >= keyboard - 3 points, damage taken <= keyboard x 1.1 + 5)");
+            var t = new Table("Preset", "Bot", "Enemies", "Win keys / pad", "Perfect dodges keys / pad", "Damage keys / pad", "Picks on the pad", "Target");
+            foreach (Preset p in o.Presets)
+            {
+                foreach (string bot in new[] { "react", "anticipate", "rhythm", "sense", "switcher" })
+                {
+                    foreach (string g in new[] { "soldier", "soldier,soldier" })
+                    {
+                        var keys = new List<DuelResult>();
+                        var pad = new List<DuelResult>();
+                        int picks = 0;
+                        for (int seed = o.Seed; seed < o.Seed + seeds; seed++)
+                        {
+                            keys.Add(Play(o, p, bot, g, seed, 120.0, null, invariants: false));
+                            int padSeed = seed * 389 + 5;
+                            PadInput input = null;
+                            pad.Add(Play(o, p, bot, g, seed, 120.0, null, invariants: false, setup: s =>
+                            {
+                                s.Input.UseRealPad(padSeed);
+                                // A practised chord: RB already down as the face lands on the bot's beat. (The bots decide on
+                                // the beat itself and can't pre-hold RB, so a spread here would only make their picks late;
+                                // the switch scenario stress-tests a 0-80 ms RB-first spread.)
+                                s.Input.MaxChordSkew = 0f;
+                                input = s.Input;
+                            }));
+                            picks += input != null ? input.ChordsPlayed : 0;
+                        }
+                        double keyRate = Rate(keys), padRate = Rate(pad);
+                        double keyDmg = keys.Average(r => r.Metrics.DamageTaken), padDmg = pad.Average(r => r.Metrics.DamageTaken);
+                        bool ok = padRate >= keyRate - 0.03 && padDmg <= keyDmg * 1.1 + 5.0;
+                        t.Row(p, bot, g.Replace(",", "+"), Out.Pct(keys.Count(r => r.Won) / (double)keys.Count) + " / " + Out.Pct(pad.Count(r => r.Won) / (double)pad.Count),
+                            Out.Pct(keyRate) + " / " + Out.Pct(padRate), Out.N(keyDmg, 0) + " / " + Out.N(padDmg, 0), picks, Out.Target(ok));
+                    }
+                }
+            }
+            t.Print();
+        }
+
+        static double Rate(List<DuelResult> results)
+        {
+            return results.Sum(r => r.Metrics.PerfectDodges) / Math.Max(1.0, results.Sum(r => r.Metrics.Dodges));
         }
 
         public static void RunOne(Options o)

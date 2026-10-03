@@ -26,7 +26,7 @@ namespace VaatusRevenge.CombatSim
         public string Enemies = "soldier";
         public double Seconds = 60;
         public bool Quick;
-        public string Bots;            // duels only: comma list of bot styles (null = all six)
+        public string Bots;            // duels only: comma list of bot styles (null = all nine)
         public string Groups;          // duels only: enemy groups separated by '/', e.g. "soldier/soldier,soldier" (null = all five)
     }
 
@@ -44,7 +44,13 @@ namespace VaatusRevenge.CombatSim
             { "duel", ("One duel (--bot --enemies --seed --preset), optionally --record replay.json", DuelsScenario.RunOne) },
             { "fuzz", ("Long random-input runs at 30/60/144 fps with dt spikes; invariants", FuzzScenario.Run) },
             { "camera", ("Camera and lock-on: circling, overhead, elevated target, retarget, switching, walls, shoulder swap, pull-back", CameraScenario.Run) },
+            { "rhythm", ("Build 05: on-beat rates, mashing, pauses and string DPS for timing bots against a passive partner", RhythmScenario.Run) },
+            { "switch", ("Build 05: element switching mid-string (cooldown denials, the air cap) and MIX 4 finishers", SwitchScenario.Run) },
+            { "danger", ("Build 05: danger sense cue timing and resolution in real fights, sense vs react, delayed-thrust panic dodges", DangerScenario.Run) },
+            { "elements", ("Build 05: each element's string dps at 1.0x, poise budgets, beat data validation and move tables (for move-set data)", ElementsScenario.Run) },
+            { "dodgeflow", ("Build 05: dodge facing, slip-in gap, spam invulnerability, exit speed, the string across a dodge / zip / ability", DodgeFlowScenario.Run) },
             { "all", ("Everything above except 'duel' (use --quick for fewer seeds)", RunAll) },
+            { "anim", ("Animation: a scripted fight through the real core and procedural animator, frames as JSON to --out (render with tools/render/render_fight.py)", AnimationScenario.Run) },
         };
 
         public static int Main(string[] args)
@@ -88,10 +94,11 @@ namespace VaatusRevenge.CombatSim
             finally
             {
                 Out.Line();
+                if (Out.Misses > 0) Out.Line("**Targets missed: " + Out.Misses + "** (cells marked MISS).");
                 Out.Line("_Finished in " + sw.Elapsed.TotalSeconds.ToString("0.0") + " s._");
                 Out.Close();
             }
-            return 0;
+            return Out.Misses > 0 ? 1 : 0;
         }
 
         static void RunAll(Options o)
@@ -105,6 +112,11 @@ namespace VaatusRevenge.CombatSim
             DuelsScenario.Run(o);
             FuzzScenario.Run(o);
             CameraScenario.Run(o);
+            RhythmScenario.Run(o);
+            SwitchScenario.Run(o);
+            DangerScenario.Run(o);
+            ElementsScenario.Run(o);
+            DodgeFlowScenario.Run(o);
         }
 
         static Options Parse(string[] args)
@@ -154,9 +166,10 @@ namespace VaatusRevenge.CombatSim
             foreach (var kv in Scenarios) Console.WriteLine("  " + kv.Key.PadRight(10) + " " + kv.Value.help);
             Console.WriteLine();
             Console.WriteLine("Options: --seed N  --seeds N  --preset fluid|punishing|both  --fps N  --record file.json  --out results.md");
-            Console.WriteLine("         --bot masher|react|anticipate|guard|aggressive|fajin|oracle|idle  --enemies soldier,soldier,crossbow,platform,dummy  --seconds N  --quick");
+            Console.WriteLine("         --bot masher|react|anticipate|guard|aggressive|fajin|rhythm|switcher|sense|oracle|idle  --enemies soldier,soldier,crossbow,platform,dummy  --seconds N  --quick");
             Console.WriteLine("         --no-notify-strikes  enemies don't call PlayerCombatModel.NotifyEnemyStrike (the 60cb8ee Unity behaviour; on by default, as Unity does now)");
-            Console.WriteLine("         --set target.Field=value  what-if tuning (targets: player, dodge, charge, soldier, crossbow, camera; nested fields with dots), repeatable");
+            Console.WriteLine("         --set target.Field=value  what-if tuning (targets: player, dodge, charge, soldier, crossbow, camera, rhythm, combo, mix, switch, danger, "
+                              + "loadout.<element>; nested fields with dots), repeatable");
             Console.WriteLine("         --groups soldier/soldier,soldier  --bots masher,react  duels only: just these enemy groups ('/'-separated) and bots");
         }
 
@@ -216,8 +229,8 @@ namespace VaatusRevenge.CombatSim
             Preset = preset;
             Dt = 1f / fps;
             World = new SimWorld(level);
-            MakePreset(preset, out PlayerTuning t, out ElementMoveSet m);
-            World.AddPlayer(t, m, playerAt ?? Vector3.Zero, playerYaw);
+            MakePreset(preset, out PlayerTuning t, out ElementLoadout loadout);
+            World.AddPlayer(t, loadout, playerAt ?? Vector3.Zero, playerYaw);
             if (camera) World.AddCameraRig();
             else World.FixedCameraYaw = 0f;
         }
@@ -225,29 +238,37 @@ namespace VaatusRevenge.CombatSim
         public SimPlayer Player => World.Player;
         public PlayerCombatModel Model => World.Player.Model;
 
-        public static void MakePreset(Preset p, out PlayerTuning tuning, out ElementMoveSet moves)
+        // The preset with all four elements (Build 05): --set overrides applied.
+        public static void MakePreset(Preset p, out PlayerTuning tuning, out ElementLoadout loadout)
         {
             if (p == Preset.Punishing)
             {
                 tuning = PlayerTuning.CreatePunishing();
-                moves = ElementMoveSet.CreateFirePunishing();
+                loadout = ElementLoadout.CreatePunishing();
             }
             else
             {
                 tuning = PlayerTuning.CreateFluid();
-                moves = ElementMoveSet.CreateFireFluid();
+                loadout = ElementLoadout.CreateFluid();
             }
-            TuningOverrides.ApplyPlayer(tuning, moves);
+            TuningOverrides.ApplyPlayer(tuning, loadout);
+        }
+
+        // Fire only (the scenarios written before Build 05 that look at one move set).
+        public static void MakePreset(Preset p, out PlayerTuning tuning, out ElementMoveSet moves)
+        {
+            MakePreset(p, out tuning, out ElementLoadout loadout);
+            moves = loadout.Fire;
         }
 
         public void Step(in Pad pad)
         {
-            World.Step(Input.Build(pad), Dt);
+            World.Step(Input.Build(pad, Dt), Dt);
         }
 
         public void Step(in Pad pad, float dt)
         {
-            World.Step(Input.Build(pad), dt);
+            World.Step(Input.Build(pad, dt), dt);
         }
 
         public void Idle(int frames)

@@ -135,9 +135,33 @@ namespace VaatusRevenge.CombatSim
                 case PlayerEventType.ChargeStarted:
                     detail = (e.Move != null ? e.Move.DisplayName : "") + (e.ChargeTier != ChargeTier.None ? " " + e.ChargeTier : "")
                              + (e.IsCounter ? " counter" : "") + " #" + e.AttackId;
+                    // Build 05: which string slot, how the press was judged, in which element (for the replay viewer).
+                    if (e.Type == PlayerEventType.AttackStarted && e.ChainIndex >= 0)
+                        detail += " " + e.Branch + "[" + e.ChainIndex + "]" + (e.Grade != BeatGrade.None ? " " + e.Grade : "") + " x" + F(e.PlaybackRate);
+                    if (e.Type == PlayerEventType.AttackStarted && e.Element != ElementId.None) detail += " " + e.Element;
                     break;
                 case PlayerEventType.DodgeStarted:
-                    detail = (e.IsBackstep ? "backstep " : "") + "dir(" + F(e.Direction.X) + "," + F(e.Direction.Z) + ")";
+                    detail = e.DodgeKind + " " + (e.IsBackstep ? "backstep " : "") + "dir(" + F(e.Direction.X) + "," + F(e.Direction.Z) + ")";
+                    break;
+                case PlayerEventType.BeatJudged:
+                    detail = e.Grade + " " + F(e.Amount) + " s" + (e.Element != ElementId.None ? " " + e.Element : "");
+                    break;
+                case PlayerEventType.ElementSwitched:
+                    detail = e.PreviousElement + " -> " + e.Element + (e.IsSwitchStrike ? " strike" : "") + " MIX " + e.Count;
+                    break;
+                case PlayerEventType.ElementSwitchDenied:
+                    detail = e.Element + " " + e.DenyReason;
+                    break;
+                case PlayerEventType.ComboHit:
+                case PlayerEventType.MixFinisher:
+                    detail = e.Count + (e.Element != ElementId.None ? " " + e.Element : "");
+                    break;
+                case PlayerEventType.ComboEnded:
+                    detail = e.Count + " " + e.EndReason;
+                    break;
+                case PlayerEventType.DangerWarning:
+                case PlayerEventType.DangerNow:
+                    detail = "attacker " + e.AttackerId + " hit " + e.Count + " in " + F(e.Duration) + " s" + (e.MustDodge ? " dodge" : "") + (e.IsRanged ? " ranged" : "");
                     break;
                 case PlayerEventType.Damaged:
                 case PlayerEventType.HealApplied:

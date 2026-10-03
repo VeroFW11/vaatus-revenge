@@ -21,6 +21,8 @@ TEMPLATES = {
     ".md": "fileFormatVersion: 2\nguid: {guid}\nTextScriptImporter:\n  externalObjects: {{}}\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n",
     ".txt": "fileFormatVersion: 2\nguid: {guid}\nTextScriptImporter:\n  externalObjects: {{}}\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n",
     ".json": "fileFormatVersion: 2\nguid: {guid}\nTextScriptImporter:\n  externalObjects: {{}}\n  userData: \n  assetBundleName: \n  assetBundleVariant: \n",
+    # Only the GUID: Unity fills in the texture importer settings (Editor/Vfx/VfxTextureImporter sets them for Art/VFX).
+    ".png": "fileFormatVersion: 2\nguid: {guid}\n",
 }
 
 

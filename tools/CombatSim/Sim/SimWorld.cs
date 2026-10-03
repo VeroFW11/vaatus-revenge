@@ -47,7 +47,12 @@ namespace VaatusRevenge.CombatSim
 
         public SimPlayer AddPlayer(PlayerTuning tuning, ElementMoveSet moves, Vector3 position, float yaw = 0f)
         {
-            Player = new SimPlayer(this, tuning, moves, position, yaw);
+            return AddPlayer(tuning, ElementLoadout.FromSingle(moves), position, yaw);
+        }
+
+        public SimPlayer AddPlayer(PlayerTuning tuning, ElementLoadout loadout, Vector3 position, float yaw = 0f)
+        {
+            Player = new SimPlayer(this, tuning, loadout, position, yaw);
             fighters.Insert(0, Player);
             return Player;
         }
@@ -90,7 +95,10 @@ namespace VaatusRevenge.CombatSim
             Metrics.EndFrame(this, gameDt, unscaledDt);
             Invariants?.Check(this);
             Recorder?.Capture(this);
+            Stepped?.Invoke();
         }
+
+        public event Action Stepped;      // after every frame (scenarios that sample the world)
 
         public bool AllEnemiesDead
         {

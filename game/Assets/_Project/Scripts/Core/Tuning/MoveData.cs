@@ -17,6 +17,10 @@ namespace VaatusRevenge.Core
         public HitKind Kind = HitKind.Light;
         public Limb Limb = Limb.RightFist;           // which fist/foot/weapon the visuals animate
 
+        // --- Presentation (ids looked up in data, never code paths) ---
+        public string AnimationKey = "";             // which body animation plays (AnimationKeys; a pack clip mapped to this key wins)
+        public string EffectKey = "";                // which fire effect plays when the strike goes active (EffectKeys; "" = default burst)
+
         // --- Frame data ---
         public float Startup = 0.12f;
         public float Active = 0.10f;
@@ -30,6 +34,8 @@ namespace VaatusRevenge.Core
         public float Hitstop = 0.035f;               // freeze-frame on impact; sells the weight of the hit
         public bool Parryable = true;                // can be deflected
         public bool Unblockable = false;             // ignores guard (can still be dodged)
+        // Danger sense's red mark (and the enemy's red wind-up glow): this one has to be dodged. Gold otherwise.
+        public bool MustDodge => !Parryable || Unblockable;
 
         // --- Reach (the strike is an arc in front of the attacker) ---
         public float Range = 2.6f;                   // metres from the strike origin to the target's body
@@ -50,11 +56,26 @@ namespace VaatusRevenge.Core
         public float ChainCancelAt = 0.24f;          // "cancel point": earliest the next attack (buffered or chained) can start
         public float DodgeCancelAt = 0.22f;          // earliest a dodge, jump or guard can cut the move short
 
+        // --- Air: launching and juggling (Spider-Man-style aerial combat) ---
+        public float LaunchSpeed = 0f;               // > 0: a clean hit on a grounded, launchable target throws it upward at this speed (m/s)
+        public float AirLift = 0f;                   // > 0: a clean hit on an airborne target sets its upward speed to at least this (keeps it juggled)
+        public float SlamSpeed = 0f;                 // > 0: a clean hit on an airborne target drives it down at this speed (ends the juggle)
+        public float SelfLift = 0f;                  // > 0: the attacker's own upward speed when the move starts (a launcher's jump, hanging in the air)
+
         // --- Costs and rewards ---
         public float StaminaCost = 9f;
         public float MomentumGain = 8f;              // Momentum earned when this move lands a clean hit
         public bool HyperArmor = false;              // true = poise can't break from HyperArmorFrom until active ends (damage still hurts)
         public float HyperArmorFrom = 0f;            // seconds from move start when hyper armour begins (0 = from the start)
+
+        // --- Element mechanics (Build 05) ---
+        public int HitCount = 1;                     // > 1: sub-hits spread over the active frames, sub-hit k live from
+        public float HitInterval = 0f;               // ActiveStart + k x HitInterval. Damage and poise are per sub-hit; each has its
+                                                     // own AttackId (Active must cover (HitCount - 1) x HitInterval)
+        public float PullDistance = 0f;              // > 0: a clean hit draws the target toward the attacker by up to this (Water)
+        public float OrbitDegrees = 0f;              // > 0: the lunge curves round the target, ending this many degrees round it (Air)
+        public float HealOnHit = 0f;                 // health the attacker gets back per clean hit (Water restores you)...
+        public float HealPerMoveMax = 0f;            // ...at most this much per move (0 = HealOnHit)
 
         // --- Projectile (Fire Blast, crossbow bolts) ---
         public bool LaunchesProjectile = false;      // true = launches Projectile when startup ends instead of a melee arc

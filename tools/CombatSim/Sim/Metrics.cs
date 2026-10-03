@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Reflection;
 using VaatusRevenge.Core;
 
 namespace VaatusRevenge.CombatSim
@@ -151,6 +152,11 @@ namespace VaatusRevenge.CombatSim
         public string MaxBufferedAgeCommand = "";
         public int Checks;
         int windowOpenFrames;
+        // Build 05: open danger warnings (attacker, hit index) -> game time shown; the last frame with i-frames.
+        readonly Dictionary<(int attacker, int hit), double> openWarnings = new Dictionary<(int, int), double>();
+        double lastInvulnerableAt = double.NegativeInfinity;
+        bool wasInvulnerable, comboEnded;
+        static readonly FieldInfo ActionSetField = typeof(PlayerCombatModel).GetField("actionSet", BindingFlags.NonPublic | BindingFlags.Instance);
 
         void Fail(SimWorld w, string rule, string detail)
         {
@@ -185,6 +191,88 @@ namespace VaatusRevenge.CombatSim
                 case PlayerEventType.DodgeEnded: DodgesEnded++; break;
                 case PlayerEventType.Respawned: openPlayerWindows.Clear(); break;
             }
+            CheckBuild05Event(w, in e);
+        }
+
+        // Build 05 rules that show in the events (spec 6.1 fuzz invariants).
+        void CheckBuild05Event(SimWorld w, in PlayerEvent e)
+        {
+            PlayerCombatModel m = w.Player != null ? w.Player.Model : null;
+            if (m == null) return;
+            switch (e.Type)
+            {
+                case PlayerEventType.ComboEnded:
+                    comboEnded = true;
+                    break;
+                case PlayerEventType.ComboHit:
+                    // The count starts again from zero: the first hit after an end is hit 1.
+                    if (comboEnded && e.Count != 1) Fail(w, "combo-count-after-end", "next hit counted " + e.Count);
+                    comboEnded = false;
+                    break;
+                case PlayerEventType.AttackStarted:
+                    RhythmTuning r = m.Tuning.Rhythm;
+                    if (r != null && (e.PlaybackRate < r.MinPlaybackRate - 1e-4f || e.PlaybackRate > r.MaxPlaybackRate + 1e-4f))
+                        Fail(w, "playback-rate-range", e.PlaybackRate + " for " + e.Move?.DisplayName);
+                    break;
+                case PlayerEventType.DangerWarning:
+                    openWarnings[(e.AttackerId, e.Count)] = w.GameTime;
+                    break;
+                case PlayerEventType.DangerCleared:
+                    openWarnings.Remove((e.AttackerId, e.Count));
+                    break;
+            }
+        }
+
+        // Build 05 rules that show in the model's state, every frame.
+        void CheckBuild05State(SimWorld w, PlayerCombatModel m)
+        {
+            if (!m.IsLearned(m.ActiveElement)) Fail(w, "active-element-not-learned", m.ActiveElement.ToString());
+            if (m.ComboCount < 0) Fail(w, "combo-count-negative", m.ComboCount.ToString());
+            bool inAction = m.State == PlayerState.Attacking || m.State == PlayerState.Charging || m.State == PlayerState.Plunging
+                            || m.State == PlayerState.Dodging || m.State == PlayerState.Guarding || m.State == PlayerState.Healing;
+            if (inAction && ActionSetField != null && ActionSetField.GetValue(m) == null) Fail(w, "action-set-null", m.State.ToString());
+
+            int next = m.StringNextIndex;
+            if (next >= 0)
+            {
+                ElementMoveSet set = m.MoveSet;
+                MoveData[] chain = m.StringBranch == ComboBranch.Pause ? set.PauseChain
+                    : m.StringBranch == ComboBranch.Air ? set.AirChain : set.LightChain;
+                int length = chain != null ? chain.Length : 0;
+                if (next >= length) Fail(w, "string-next-past-chain", next + " of " + length + " (" + m.StringBranch + ", " + m.ActiveElement + ")");
+            }
+
+            // A warning is resolved by the strike (DangerCleared a moment after it lands) or by its calling off. While dead
+            // the model doesn't tick; respawning clears them all.
+            if (m.IsAlive && openWarnings.Count > 0)
+            {
+                DangerSenseSettings d = m.Tuning.DangerSense;
+                double limit = (d != null ? d.WarningLead + d.ClearAfterImpact : 1.0) + 2.0;   // + a bolt's flight
+                foreach (var kv in openWarnings)
+                {
+                    if (w.GameTime - kv.Value <= limit) continue;
+                    Fail(w, "danger-warning-unresolved", "attacker " + kv.Key.attacker + " hit " + kv.Key.hit);
+                    openWarnings.Remove(kv.Key);
+                    break;
+                }
+            }
+
+            // Chained dodges: i-frames never come back sooner than ChainIFrameGap after the last ones ended (the smallest
+            // gap of any element: a switch between dodges uses the new dodge's).
+            bool invulnerable = m.IsInvulnerable;
+            if (invulnerable && !wasInvulnerable)
+            {
+                float gap = float.MaxValue;
+                for (ElementId el = ElementId.Fire; el <= ElementId.Air; el++)
+                {
+                    ElementMoveSet set = m.Loadout != null ? m.Loadout.Get(el) : null;
+                    if (set != null && set.Dodge != null) gap = Math.Min(gap, set.Dodge.ChainIFrameGap);
+                }
+                if (gap < float.MaxValue && w.GameTime - lastInvulnerableAt < gap - 1e-4)
+                    Fail(w, "iframes-inside-chain-gap", (w.GameTime - lastInvulnerableAt).ToString("0.000") + " s < " + gap);
+            }
+            if (invulnerable) lastInvulnerableAt = w.GameTime;
+            wasInvulnerable = invulnerable;
         }
 
         public void OnEnemyEvent(SimWorld w, SimEnemy enemy, in EnemyEvent e)
@@ -281,6 +369,7 @@ namespace VaatusRevenge.CombatSim
                     }
                 }
                 else windowOpenFrames = 0;
+                CheckBuild05State(w, m);
             }
             for (int i = 0; i < w.Enemies.Count; i++)
             {
@@ -305,11 +394,23 @@ namespace VaatusRevenge.CombatSim
                 case PlayerState.Attacking: return 2.0;   // longest move ~1 s
                 case PlayerState.Charging: return m.MoveSet.Charge.MaxChargeTime + 0.1;
                 case PlayerState.Plunging: return 3.0;    // hang + MaxFallTime + recovery
-                case PlayerState.Dodging: return m.MoveSet.Dodge.TotalDuration + 0.1;
+                case PlayerState.Dodging: return LongestDodge(m) + 0.1;
                 case PlayerState.Healing: return m.Tuning.HealDuration + 0.1;
                 case PlayerState.Staggered: return 1.5;   // longest stagger (guard break 1.0 / parried 1.0)
                 default: return double.MaxValue;
             }
+        }
+
+        // The running dodge keeps the profile it started with (a switch mid-dodge doesn't change it): the longest of any element.
+        static double LongestDodge(PlayerCombatModel m)
+        {
+            double longest = m.MoveSet.Dodge.TotalDuration;
+            for (ElementId el = ElementId.Fire; el <= ElementId.Air; el++)
+            {
+                ElementMoveSet set = m.Loadout != null ? m.Loadout.Get(el) : null;
+                if (set != null && set.Dodge != null) longest = Math.Max(longest, set.Dodge.TotalDuration);
+            }
+            return Math.Max(longest, m.MoveSet.Aerial != null ? m.MoveSet.Aerial.AirDashDuration : 0f);
         }
 
         static bool Finite(float f)

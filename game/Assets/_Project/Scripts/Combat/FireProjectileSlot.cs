@@ -29,21 +29,31 @@ namespace VaatusRevenge
         public System.Action<HitReport> OnHit;
         public readonly List<int> PassedThrough = new List<int>(4); // fighters it flew through (dodged or ignored)
 
+        // An enemy bolt keeps the player's danger sense told when it will land, every frame (the estimate made when it was
+        // loosed goes stale as soon as the player moves).
+        public bool TracksDanger;
+        public bool DangerOffPath;      // the player is beside its path: its warning is called off for now
+        public IncomingStrike DangerStrike;
+
         public GameObject Root;
         public Transform RootTransform;
-        public GameObject FireBall;
+        public GameObject FireBall;      // the ball for Fire, Water's ice and Air's blast (its material is swapped)
+        public MeshRenderer BallRenderer;
         public GameObject Bolt;
+        public GameObject Rock;
         public TrailRenderer Trail;
 
         public bool IsFree => !Flying && !Fading;
 
-        public void CreateVisuals(Transform parent, Material fireMaterial, Material boltMaterial, Material trailMaterial)
+        public void CreateVisuals(Transform parent, Material fireMaterial, Material boltMaterial, Material rockMaterial, Material trailMaterial)
         {
             Root = new GameObject("Projectile");
             RootTransform = Root.transform;
             RootTransform.SetParent(parent, false);
             FireBall = GreyboxShapes.CreateVisual("FireBall", PrimitiveType.Sphere, RootTransform, fireMaterial, false);
+            BallRenderer = FireBall.GetComponent<MeshRenderer>();
             Bolt = GreyboxShapes.CreateVisual("Bolt", PrimitiveType.Cube, RootTransform, boltMaterial, false);
+            Rock = GreyboxShapes.CreateVisual("Rock", PrimitiveType.Cube, RootTransform, rockMaterial, true);
             Trail = Root.AddComponent<TrailRenderer>();
             Trail.sharedMaterial = trailMaterial;
             Trail.shadowCastingMode = ShadowCastingMode.Off;
@@ -56,22 +66,34 @@ namespace VaatusRevenge
             Root.SetActive(false);
         }
 
-        public bool HasVisuals => Root != null && Trail != null && FireBall != null && Bolt != null;
+        public bool HasVisuals => Root != null && Trail != null && FireBall != null && Bolt != null && Rock != null;
 
-        // Shows the right model at the launch point with a fresh trail.
-        public void ShowAt(Vector3 position, Vector3 direction, Gradient trailColors, float trailTime, float trailWidth)
+        // Shows the right model at the launch point with a fresh trail. ballMaterial: the ball's look for this visual
+        // (Fire, Water or Air; ignored for a bolt or a rock).
+        public void ShowAt(Vector3 position, Vector3 direction, Material ballMaterial, Material trailMaterial, Gradient trailColors,
+            float trailTime, float trailWidth)
         {
             Root.SetActive(true);
             RootTransform.SetPositionAndRotation(position, LookRotation(direction));
-            bool fire = Visual == ProjectileVisual.Fire;
-            FireBall.SetActive(fire);
-            Bolt.SetActive(!fire);
+            bool ball = Visual == ProjectileVisual.Fire || Visual == ProjectileVisual.WaterOrb || Visual == ProjectileVisual.AirBall;
+            FireBall.SetActive(ball);
+            Bolt.SetActive(Visual == ProjectileVisual.Bolt);
+            Rock.SetActive(Visual == ProjectileVisual.Rock);
+            if (ball && ballMaterial != null && BallRenderer.sharedMaterial != ballMaterial) BallRenderer.sharedMaterial = ballMaterial;
             float size = Mathf.Max(0.05f, Radius * 2f * VisualScale);
-            FireBall.transform.localScale = new Vector3(size, size, size);
+            // Water's ice dart is a sliver along its flight; the others are round.
+            FireBall.transform.localScale = Visual == ProjectileVisual.WaterOrb ? new Vector3(size * 0.45f, size * 0.45f, size * 1.6f) : new Vector3(size, size, size);
+            FireBall.transform.localRotation = Quaternion.identity;
             // The bolt is drawn much thinner than its hit radius on purpose: the radius is forgiving for gameplay.
             float length = 0.7f * VisualScale;
             Bolt.transform.localScale = new Vector3(0.04f * VisualScale, 0.04f * VisualScale, length);
             Bolt.transform.localPosition = new Vector3(0f, 0f, -length * 0.5f);
+            // The boulder fits inside its hit sphere (VisualScale under 1, J4-03), so a near miss still looks like one and no
+            // corner pokes through a body or the camera. Turned about the vertical only: a random tilt stood the cube on a
+            // corner, 1.5x taller than the hit. It tumbles end over end in flight (MoveVisual).
+            Rock.transform.localScale = new Vector3(size * 0.85f, size * 0.75f, size * 0.9f);
+            Rock.transform.localRotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+            if (trailMaterial != null && Trail.sharedMaterial != trailMaterial) Trail.sharedMaterial = trailMaterial;
             Trail.colorGradient = trailColors;
             Trail.time = trailTime;
             Trail.widthMultiplier = trailWidth;
@@ -79,14 +101,31 @@ namespace VaatusRevenge
             Trail.emitting = true;
         }
 
-        public void MoveVisual(float time)
+        public void MoveVisual(float time, float dt)
         {
             RootTransform.SetPositionAndRotation(Position, LookRotation(Velocity));
-            if (Visual == ProjectileVisual.Fire)
+            float size = Mathf.Max(0.05f, Radius * 2f * VisualScale);
+            switch (Visual)
             {
-                // A slight flicker so the fireball reads as flame rather than a ball.
-                float size = Mathf.Max(0.05f, Radius * 2f * VisualScale) * (1f + 0.1f * Mathf.Sin(time * 50f));
-                FireBall.transform.localScale = new Vector3(size, size, size);
+                case ProjectileVisual.Fire:
+                {
+                    // A slight flicker so the fireball reads as flame rather than a ball.
+                    float flicker = size * (1f + 0.1f * Mathf.Sin(time * 50f));
+                    FireBall.transform.localScale = new Vector3(flicker, flicker, flicker);
+                    break;
+                }
+                case ProjectileVisual.AirBall:
+                {
+                    // A ball of wind: it swirls and breathes.
+                    float breathe = size * (1f + 0.15f * Mathf.Sin(time * 35f));
+                    FireBall.transform.localScale = new Vector3(breathe, breathe * 0.85f, breathe);
+                    FireBall.transform.localRotation *= Quaternion.AngleAxis(900f * dt, Vector3.forward);
+                    break;
+                }
+                case ProjectileVisual.Rock:
+                    // A thrown boulder tumbles.
+                    Rock.transform.localRotation *= Quaternion.AngleAxis(420f * dt, Vector3.right);
+                    break;
             }
         }
 
@@ -95,6 +134,7 @@ namespace VaatusRevenge
         {
             Flying = false;
             OnHit = null;
+            TracksDanger = false;
             if (!HasVisuals)
             {
                 Fading = false;
@@ -102,6 +142,7 @@ namespace VaatusRevenge
             }
             FireBall.SetActive(false);
             Bolt.SetActive(false);
+            Rock.SetActive(false);
             Trail.emitting = false;
             Fading = true;
             FadeRemaining = Trail.time;
@@ -112,6 +153,7 @@ namespace VaatusRevenge
             Flying = false;
             Fading = false;
             OnHit = null;
+            TracksDanger = false;
             if (Trail != null)
             {
                 Trail.emitting = false;

@@ -7,8 +7,9 @@ using VaatusRevenge.Core;
 namespace VaatusRevenge.CombatSim
 {
     // Robustness: long runs of random input (mashing, long holds, sticks near the dead zone, huge mouse deltas,
-    // lock-on spam, shoulder swaps) at 30/60/144 fps and with dt spikes and paused frames, plus preset swaps
-    // mid-move (F5/F6), respawns and enemy resets, against the mixed group and a swinging dummy. Every frame is
+    // lock-on spam, shoulder swaps, element switches, dodges of every kind) at 30/60/144 fps and with dt spikes and
+    // paused frames, plus preset swaps mid-move (F5/F6), respawns and enemy resets, against the mixed group and a
+    // swinging dummy. Every frame is
     // checked by Invariants (finite and in-range numbers, nothing stuck, balanced events, telegraphed strikes,
     // consistent attack tokens).
     public static class FuzzScenario
@@ -17,7 +18,7 @@ namespace VaatusRevenge.CombatSim
         {
             int framesPer = o.Quick ? 60000 : 150000;
             Out.Heading("Fuzz: random input, " + framesPer + " frames per run");
-            var t = new Table("Preset", "Frame timing", "Game time", "Violations", "Longest i-frames", "Invulnerable share", "Oldest buffered press run",
+            var t = new Table("Preset", "Frame timing", "Input", "Game time", "Violations", "Longest i-frames", "Invulnerable share", "Oldest press still waiting in the buffer",
                 "Dodges started/ended", "Player hitboxes opened/closed", "Enemy hitboxes opened/closed", "Deaths / resets", "Max token holders");
             var allViolations = new List<string>();
             foreach (Preset p in o.Presets)
@@ -27,7 +28,7 @@ namespace VaatusRevenge.CombatSim
                     var r = RunOne(o, p, timing, framesPer, o.Seed);
                     Invariants inv = r.inv;
                     string viol = inv.ViolationCounts.Count == 0 ? "none" : string.Join(", ", inv.ViolationCounts.Select(kv => kv.Key + " ×" + kv.Value));
-                    t.Row(p, timing, Out.N(r.gameSeconds / 60.0, 1) + " min", viol, Out.N(inv.LongestInvulnerable, 3) + " s",
+                    t.Row(p, timing, RealPadRun(timing) ? "pad (chords)" : "keys", Out.N(r.gameSeconds / 60.0, 1) + " min", viol, Out.N(inv.LongestInvulnerable, 3) + " s",
                         Out.Pct(r.invulnerableShare), Out.N(inv.MaxBufferedAge, 3) + " s (" + inv.MaxBufferedAgeCommand + ")",
                         inv.DodgesStarted + "/" + inv.DodgesEnded, inv.PlayerActiveOpened + "/" + inv.PlayerActiveClosed,
                         inv.EnemyActiveOpened + "/" + inv.EnemyActiveClosed, r.deaths + " / " + r.resets, inv.MaxTokenHolders);
@@ -41,22 +42,28 @@ namespace VaatusRevenge.CombatSim
             foreach (string v in allViolations) Out.Line("- " + v);
         }
 
+        // Every run but plain 60 fps plays the buttons as a real pad: the faces and RB go through PadChordReader, and RB +
+        // a face button lands up to 80 ms apart in either order (BH-04). Plain 60 fps keeps the keyboard path covered.
+        static bool RealPadRun(string timing) => timing != "60 fps";
+
         sealed class RandomPad
         {
             readonly DeterministicRandom r;
-            readonly double[] until = new double[9];
+            readonly double[] until = new double[12];
             double nextStick, nextLook;
             Vector2 stick, look;
             bool lookMouse;
 
             public RandomPad(int seed) { r = new DeterministicRandom(seed); }
 
-            static readonly float[] StartChance = { 0.08f, 0.02f, 0.04f, 0.02f, 0.03f, 0.015f, 0.004f, 0.004f, 0.003f };
+            static readonly float[] StartChance = { 0.08f, 0.02f, 0.04f, 0.02f, 0.03f, 0.015f, 0.004f, 0.004f, 0.003f, 0.02f, 0.012f, 0.012f };
 
-            public Pad Next(double now)
+            // dodgeStick(kind): the stick for a dodge of that kind against the nearest enemy (0 slip in, 1 evade out, 2 side
+            // slip, 3 neutral), so every Build 05 dodge kind comes up, not just whatever the random stick happens to say.
+            public Pad Next(double now, Func<int, Vector2> dodgeStick = null)
             {
                 var pad = new Pad();
-                for (int b = 0; b < 9; b++)
+                for (int b = 0; b < until.Length; b++)
                 {
                     if (now < until[b]) { Set(ref pad, b); continue; }
                     if (r.NextFloat() < StartChance[b])
@@ -64,6 +71,11 @@ namespace VaatusRevenge.CombatSim
                         double len = r.Chance(0.8f) ? r.Range(0.01f, 0.15f) : r.Range(0.15f, 1.6f);
                         until[b] = now + len;
                         Set(ref pad, b);
+                        if (b == 2 && dodgeStick != null && r.Chance(0.6f))
+                        {
+                            stick = dodgeStick(r.Range(0, 4));
+                            nextStick = now + len + 0.1;
+                        }
                     }
                 }
                 if (now >= nextStick)
@@ -86,7 +98,7 @@ namespace VaatusRevenge.CombatSim
                 pad.Look = look;
                 pad.LookIsMouse = lookMouse;
                 if (r.Chance(0.003f)) pad.SwitchTarget = r.Chance(0.5f) ? 1 : -1;
-                if (r.Chance(0.002f)) pad.Element = (ElementId)r.Range(1, 5);
+                if (r.Chance(0.01f)) pad.Element = (ElementId)r.Range(1, 5);     // RB + a face button (Build 05: mid-string switches)
                 return pad;
             }
 
@@ -103,6 +115,9 @@ namespace VaatusRevenge.CombatSim
                     case 6: p.Heal = true; break;
                     case 7: p.LockOn = true; break;
                     case 8: p.SwapShoulder = true; break;
+                    case 9: p.ZipStrike = true; break;
+                    case 10: p.AbilityNorth = true; break;
+                    case 11: p.AbilityEast = true; break;
                 }
             }
         }
@@ -119,13 +134,28 @@ namespace VaatusRevenge.CombatSim
             s.World.AddEnemy(EnemyTuning.CreateCrossbowman(), new Vector3(-13f, 2.5f, 12f), 135f, seed + 4);
             s.World.AddEnemy(EnemyTuning.CreateSparringDummy(), new Vector3(0f, 0f, -9f), 180f, seed + 5, dummySwings: true);
             var rp = new RandomPad(seed * 7 + timing.Length);
+            if (RealPadRun(timing)) s.Input.UseRealPad(seed * 11 + timing.Length);
             var rng = new DeterministicRandom(seed * 13 + 5);
-            Session.MakePreset(Preset.Fluid, out PlayerTuning ft, out ElementMoveSet fm);
-            Session.MakePreset(Preset.Punishing, out PlayerTuning pt, out ElementMoveSet pm);
+            Session.MakePreset(Preset.Fluid, out PlayerTuning ft, out ElementLoadout fm);
+            Session.MakePreset(Preset.Punishing, out PlayerTuning pt, out ElementLoadout pm);
             int deaths = 0, resets = 0;
             double deadSince = -1;
             double invulnerable = 0;
             var cam = new List<string>();
+            Vector2 DodgeStick(int kind)
+            {
+                SimEnemy near = null;
+                float best = float.MaxValue;
+                foreach (SimEnemy e in s.World.Enemies)
+                {
+                    float d = Vector3.Distance(e.Feet, s.Player.Feet);
+                    if (e.IsAlive && d < best) { best = d; near = e; }
+                }
+                if (near == null || kind == 3) return Vector2.Zero;
+                Vector3 to = Directions.SafeNormalize(Directions.Flatten(near.Feet - s.Player.Feet), Vector3.UnitZ);
+                Vector3 dir = kind == 0 ? to : kind == 1 ? -to : Directions.RightFromYaw(Directions.YawOf(to)) * (rng.Chance(0.5f) ? 1f : -1f);
+                return s.StickToward(dir);
+            }
             for (int f = 0; f < frames; f++)
             {
                 float dt;
@@ -143,7 +173,7 @@ namespace VaatusRevenge.CombatSim
                 }
                 bool pausedFrame = timing.Contains("pauses") && rng.NextFloat() < 0.01f;
                 s.World.Time.Paused = pausedFrame;
-                s.Step(rp.Next(s.World.RealTime), dt);
+                s.Step(rp.Next(s.World.RealTime, DodgeStick), dt);
                 if (s.Model.IsInvulnerable) invulnerable += s.World.LastGameDt;
 
                 // SandboxDirector behaviour: respawn a second after death, reset everyone when all are dead, F5/F6.

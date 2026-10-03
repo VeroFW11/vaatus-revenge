@@ -15,7 +15,7 @@ namespace VaatusRevenge
     // Make one with TrainingDummy.Spawn (edit mode or runtime); every dummy registers in TrainingDummy.All.
     [DefaultExecutionOrder(10)]
     [DisallowMultipleComponent]
-    [RequireComponent(typeof(CharacterController), typeof(Combatant), typeof(GreyboxRig))]
+    [RequireComponent(typeof(CharacterController), typeof(Combatant), typeof(HumanoidBody))]
     public class TrainingDummy : EnemyFighter
     {
         static readonly List<TrainingDummy> all = new List<TrainingDummy>();
@@ -28,15 +28,14 @@ namespace VaatusRevenge
         public static IReadOnlyList<TrainingDummy> All => all;
 
         // Builds a complete dummy at position/yaw: layer Enemy, CharacterController (so you bump into it),
-        // Combatant (Team.Enemy, named from the tuning), straw-tan grey-box body with a practice stick, and a
+        // Combatant (Team.Enemy, named from the tuning), straw-man body with a practice stick, and a
         // health bar with the combo readout. Works in edit mode and at runtime.
         public static TrainingDummy Spawn(Transform parent, Vector3 position, float yaw, EnemyTuningAsset tuning, bool swings)
         {
             EnemyTuning data = tuning != null ? tuning.Tuning : null;
             EnemyFeedbackSettings feedback = tuning != null ? tuning.Feedback : null;
             string displayName = EnemyBuilder.NameFor(data, EnemyTuning.CreateSparringDummy());
-            GameObject go = EnemyBuilder.Create(parent, position, yaw, displayName, EnemyBuilder.ColorFor(EnemyArchetype.Dummy, feedback), true,
-                EnemyBuilder.WeaponLengthFor(feedback));
+            GameObject go = EnemyBuilder.Create(parent, position, yaw, displayName, EnemyBuilder.LookFor(EnemyArchetype.Dummy, feedback));
             TrainingDummy dummy = go.AddComponent<TrainingDummy>();
             dummy.Configure(tuning, swings);
             EnemyBuilder.Finish(go);

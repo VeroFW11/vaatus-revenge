@@ -2,9 +2,11 @@
 
 > **Status:** being built (28 Sep 2026) by a team of Claude agents while David is away. This is the single source of truth the agents build from. Starting numbers here are **first guesses to tune by playtesting**, not decisions.
 
-The goal is a grey-box sandbox where you can **fight with firebending and judge whether it's fun**: Elden Ring's move set plus jump and sprint attacks, one element-flavoured dodge, fluid Spider-Man-2-style flow, a lock-on camera, and a few enemies built to test dodging, guarding and pressure. Everything is capsules and cubes; the point is timing and feel.
+The goal is a grey-box sandbox where you can **fight with firebending and judge whether it's fun**: Marvel's Spider-Man 2 controls and free-flow targeting (David's call, 29 Sep: attacks aim where you point, a zip strike to far enemies, tap to parry, no lock-on needed), with the Elden Ring-style move set, jump and sprint attacks, one element-flavoured dodge, an optional lock-on, and a few enemies built to test dodging, parrying and pressure. Everything is capsules and cubes; the point is timing and feel.
 
-**How David and Jeremy will use it:** pull the branch, open Unity, click **Vaatu's Revenge ▸ Build Fire Combat Sandbox**, press Play.
+**How David and Jeremy will use it:** pull the branch, open Unity, click **Vaatu's Revenge ▸ Build Combat Sandbox**, press Play (or **Play Combat Tutorial** to start in the tutorial).
+
+> **Build 05 (1 Oct 2026)** turned this into a four-element prototype: Water, Earth and Air join Fire, with rhythm combos, the pause finisher, switching element mid-string and MIX, the Spider-Man 2 dodge (the combo survives it; dodge strike), danger sense and an 11-step in-game tutorial. Its rules, numbers and move tables are in the **[Build 05 spec](Build-05-Spec.md)**; the controls below are updated to match. The rest of this document describes the Fire build and still holds where Build 05 doesn't say otherwise. Plain-words guide: [How to play](How-To-Play.md).
 
 ---
 
@@ -12,23 +14,30 @@ The goal is a grey-box sandbox where you can **fight with firebending and judge 
 
 ### Controls
 
-| Action | Gamepad (Xbox / PlayStation) | Keyboard + mouse |
-|---|---|---|
-| Move | Left stick | WASD |
-| Camera | Right stick | Mouse |
-| Swap camera shoulder (hold) | Hold L3 (left-stick click) | Hold V |
-| Light attack (3-hit chain) | RB / R1 | Left mouse |
-| Heavy attack (hold to charge, release on the flash for fa jin) | RT / R2 | Right mouse |
-| Dodge (tap) / Sprint (hold) | B / Circle | Left Shift |
-| Jump | A / Cross | Space |
-| Guard (hold) / Deflect (press just before a hit lands) | LB / L1 | Q |
-| Fire Blast (ranged skill) | LT / L2 | E |
-| Drink spirit water (heal) | X / Square | R |
-| Lock on / off | R3 | Middle mouse or Tab |
-| Switch target | Flick right stick while locked | Mouse wheel, or Z / C |
-| Element select | D-pad (Up = Fire; others "not learned yet") | 1-4 |
+Spider-Man 2's layout (David, 29 Sep), with the colour-matched elements (Build 05, 1 Oct). The shoulder buttons double as modifiers, the way Spider-Man 2 does abilities (hold LB + a face button) and gadgets (hold RB + a face button). In-game, **F1** shows these (page 2) after a page of combos (page 1).
 
-Sandbox keys (keyboard): **F1** controls overlay, **F3** debug panel (state, frame data, buffered input, i-frames), **F2** slow motion (0.25x) for studying moves, **F5** Fluid preset, **F6** Punishing preset, **F4** respawn player, **T** reset enemies, **Esc** release the mouse / pause (R is Heal).
+| Button | Action | Keyboard + mouse |
+|---|---|---|
+| Left stick / right stick | Move / camera. Flick the right stick to change target while locked on | WASD / mouse; change target: mouse wheel or Z / C |
+| **X** | Attack. Tap in rhythm for the 5-hit string: press so X lands with each hit (as the gold ring touches the circle) for faster, harder hits. **X X (wait for the blue circle) X X** = pause finisher. In the air: the air string | Left mouse |
+| Hold **X** | Launcher (throws the enemy up, you follow) | Hold left mouse |
+| **Y** | Zip strike to a far enemy (keeps your combo going) | F |
+| **B** | Tap: dodge (the stick decides: toward the enemy = slip in, away = evade out, sideways = side-step, none = a safe side-step when something is about to hit you). Hold: sprint (on Fluid the press dodges first; from a run, with no lock-on and nothing incoming, that dash keeps your heading). In the air: air dash. **X late in a dodge = dodge strike** | Left Shift |
+| **A** | Jump | Space |
+| Tap **LB** | Parry. Earth only: hold LB to block | Q |
+| Tap **RB** | Ranged skill of the current element (fires on release) | Right mouse |
+| Hold **LB** + X / Y / B | Charged fa jin heavy (in the air: plunge) / mid-range ability / close all-round ability | Hold Q + left mouse / F / Left Shift |
+| Hold **RB** + B / X / A / Y | Switch to **Fire (B, red) / Water (X, blue) / Earth (A, green) / Air (Y, yellow)**: the button's colour is the element. Mid-string it is a **switch strike**: the next hit comes out in the new element, a little harder | 1 Fire, 2 Water, 3 Earth, 4 Air |
+| D-pad down | Heal (spirit water) | R |
+| R3 / L3 | Lock-on (optional) / swap camera shoulder (hold) | Tab or middle mouse / hold V |
+| **View** | Sandbox: start the tutorial; while it runs, tap to skip a step, hold 1 s to quit | F7 starts or quits, F8 skips a step |
+
+- **Ability slots:** LB + X = the element's charged heavy (Fire: Fa Jin Palm), LB + Y = its mid-range ability (Fire Whip), LB + B = its close all-round ability (Flame Wheel). LB + A is empty and still jumps.
+- **The ranged skill fires on release** so RB can also be the element modifier. A tap longer than 0.35 s (`PlayerInputReader.skillTapMaxTime`) counts as a cancelled element pick and fires nothing.
+- **Element buttons** live in `PlayerInputReader`'s `ElementButtonLayout` (Inspector on `Systems`), so the layout can be changed without code. Before Build 05 it was Y Fire, B Water, A Earth, X Air; David chose the colour-matched layout on 1 Oct so the button tells you the element.
+- **Defence style is per element** (`GuardSettings.Style`): Fire, Water and Air are **parry only** (Spider-Man 2); Earth is `BlockAndParry` (hold to block, press on time to deflect).
+
+Sandbox keys (keyboard): **F1** combos and controls overlay (press again for page 2, a third time to close), **F3** debug panel (state, frame data, buffered input, i-frames), **F2** slow motion (0.25x) for studying moves, **F5** Fluid preset, **F6** Punishing preset (the whole four-element loadout swaps), **F7** tutorial start / quit, **F8** skip a tutorial step, **F4** respawn player, **T** reset enemies, **Esc** release the mouse / pause (R is Heal).
 
 ### Moves (Fire, based on Northern Shaolin)
 
@@ -36,13 +45,18 @@ Northern Shaolin is long, extended strikes, powerful kicks and fast footwork wit
 
 | Move | Input | Idea |
 |---|---|---|
-| Flame Jab → Flame Cross → Dragon Tail Kick | Light x3 | Quick, fire-extended punches, then a wide spinning kick finisher |
-| Fa Jin Palm | Heavy (hold) | Charge, then release. Releasing inside the **sweet spot** (the fighter flashes) gives a fa jin burst: huge damage and stagger. Tests the open question "where does fa jin fit?" as a timing reward |
-| Flying Fire Kick | Light while sprinting | Long lunging kick that closes distance |
-| Falling Axe Kick | Light or Heavy in the air | Drops fast, bursts a ring of fire on landing |
+| Flame Jab → Flame Cross → Rising Snap Kick → Dragon Tail Kick → Phoenix Palm | Attack x5 | Lead and rear punches, a chambered front snap kick (tan tui), a spinning kick, then a double-palm push that throws a cone of fire (4.5 m). Loops back to the jab |
+| Rising Dragon Kick (launcher) | Hold attack | Throws the enemy up; you rise with it |
+| Sky Jab → Crescent Flame Kick → Tornado Slam Kick | Attack in the air | Each hit keeps you both up; the tornado kick slams the enemy down into a knockdown |
+| Fire Whip | LB + Y | Mid range: a sweeping lash of flame, 6.5 m, 110° |
+| Flame Wheel | LB + B | Close: a low spinning sweep ringed with fire, 3.4 m all round |
+| Fa Jin Palm | Hold LB + X (ability slot) | Charge, then release. Releasing inside the **sweet spot** (the fighter flashes) gives a fa jin burst: huge damage and stagger. Tests the open question "where does fa jin fit?" as a timing reward |
+| Flying Fire Kick | Attack while sprinting | Long lunging kick that closes distance |
+| Flame Step Strike | Zip strike | Fire from the feet carries you across up to 14 m into a flying kick (Spider-Man 2's web strike). Needs a target where you're aiming; with none, nothing happens and it costs nothing |
+| Falling Axe Kick | Attack or Fa Jin in the air | Drops fast, bursts a ring of fire on landing |
 | Fire Blast | Skill | Ranged fireball, costs more stamina |
 | Flame Step (dodge) | Dodge tap | A short fire-assisted dash with invincibility frames. Can cancel into attacks. A **perfect dodge** (the hit would have landed in the first moments of the dash) slows time briefly, gives Momentum and opens a counter window |
-| Flame Guard / Flame Deflect | Guard | Hold to block from the front (costs stamina per hit). Pressing guard just before a hit lands deflects it and staggers the attacker |
+| Flame Parry | Parry | Tap just before a hit lands to deflect it (any direction) and stagger the attacker. Fire has no block: a mistimed parry means you take the hit, and unparryable attacks must be dodged |
 | Spirit Water | Heal | 3 charges, slow to drink, punishable, like Elden Ring's flask |
 
 ### Enemies
@@ -88,17 +102,23 @@ Seconds unless noted; distances in metres. At 60 fps, 0.1 s = 6 frames. All of t
 **Fire Blast:** startup 0.22 · recovery 0.30 · stamina 18 · speed 30 · dmg 13 · poise 10 · range 26.
 **Flame Step (Fluid):** 4.2 m over 0.30 · i-frames 0.02-0.24 · stamina 6 · cancel into attack after 0.14 · next dodge allowed after 0.28 (**chained dodges must leave an i-frame gap**, ≥ 0.05 s, so dodge-spam isn't permanent invincibility) · perfect window 0.12 · reward: 0.35x slow-mo for 0.35 s (real time), +25 Momentum, 0.8 s counter window at x1.5 damage · no stick input = short backstep (2.2 m).
 **Flame Step (Punishing):** 16 stamina · 0.36 duration · i-frames 0.04-0.30 · no attack cancel until the end + 0.12 recovery · next dodge after 0.48 · no perfect reward · triggers on release · regen 38/s after 0.65 s (1.1 s when emptied; report 02 NEW-02) · light attacks cost 13, heavy 28 · buffer 0.2.
-**Guard:** front arc 160° · blocks all damage, pays GuardStaminaDamage in stamina · guard break (not enough stamina) = 1.0 s stagger · move at 45% speed while guarding. **Deflect:** guard pressed ≤ 0.15 before a parryable hit → attacker staggered 1.3 s, +25 Momentum, no stamina cost. A deflect press that catches nothing locks deflect out for 0.35 s (no mashing).
+**Parry (Fire, `GuardSettings.Style = ParryOnly`):** a press opens the deflect window below over 360° and the stance drops by itself when it closes (holding does nothing). Anything it doesn't catch lands cleanly.
+**Guard (only for an element with `Style = BlockAndParry`):** front arc 160° · blocks all damage, pays GuardStaminaDamage in stamina · guard break (not enough stamina) = 1.0 s stagger · move at 45% speed while guarding. **Deflect:** guard pressed ≤ 0.15 before a parryable hit → attacker staggered 1.3 s, +25 Momentum, no stamina cost. A deflect press that catches nothing locks deflect out for 0.35 s (no mashing).
 **Heal:** 3 charges · 1.0 s action · heals 45 HP at 0.55 s (charge used only then) · 35% move speed while drinking.
 **Momentum:** 0-100 · +8 light hit, +14 heavy/sprint/plunge, +20 fa jin, +25 perfect dodge or deflect · starts draining 1.6 s after the last gain at 20/s · drains 35/s while locked on and moving away from the target · damage x1.0 at 0 up to x1.4 at 100.
 **Hitstop** (freeze-frame on impact): light 0.035, finisher 0.06, heavy 0.08, fa jin 0.2.
 **Attack tracking:** attacks turn towards the stick (or the lock-on target) quickly during startup, then commit. Enemies do the same: **they stop tracking when their active frames start**, which is what makes dodging possible.
-**Soft lock:** when not locked on, an attack aims at the nearest enemy within 4 m and 60° of where you're aiming.
+**5-hit string:** Jab 0.12/0.10/0.30 dmg 8 · Cross 0.13/0.10/0.32 dmg 9 · Snap Kick 0.14/0.10/0.32 dmg 10, range 2.9 · Dragon Tail Kick 0.18/0.12/0.40 dmg 13, arc 200 · Phoenix Palm 0.22/0.12/0.50 dmg 18, range 4.5, arc 90. Poise over the whole string is 43, just under a soldier's 45, so one string never staggers a fresh soldier on its own.
+**Aerial (`ElementMoveSet.Aerial`):** hold attack 0.25 s = launcher (dmg 9, LaunchSpeed 11 m/s, you rise at 9.5 m/s when the kick lands) · air strikes lift you and the target 3.2 m/s and gravity drops to 30% while one runs · up to 6 air strikes and 1 air dash (3.4 m, 0.22 s, invincible for 0.14 s) per jump · Tornado Slam Kick slams at 16 m/s.
+**Juggled enemies (`EnemyTuning`):** launched gravity 22 m/s² · air hits stop lifting after 3.5 s · landing = knockdown 0.9 s, then up (stagger immunity follows) · air hits never count toward the break-out · dummies can't be launched (they're planted).
+**Fire Whip:** startup 0.24 · active 0.14 · recovery 0.45 · dmg 12 · range 6.5 · arc 110 · stamina 18. **Flame Wheel:** 0.20 / 0.20 / 0.45 · dmg 14 · poise 22 · range 3.4 all round · knockback 1.6 · stamina 20.
+**Soft lock and free-flow lunge:** when not locked on, an attack aims at the nearest enemy within 7 m and 60° of where you're aiming (the stick, else your facing). A light attack at a target out of reach lunges up to 4.5 m further than its own step (`PlayerTuning.GapCloseDistance`), straight at the target, stopping 0.3 m short of it.
+**Flame Step Strike (zip strike):** target within 14 m, 50° of where you're aiming and 3 m up or down (`ElementMoveSet.Zip`) · dash covers the whole gap during startup 0.30 + active 0.12 · recovery 0.38 · dmg 12 · poise 18 · range 2.4 · arc 90 · stamina 14 (Punishing 20).
 
 **Camera (over the shoulder, like Marvel's Spider-Man 2; David's call):** shoulder offset 0.55 m to the right, so the fighter sits left of centre (0.35 while locked on), eased over 0.2 · hold L3 / V for 0.25 to swap shoulders (one swap per hold, so an accidental stick click while sprinting does nothing); a wall on the shoulder side (less than half the offset fits) swaps automatically, back once that side has been clear for 1.5 · distance 3.2 free / 4.0 locked · min 1.0 · pivot height 1.6 · combat pull-back: not locked on and a living foe within 8 m → ease out 0.9 m and 0.2 m higher (smooth time 0.4), back in 1.5 after the last foe leaves the radius · pitch -40 (up) to 65 (down), default 12 · stick 200°/s yaw, 140°/s pitch, response curve exponent 1.6 · mouse 0.12°/pixel · invert Y off · lock-on yaw smoothing 0.12 and at most 540°/s (a target passing overhead can't whip the view round), aimed from the shoulder so the target sits on the centre line and the fighter off to the side (correction capped at 15° at melee range); pitch aims at ~18° plus framing so a tall or elevated target stays on screen · collision radius 0.25, probed pivot → up → shoulder → back so the shoulder side can't clip a wall; the shoulder offset must also fit at the camera's end, so walking past a wall's end doesn't drag the camera into it. Walls touching the camera pull it in instantly (never inside geometry) and it eases back out over ~0.35; a pillar that only blocks the view waits 0.1, then glides in over ~0.15 up to its far side (only its thickness is skipped in one frame); a 0.2 m fatter look-ahead probe starts that glide before a pillar touches the camera, never closer than 1.1; a wall closer behind than 1.1 makes the camera rise and look down over the head (up to 85°, never moving faster than 8 m/s) instead of sliding into it (report 02 NEW-03). While the camera turns or travels, 3 sweep probes look 0.3 ahead along the swing (at most 60° round, from where the shoulder point is heading), so a pillar face about to be swept into the camera starts the glide early, never closer than 0.6 on its own (report 02 round 3) · FOV 60 (+5 while sprinting). **Centred preset** for comparison (`CameraTuning.CreateCentred()`, the first prototype's Elden Ring framing): offsets 0, distance 4.0 / 4.6, pivot 1.55, no pull-back.
 **Lock-on:** acquire within 22 m, prefer targets near the centre of the screen · break beyond 30 m or after 1.2 s without line of sight · flick threshold 0.75, 0.3 s between switches · on a kill, move to the next target.
 
-**Dao Soldier:** HP 110 · poise 35 (regens after 2 s) · walk 2.0, chase 4.2, strafe 1.6 · attacks: Quick Slash (startup 0.50, active 0.12, recovery 0.55, dmg 12, range 2.4, arc 100) · Heavy Overhead (0.95 / 0.14 / 0.95, dmg 26, poise 40, range 2.6, arc 60) · Double Slash (two slashes 0.35 apart) · Delayed Thrust (1.15 with a visible pause, range 3.2, arc 30, dmg 18) · 1.2-2.2 between attacks, circles for 0.8-2.0 · at most 2 enemies attacking at once · **Break-Out** (anti-mash rule, `EnemyTuning.BreakOut`, report 02 round 3): 3 clean hits within 1.2 while not staggered arm an armoured counter. Hits on its recovery count only if its swing landed on you first (a trade, not a punish). It needs a token, waits while another enemy is attacking, gives up after 0.6 of waiting and has a 2 cooldown, measured from the break-out's start, that always holds: hits on the break-out itself (wind-up, shove, recovery) never count, and hits after it ends are banked but only arm it once the cooldown is over and they are still inside the 1.2 window (so break-outs can't chain into a shove-lock). It may cut short a wind-up that isn't armoured yet, and refills its poise. Break-Out Shove: violet telegraph 0.6, hyper armour from frame 0, active 0.12, recovery 0.35, dmg 30, poise 35, knockback 2.0, arc 160, reach 2.1, deflectable and blockable. If it lands, the next attack follows at once. `BreakOut.Enabled` switches it off.
+**Dao Soldier:** HP 180 · poise 45 (regens after 2 s) · walk 2.0, chase 4.2, strafe 1.6 · attacks: Quick Slash (startup 0.50, active 0.12, recovery 0.55, dmg 12, range 2.4, arc 100) · Heavy Overhead (0.95 / 0.14 / 0.95, dmg 26, poise 40, range 2.6, arc 60) · Double Slash (two slashes 0.35 apart) · Delayed Thrust (1.15 with a visible pause, range 3.2, arc 30, dmg 18) · 1.2-2.2 between attacks, circles for 0.8-2.0 · at most 2 enemies attacking at once · **Break-Out** (anti-mash rule, `EnemyTuning.BreakOut`, report 02 round 3): 6 clean hits within 2.0 while not staggered arm an armoured counter (was 3 in 1.2 for the old 3-hit chain; now the whole 5-hit string lands and looping into a 6th hit gets shoved). Once armed it braces: poise can't break until the shove has happened (report 04, W-01). Soldier poise is 52 so the string plus a jab doesn't stagger first. Hits on its recovery count only if its swing landed on you first (a trade, not a punish). It needs a token, waits while another enemy is attacking, gives up after 0.6 of waiting and has a 2 cooldown, measured from the break-out's start, that always holds: hits on the break-out itself (wind-up, shove, recovery) never count, and hits after it ends are banked but only arm it once the cooldown is over and they are still inside the 2.0 window (so break-outs can't chain into a shove-lock). It may cut short a wind-up that isn't armoured yet, and refills its poise. Break-Out Shove: violet telegraph 0.6, hyper armour from frame 0, active 0.12, recovery 0.35, dmg 30, poise 35, knockback 2.0, arc 160, reach 2.1, deflectable and blockable. If it lands, the next attack follows at once. `BreakOut.Enabled` switches it off.
 **Crossbowman:** HP 70 · poise 20 · keeps 8-14 m away, backs off at 3.0 when you're within 5 m · never strays more than 2 m from where it spawned (LeashRadius), so the platform one stays on its 6 m block with room for its body (report 02 NEW-06) · Aimed Shot (startup 0.8, bolt 32 m/s, dmg 14) · Repeater Burst (startup 1.0, then 3 bolts 0.2 apart, dmg 7 each).
 **Sparring Dummy:** unlimited health (refills after 3 s without hits) · optional swing every 2.5 s (startup 0.6, dmg 5).
 
@@ -206,7 +226,7 @@ Names and signatures below are requirements so phase-2 and phase-3 agents can bu
 - `PlayerController : MonoBehaviour, IDamageReceiver` (requires `CharacterController`, `Combatant`, `GreyboxRig`): owns a `PlayerCombatModel`; each Update reads `PlayerInputReader.Instance.Frame`, camera yaw, lock target; ticks the model; one `CharacterController.Move`; turns to the facing yaw; turns events into hit queries, projectiles, effects, rig animation, hitstop, camera shake and gamepad rumble (always reset rumble on disable, death and quit). HUD getters (Health01, Stamina01, Momentum01, HealCharges, state and move names, debug info). `void Respawn(Vector3 position, float yaw)`, `void ApplyTuning(PlayerTuningAsset tuning, MoveSetAsset moveSet)`, `string PresetName`.
 - `PlayerTuningAsset` and `MoveSetAsset` (`ScriptableObject`s with `[CreateAssetMenu]`, wrapping `PlayerTuning` / `ElementMoveSet`).
 - **Factory:** `public static PlayerController Spawn(Transform parent, Vector3 position, float yaw, PlayerTuningAsset tuning, MoveSetAsset moveSet)` on `PlayerController`: builds the whole player GameObject (layer Player, `CharacterController` sized for a 1.8 m fighter with its pivot at the feet, `Combatant` as Team.Player with an aim point child at chest height, `GreyboxRig` built in the player colour). Works in edit mode (called by the sandbox builder, so it can't rely on Awake) and at runtime.
-- D-pad element select: Fire is the only learned element; other directions show a "not learned yet" message (event or property the HUD reads).
+- Element select (RB + face button / 1-4): Fire is the only learned element; other directions show a "not learned yet" message (event or property the HUD reads).
 
 ### enemy-engineer (phase 2, `Scripts/Enemies`)
 
@@ -221,7 +241,7 @@ Names and signatures below are requirements so phase-2 and phase-3 agents can bu
 
 Builds against the factory and HUD APIs above while they're being written, then does the final integration pass once they land.
 
-- Menu **Vaatu's Revenge ▸ Build Fire Combat Sandbox**: creates missing tuning assets in `Assets/_Project/Tuning/` (Fluid and Punishing player + fire move sets, camera, three enemies) without overwriting edited ones, materials, the arena, player, camera rig, input reader, lock-on, enemies at the spawn points, HUD and director; saves `Assets/_Project/Scenes/FireCombatSandbox.unity`, adds it to Build Settings, opens it. Asks before replacing an existing scene. Also **Open Fire Combat Sandbox**.
+- Menu **Vaatu's Revenge ▸ Build Fire Combat Sandbox** (renamed **Build Combat Sandbox** in Build 05): creates missing tuning assets in `Assets/_Project/Tuning/` (Fluid and Punishing player + fire move sets, camera, three enemies) without overwriting edited ones, materials, the arena, player, camera rig, input reader, lock-on, enemies at the spawn points, HUD and director; saves `Assets/_Project/Scenes/FireCombatSandbox.unity`, adds it to Build Settings, opens it. Asks before replacing an existing scene. Also **Open Fire Combat Sandbox** (now **Open Combat Sandbox**).
 - `CombatHud` (OnGUI): health, stamina, Momentum, heal charges, element, charge meter with the sweet-spot mark, target health, preset name, F1 controls overlay, F3 debug panel.
 - `SandboxDirector`: the sandbox keys from section 1, death screen and auto-respawn.
 

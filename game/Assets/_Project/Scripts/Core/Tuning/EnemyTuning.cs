@@ -11,6 +11,11 @@ namespace VaatusRevenge.Core
     [Serializable]
     public class EnemyTuning
     {
+        // Which version of the game's enemy numbers this was saved with (the sandbox builder offers to update an asset
+        // whose DataVersion is behind). A field missing from an old asset keeps its initialiser, so it reads 0.
+        public int DataVersion = 0;
+        public const int CurrentDataVersion = 1;     // 1: Build 05 verify round 7 (Delayed Thrust can't be parried: danger sense's red)
+
         public string DisplayName = "Dao Soldier";   // shown on health bars; lore names live here, never in code
         public EnemyArchetype Archetype = EnemyArchetype.Melee;
 
@@ -18,7 +23,9 @@ namespace VaatusRevenge.Core
         public float MaxHealth = 180f;
         public bool Unkillable = false;              // training dummy: health never drops below 1
         public float HealthRefillDelay = 0f;         // > 0: health refills after this long without being hit
-        public float MaxPoise = 45f;                 // more than one light chain (39), so mashing alone doesn't stagger
+        public float MaxPoise = 52f;                 // more than one light string plus a jab (43 + 8), so the break-out (6th hit) gets
+                                                     // its turn before poise breaks; a longer mash staggers. Was 45 for the old 3-hit
+                                                     // chain (report 04, W-01: at 45 the 6th hit staggered and wiped the break-out count)
         public float PoiseRegenDelay = 2f;           // poise refills this long after the last poise damage...
         public float PoiseRegenRate = 60f;           // ...at this many points per second
         public float StaggerDuration = 1.0f;         // stunned time when poise breaks
@@ -27,6 +34,14 @@ namespace VaatusRevenge.Core
                                                      // (no stun-locking; decided 28 Sep). Deflects still stagger.
         public float ParriedStaggerDuration = 1.3f;  // stunned time when the player deflects this enemy's attack
         public float KnockbackTime = 0.15f;          // a clean hit's knockback distance is covered over this long
+        public float PullStopDistance = 1.5f;        // a pulling hit (MoveData.PullDistance) stops drawing it in this far from the
+                                                     // attacker (centre to centre), so it never ends up inside the player
+
+        // --- Juggling (launchers and air combos) ---
+        public bool Launchable = true;               // a launcher can throw it into the air (bosses and brutes: false)
+        public float LaunchedGravity = 22f;          // gravity while launched (a little floatier than normal, so air combos connect)
+        public float MaxJuggleTime = 3.5f;           // after this long in the air, air hits stop lifting it (no infinite juggles)
+        public float KnockdownTime = 0.9f;           // time on the ground after a juggle lands, before it gets up
 
         // --- Awareness ---
         public float AggroRange = 15f;               // notices the player this close (or when hit)
@@ -72,12 +87,23 @@ namespace VaatusRevenge.Core
 
         public static EnemyTuning CreateDaoSoldier()
         {
-            return new EnemyTuning();
+            return new EnemyTuning { DataVersion = CurrentDataVersion };
+        }
+
+        // The tutorial's sparring partner: a Dao Soldier who can't die and can be launched. The tutorial switches its
+        // attacks on and off (EnemyBrain.Passive).
+        public static EnemyTuning CreateTutorialPartner()
+        {
+            EnemyTuning t = CreateDaoSoldier();
+            t.DisplayName = "Sparring Partner";
+            t.Unkillable = true;
+            t.Launchable = true;
+            return t;
         }
 
         public static EnemyTuning CreateCrossbowman()
         {
-            var t = new EnemyTuning();
+            var t = new EnemyTuning { DataVersion = CurrentDataVersion };
             t.DisplayName = "Crossbowman";
             t.Archetype = EnemyArchetype.Ranged;
             t.MaxHealth = 70f;
@@ -95,13 +121,13 @@ namespace VaatusRevenge.Core
                 new EnemyAttackData
                 {
                     Telegraph = TelegraphKind.Aimed, Weight = 2f, MinRange = 2f, MaxRange = 30f, Cooldown = 1.5f,
-                    Move = Bolt("Aimed Shot", 0.8f, 0.6f, 14f, 12f)
+                    Move = Keyed(Bolt("Aimed Shot", 0.8f, 0.6f, 14f, 12f), AnimationKeys.CrossbowShot)
                 },
                 new EnemyAttackData
                 {
                     Telegraph = TelegraphKind.Aimed, Weight = 1f, MinRange = 2f, MaxRange = 20f, Cooldown = 4f,
                     HitCount = 3, HitInterval = 0.2f,
-                    Move = Bolt("Repeater Burst", 1.0f, 0.8f, 7f, 5f)
+                    Move = Keyed(Bolt("Repeater Burst", 1.0f, 0.8f, 7f, 5f), AnimationKeys.CrossbowBurst)
                 }
             };
             return t;
@@ -109,7 +135,7 @@ namespace VaatusRevenge.Core
 
         public static EnemyTuning CreateSparringDummy()
         {
-            var t = new EnemyTuning();
+            var t = new EnemyTuning { DataVersion = CurrentDataVersion };
             t.DisplayName = "Sparring Dummy";
             t.Archetype = EnemyArchetype.Dummy;
             t.MaxHealth = 200f;
@@ -127,12 +153,13 @@ namespace VaatusRevenge.Core
             t.BackOffChance = 0f;
             t.UsesAttackToken = false;
             t.BreakOut.Enabled = false;              // a practice target: mashing it is the point
+            t.Launchable = false;                    // it's a post planted in the ground
             t.Attacks = new[]
             {
                 new EnemyAttackData
                 {
                     Telegraph = TelegraphKind.Normal, MinRange = 0f, MaxRange = SwordReach,
-                    Move = Melee("Practice Swing", 0.6f, 0.12f, 0.5f, 5f, 5f, SwordReach, 120f, 0f, 240f)
+                    Move = Keyed(Melee("Practice Swing", 0.6f, 0.12f, 0.5f, 5f, 5f, SwordReach, 120f, 0f, 240f), AnimationKeys.PracticeSwing)
                 }
             };
             return t;
@@ -148,6 +175,7 @@ namespace VaatusRevenge.Core
         {
             MoveData heavy = Melee("Heavy Overhead", 0.95f, 0.14f, 0.95f, 26f, 40f, SwordReach, 60f, 0.6f, 180f);
             heavy.Kind = HitKind.Heavy;
+            heavy.AnimationKey = AnimationKeys.SwordOverhead;
             heavy.HyperArmor = true;                 // from halfway through the wind-up: mash into it and you get hit
             heavy.HyperArmorFrom = heavy.Startup * 0.5f;
             heavy.Knockback = 1.2f;
@@ -155,14 +183,19 @@ namespace VaatusRevenge.Core
             heavy.GuardStaminaDamage = 35f;
             MoveData thrust = Melee("Delayed Thrust", 1.15f, 0.12f, 0.7f, 18f, 20f, ThrustReach, 30f, 1.0f, 240f);
             thrust.Kind = HitKind.Heavy;
+            thrust.AnimationKey = AnimationKeys.SwordThrust;
             thrust.HyperArmor = true;
             thrust.HyperArmorFrom = thrust.Startup * 0.5f;
+            // A perilous thrust: it can't be parried (Earth's block still soaks it), so danger sense shows RED and the
+            // wind-up glows red: dodge it. Its held wind-up punishes a panic dodge on the glow, while a dodge on the
+            // white "now" cue beats it (round 7, J7-03: before this nothing in the game was red).
+            thrust.Parryable = false;
             return new[]
             {
                 new EnemyAttackData
                 {
                     Telegraph = TelegraphKind.Normal, Weight = 3f, MaxRange = SwordReach,    // no armour: jab it out of the wind-up
-                    Move = Melee("Quick Slash", 0.50f, 0.12f, 0.55f, 12f, 15f, SwordReach, 100f, 0.5f, 300f)
+                    Move = Keyed(Melee("Quick Slash", 0.50f, 0.12f, 0.55f, 12f, 15f, SwordReach, 100f, 0.5f, 300f), AnimationKeys.SwordSlash)
                 },
                 new EnemyAttackData
                 {
@@ -173,7 +206,7 @@ namespace VaatusRevenge.Core
                 {
                     Telegraph = TelegraphKind.Normal, Weight = 2f, MaxRange = SwordReach, Cooldown = 2f,
                     HitCount = 2, HitInterval = 0.35f,
-                    Move = Melee("Double Slash", 0.50f, 0.12f, 0.60f, 10f, 12f, SwordReach, 100f, 0.5f, 300f)
+                    Move = Keyed(Melee("Double Slash", 0.50f, 0.12f, 0.60f, 10f, 12f, SwordReach, 100f, 0.5f, 300f), AnimationKeys.SwordDoubleSlash)
                 },
                 new EnemyAttackData
                 {
@@ -195,6 +228,7 @@ namespace VaatusRevenge.Core
         {
             MoveData shove = Melee("Break-Out Shove", 0.60f, 0.12f, 0.35f, 30f, 35f, SwordReach, 160f, 0.3f, 360f);
             shove.Kind = HitKind.Heavy;
+            shove.AnimationKey = AnimationKeys.Shove;
             shove.HyperArmor = true;
             shove.HyperArmorFrom = 0f;
             shove.Knockback = 2.0f;
@@ -203,8 +237,10 @@ namespace VaatusRevenge.Core
             return new EnemyBreakOutRule
             {
                 Enabled = true,
-                HitsToTrigger = 3,
-                HitWindow = 1.2f,
+                // 29 Sep (Spider-Man controls): the 5-hit string lands whole (its 5 hits span ~1.3 s); looping back into
+                // a 6th hit within 2 s arms the shove. Was 3 hits in 1.2 s for the old 3-hit chain (report 03, V-03).
+                HitsToTrigger = 6,
+                HitWindow = 2.0f,
                 MaxWait = 0.6f,
                 Cooldown = 2f,
                 FollowUpDelay = 0f,
@@ -216,6 +252,12 @@ namespace VaatusRevenge.Core
                     Move = shove
                 }
             };
+        }
+
+        static MoveData Keyed(MoveData move, string animationKey)
+        {
+            move.AnimationKey = animationKey;
+            return move;
         }
 
         // reach = distance from the enemy's centre to the weapon tip (Range is measured from the strike origin).

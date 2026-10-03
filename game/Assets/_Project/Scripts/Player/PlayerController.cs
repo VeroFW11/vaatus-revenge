@@ -13,39 +13,58 @@ namespace VaatusRevenge
     //   1. tells the model about the world: where the camera looks, the ground, lock-on and soft-lock targets
     //   2. ticks the model with this frame's buttons and stick
     //   3. moves the CharacterController exactly once and turns the body to the model's facing
-    //   4. turns the model's events into hit checks, fireballs, hitstop and slow motion
+    //   4. turns the model's events into hit checks, projectiles (in their element), hitstop and slow motion
     //   5. keeps an attack's hitbox checking every frame while it's active
-    //   6. hands poses, fire, flashes, screen shake and rumble to PlayerFeedback
+    //   6. hands element effects, flashes, sounds, screen shake and rumble to PlayerFeedback, and tells the body's martial-arts
+    //      animator what the player is doing (PlayerAnimationFeed -> BodyAnimatorDriver)
     // The rules and every gameplay number live in the model and the tuning assets; this class only wires.
     //
     // Setup: PlayerController.Spawn builds a complete player (editor code can call it too), or add this to a
-    // fighter that has a CharacterController, a Combatant and a built GreyboxRig, then call Configure.
+    // fighter that has a CharacterController, a Combatant, a built HumanoidBody and a BodyAnimatorDriver, then
+    // call Configure.
     [DefaultExecutionOrder(0)]
     [DisallowMultipleComponent]
     [SelectionBase]
-    [RequireComponent(typeof(CharacterController), typeof(Combatant), typeof(GreyboxRig))]
+    [RequireComponent(typeof(CharacterController), typeof(Combatant), typeof(HumanoidBody))]
     public class PlayerController : MonoBehaviour, IDamageReceiver
     {
+        // GameplayEvent's signature: every combat-model event, by reference (no copy, no garbage).
+        public delegate void PlayerEventHandler(in PlayerEvent e);
+
         public static PlayerController Instance { get; private set; }
 
         [Tooltip("Player numbers (health, stamina, movement, input feel) plus the feel settings (shake, rumble, flashes). "
                  + "Empty = built-in Fluid defaults.")]
         [SerializeField] private PlayerTuningAsset tuningAsset;
-        [Tooltip("The element's moves: light chain, heavy, sprint and jump attacks, skill, dodge, guard. "
-                 + "Empty = built-in Fire (Fluid) defaults.")]
+        [Tooltip("The four elements' move sets and which are learned (hold RB, then press a face button, to switch). When set, it is used "
+                 + "instead of the single move set below.")]
+        [SerializeField] private ElementLoadoutAsset loadoutAsset;
+        [Tooltip("One element's moves, used when there is no loadout: light chain, heavy, sprint and jump attacks, skill, "
+                 + "dodge, guard. Empty = built-in Fire (Fluid) defaults.")]
         [SerializeField] private MoveSetAsset moveSetAsset;
 
         CharacterController body;
         Combatant combatant;
-        GreyboxRig rig;
+        HumanoidBody rig;
+        BodyAnimatorDriver animatorDriver;
+        readonly PlayerAnimationFeed animationFeed = new PlayerAnimationFeed();   // combat state -> body animation
+        // How far down the animator looks for the floor while airborne (metres). Presentation only: further than a plunge
+        // falls in its landing lead (~0.15 s at 18 m/s), nowhere near a gameplay number.
+        const float FloorProbeDistance = 6f;
         PlayerCombatModel model;
-        PlayerFeedback feel;         // poses, fire effects, flashes, shake and rumble (the Unity-side "feel")
+        PlayerFeedback feel;         // element effects, flashes, sounds, shake and rumble (the Unity-side "feel")
         readonly List<HitReport> hits = new List<HitReport>(8);
 
         // Only used when an asset is missing, so the player still works (with a warning).
         PlayerTuning fallbackTuning;
         ElementMoveSet fallbackMoveSet;
         PlayerFeedbackSettings fallbackFeedback;
+        // The loadout handed to the model. Built from the assets and rebuilt only when what they hold changes, so the
+        // model keeps one stable object (a new one would end the combo every frame).
+        ElementLoadout cachedLoadout;
+        // Set by ApplyTuning(PlayerTuning, ElementLoadout): plain data that wins over the assets until Configure is called.
+        PlayerTuning runtimeTuning;
+        ElementLoadout runtimeLoadout;
         bool warnedNoTuning;
         bool warnedNoMoveSet;
 
@@ -54,6 +73,7 @@ namespace VaatusRevenge
         float fallbackCameraYaw;     // what "forward" on the stick means when there's no camera rig
         Combatant lockTarget;
         Combatant softTarget;
+        Combatant zipTarget;
         string elementMessage = "";
         float elementMessageRemaining;
         StringBuilder debugBuilder;
@@ -65,12 +85,34 @@ namespace VaatusRevenge
         // Raised once each time the player dies, from this component's Update.
         public event Action Died;
 
+        // Every event the combat model raised this frame, in order, after this component's own handling (hit checks,
+        // projectiles, effects). For the tutorial and anything else that follows the fight. Valid during the call only.
+        public event PlayerEventHandler GameplayEvent;
+
         // ---------------------------------------------------------------- building the player
 
         // Builds a complete player: CharacterController (pivot at the feet), Combatant on Team Player with a
         // chest-height aim point, grey-box body on the Player layer, and this component configured with the
         // given assets. Works in edit mode (the sandbox builder saves the result into the scene) and at runtime.
         public static PlayerController Spawn(Transform parent, Vector3 position, float yaw, PlayerTuningAsset tuning, MoveSetAsset moveSet)
+        {
+            PlayerController player = SpawnBody(parent, position, yaw, tuning);
+            player.Configure(tuning, moveSet);
+            player.gameObject.SetActive(true);
+            return player;
+        }
+
+        // The same with all four elements.
+        public static PlayerController Spawn(Transform parent, Vector3 position, float yaw, PlayerTuningAsset tuning, ElementLoadoutAsset loadout)
+        {
+            PlayerController player = SpawnBody(parent, position, yaw, tuning);
+            player.Configure(tuning, loadout);
+            player.gameObject.SetActive(true);
+            return player;
+        }
+
+        // Everything but the move assets; returned switched off (the caller configures it, then switches it on).
+        static PlayerController SpawnBody(Transform parent, Vector3 position, float yaw, PlayerTuningAsset tuning)
         {
             PlayerBodySettings settings = tuning != null && tuning.Body != null ? tuning.Body : new PlayerBodySettings();
             float radius = Mathf.Max(0.01f, settings.Radius);
@@ -100,14 +142,16 @@ namespace VaatusRevenge
             Combatant fighter = go.AddComponent<Combatant>();
             fighter.Configure(VaatusRevenge.Core.Team.Player, aim, radius, height, settings.DisplayName);
 
-            GreyboxRig greybox = go.AddComponent<GreyboxRig>();
-            greybox.Build(settings.BodyColor, false);
+            // The jointed martial-artist body (the settings' cloth colour, gold sash and wraps), animated procedurally.
+            HumanoidBody humanoid = go.AddComponent<HumanoidBody>();
+            go.AddComponent<BodyAnimatorDriver>();
+            BodyLook look = BodyLook.Player();
+            look.Cloth = settings.BodyColor;
+            if (!string.IsNullOrEmpty(settings.DisplayName)) look.Name = settings.DisplayName;
+            humanoid.Build(look);
             Layers.SetRecursively(go, Layers.Player); // after Build, so every body part is on the layer too
 
-            PlayerController player = go.AddComponent<PlayerController>();
-            player.Configure(tuning, moveSet);
-            go.SetActive(true);
-            return player;
+            return go.AddComponent<PlayerController>();
         }
 
         // Edit-time wiring: only stores the assets (safe before Awake). At runtime an existing model picks the
@@ -116,6 +160,23 @@ namespace VaatusRevenge
         {
             tuningAsset = tuning;
             moveSetAsset = moveSet;
+            loadoutAsset = null;
+            ClearRuntimeTuning();
+        }
+
+        // The same with all four elements (the loadout wins over a single move set).
+        public void Configure(PlayerTuningAsset tuning, ElementLoadoutAsset loadout)
+        {
+            tuningAsset = tuning;
+            loadoutAsset = loadout;
+            ClearRuntimeTuning();
+        }
+
+        void ClearRuntimeTuning()
+        {
+            runtimeTuning = null;
+            runtimeLoadout = null;
+            cachedLoadout = null;
             warnedNoTuning = false;
             warnedNoMoveSet = false;
         }
@@ -126,6 +187,21 @@ namespace VaatusRevenge
         public void ApplyTuning(PlayerTuningAsset tuning, MoveSetAsset moveSet)
         {
             Configure(tuning, moveSet);
+            if (model != null) SyncTuning();
+        }
+
+        public void ApplyTuning(PlayerTuningAsset tuning, ElementLoadoutAsset loadout)
+        {
+            Configure(tuning, loadout);
+            if (model != null) SyncTuning();
+        }
+
+        // Plain data instead of assets (e.g. the tutorial forcing the Fluid rules): wins until Configure is called again.
+        // Null keeps what the assets give for that part.
+        public void ApplyTuning(PlayerTuning tuning, ElementLoadout loadout)
+        {
+            runtimeTuning = tuning;
+            runtimeLoadout = loadout;
             if (model != null) SyncTuning();
         }
 
@@ -146,6 +222,8 @@ namespace VaatusRevenge
             openedAttackId = 0;
             ClearElementMessage();
             feel.ResetAll();
+            animationFeed.Reset();
+            if (animatorDriver != null) animatorDriver.ResetPose();
 
             LockOnController lockOn = LockOnController.Instance;
             if (lockOn != null) lockOn.ClearLock();
@@ -160,6 +238,7 @@ namespace VaatusRevenge
         public PlayerCombatModel Model => model;
         public PlayerTuningAsset TuningAsset => tuningAsset;
         public MoveSetAsset MoveSetAsset => moveSetAsset;
+        public ElementLoadoutAsset LoadoutAsset => loadoutAsset;
 
         // The feel settings in use (the tuning asset's, or built-in defaults). Never null.
         public PlayerFeedbackSettings Feedback
@@ -182,7 +261,14 @@ namespace VaatusRevenge
             }
         }
 
-        public string MoveSetPresetName => moveSetAsset != null && moveSetAsset.PresetName != null ? moveSetAsset.PresetName : "";
+        public string MoveSetPresetName
+        {
+            get
+            {
+                if (loadoutAsset != null) return loadoutAsset.PresetName ?? "";
+                return moveSetAsset != null && moveSetAsset.PresetName != null ? moveSetAsset.PresetName : "";
+            }
+        }
 
         public bool IsDead => model != null && model.State == PlayerState.Dead;
         public float Health01 => model != null ? Mathf.Clamp01(model.Health / model.MaxHealth) : 1f;
@@ -227,9 +313,14 @@ namespace VaatusRevenge
             }
         }
 
-        // "" unless a locked element was just picked; shown for Feedback.ElementMessageDuration real seconds.
+        // "" unless an element not learned yet was just picked (ElementSwitchDenied); shown for
+        // Feedback.ElementMessageDuration real seconds.
         public string ElementMessage => elementMessage;
         public float ElementMessageRemaining => elementMessageRemaining;
+
+        // The rhythm's sounds (chime, tick, finisher, switch whoosh), for anything that wants to sound like the fight, such
+        // as the tutorial's "step passed" chime. Null until play starts.
+        public RhythmAudio RhythmAudio => feel != null ? feel.Audio : null;
 
         public string StateName => model != null ? NameOf(model.State) : "";
 
@@ -314,7 +405,7 @@ namespace VaatusRevenge
 
         void OnDestroy()
         {
-            if (feel != null) feel.Shutdown();
+            if (feel != null) feel.Dispose();
         }
 
         void OnApplicationFocus(bool hasFocus)
@@ -348,7 +439,10 @@ namespace VaatusRevenge
             PlayerTickResult result = model.Tick(dt, in input, in world);
 
             // 3. Move once, then face where the model says. Nothing else turns the body, so the two never fight.
+            Vector3 positionBeforeMove = transform.position;
             if (dt > 0f) MoveBody(result.Velocity, dt);
+            // What the body really did (a wall or an enemy can stop it): the legs follow this while walking (S7-06).
+            Vector3 realVelocity = dt > 0f ? (transform.position - positionBeforeMove) / dt : Vector3.zero;
             transform.rotation = Quaternion.Euler(0f, result.FacingYaw, 0f);
 
             // 4. Events, in order: gameplay side first (hit checks, projectiles, time effects), then the visuals.
@@ -363,14 +457,27 @@ namespace VaatusRevenge
                 PlayerEvent e = events[i];
                 HandleGameplayEvent(in e, settings);
                 feel.OnEvent(in e, model, settings);
+                animationFeed.OnEvent(in e);
+                RaiseGameplayEvent(in e);
             }
 
             // 5. A hitbox keeps checking while it's open: an enemy can step into a swing after it started.
             if (dt > 0f) QueryActiveAttack(settings);
 
             UpdateDeath();
-            UpdateElementSelect(input.ElementSelect, settings);
+            UpdateElementMessage();
             feel.Tick(model, settings, dt, Time.unscaledDeltaTime);
+            if (animatorDriver != null)
+            {
+                // The body aims its strikes at whoever the combat rules are tracking (locked, else soft target).
+                Combatant aimAt = lockTarget != null ? lockTarget : softTarget;
+                // In the air, how far the floor is: the legs reach for it as it comes and a plunge lands its chop on it (J6-01).
+                float floorBelow = -1f;
+                if (!model.IsGrounded && CombatPhysics.FloorBelow(transform.position, FloorProbeDistance, out float below)) floorBelow = below;
+                animatorDriver.SetInput(animationFeed.Build(model, dt, aimAt != null, transform.position.ToNumerics(),
+                    aimAt != null ? aimAt.AimPoint.position.ToNumerics() : System.Numerics.Vector3.Zero, floorBelow,
+                    dt > 0f, realVelocity.ToNumerics()));
+            }
         }
 
         // ---------------------------------------------------------------- one frame, step by step
@@ -392,11 +499,25 @@ namespace VaatusRevenge
             {
                 world.HasNearestEnemy = true;
                 world.NearestEnemyPosition = nearest.Feet.ToNumerics();
+                world.NearestEnemyRadius = nearest.Radius;
             }
 
             LockOnController lockOn = LockOnController.Instance;
             lockTarget = UsableTarget(lockOn != null ? lockOn.Target : null);
             softTarget = null;
+            float aimYaw = model.GetAimYaw(input.Move, cameraYaw);
+
+            // The zip strike reaches much further than the soft lock. Locked on, it goes for the lock target if that's
+            // in reach; otherwise the best candidate where you aim.
+            zipTarget = FindZipTarget(position, aimYaw, lockTarget);
+            if (zipTarget != null)
+            {
+                world.HasZipTarget = true;
+                world.ZipTargetPosition = zipTarget.Feet.ToNumerics();
+                world.ZipTargetAimPoint = zipTarget.AimPoint.position.ToNumerics();
+                world.ZipTargetRadius = zipTarget.Radius;
+            }
+
             if (lockTarget != null)
             {
                 world.HasLockTarget = true;
@@ -406,7 +527,7 @@ namespace VaatusRevenge
                 return world;
             }
 
-            softTarget = FindSoftTarget(position, model.GetAimYaw(input.Move, cameraYaw));
+            softTarget = FindSoftTarget(position, aimYaw, model.IsStickNeutral(input.Move));
             if (softTarget != null)
             {
                 world.HasSoftTarget = true;
@@ -428,8 +549,10 @@ namespace VaatusRevenge
 
         // Not locked on, attacks still turn toward the enemy you're obviously going for: the nearest one within
         // range and angle of where you aim (SoftLockSelector), as long as no wall is in the way.
-        Combatant FindSoftTarget(Vector3 position, float aimYaw)
+        // With the stick neutral it looks all round (a counter straight out of a dodge still finds the attacker).
+        Combatant FindSoftTarget(Vector3 position, float aimYaw, bool stickNeutral)
         {
+            float angle = stickNeutral ? 180f : model.Tuning.SoftLockAngle;
             PlayerTuning tuning = model.Tuning;
             System.Numerics.Vector3 self = position.ToNumerics();
             Vector3 eye = combatant != null ? combatant.AimPoint.position : position;
@@ -440,7 +563,38 @@ namespace VaatusRevenge
             {
                 Combatant candidate = UsableTarget(all[i]);
                 if (candidate == null) continue;
-                if (!SoftLockSelector.TryScore(self, aimYaw, candidate.Feet.ToNumerics(), tuning, out float score) || score >= bestScore) continue;
+                if (!SoftLockSelector.TryScore(self, aimYaw, candidate.Feet.ToNumerics(), tuning.SoftLockRange, angle,
+                        tuning.SoftLockMaxHeightDifference, out float score) || score >= bestScore) continue;
+                if (CombatPhysics.IsBlocked(eye, candidate.AimPoint.position)) continue;
+                best = candidate;
+                bestScore = score;
+            }
+            return best;
+        }
+
+        // The zip strike's target (see ZipStrikeSettings): like the soft lock, but much further and a little narrower.
+        Combatant FindZipTarget(Vector3 position, float aimYaw, Combatant locked)
+        {
+            ElementMoveSet moves = model.MoveSet;
+            ZipStrikeSettings zip = moves != null ? moves.Zip : null;
+            if (zip == null || moves.ZipStrike == null) return null;
+            System.Numerics.Vector3 self = position.ToNumerics();
+            Vector3 eye = combatant != null ? combatant.AimPoint.position : position;
+            if (locked != null)
+            {
+                bool inReach = SoftLockSelector.TryScore(self, aimYaw, locked.Feet.ToNumerics(), zip.Range, 360f,
+                    zip.MaxHeightDifference, out _);
+                return inReach && !CombatPhysics.IsBlocked(eye, locked.AimPoint.position) ? locked : null;
+            }
+            Combatant best = null;
+            float bestScore = float.MaxValue;
+            List<Combatant> all = Combatant.All;
+            for (int i = 0; i < all.Count; i++)
+            {
+                Combatant candidate = UsableTarget(all[i]);
+                if (candidate == null) continue;
+                if (!SoftLockSelector.TryScore(self, aimYaw, candidate.Feet.ToNumerics(), zip.Range, zip.AngleDegrees,
+                        zip.MaxHeightDifference, out float score) || score >= bestScore) continue;
                 if (CombatPhysics.IsBlocked(eye, candidate.AimPoint.position)) continue;
                 best = candidate;
                 bestScore = score;
@@ -494,7 +648,7 @@ namespace VaatusRevenge
                     if (move == null) break;
                     DamageInfo damage = model.BuildDamage(in e);
                     MeleeHitQuery.Arc(e.Origin.ToUnity(), e.Direction.ToUnity(), move.Range, move.ArcDegrees, move.VerticalReach, damage, hits);
-                    ResolveHits(move, e.AttackId, damage.Hitstop, e.ChargeTier == ChargeTier.FaJin, settings);
+                    ResolveHits(move, e.AttackId, damage.Hitstop, damage.Element, e.ChargeTier == ChargeTier.FaJin, settings);
                     break;
                 }
                 case PlayerEventType.AttackActiveEnd:
@@ -513,7 +667,7 @@ namespace VaatusRevenge
                         DamageInfo damage = model.BuildDamage(in e);
                         Vector3 centre = e.Origin.ToUnity() + Vector3.up * BodyCentreHeight;
                         MeleeHitQuery.Sphere(centre, e.Radius, damage, hits);
-                        ResolveHits(move, e.AttackId, damage.Hitstop, e.ChargeTier == ChargeTier.FaJin, settings);
+                        ResolveHits(move, e.AttackId, damage.Hitstop, damage.Element, e.ChargeTier == ChargeTier.FaJin, settings);
                     }
                     MeleeHitQuery.EndAttack(e.AttackId);
                     break;
@@ -525,21 +679,42 @@ namespace VaatusRevenge
                 case PlayerEventType.Deflected:
                     if (model.IsAlive && settings.DeflectHitstop > 0f) TimeScaleController.Hitstop(settings.DeflectHitstop);
                     break;
+                case PlayerEventType.ElementSwitchDenied:
+                    // Only an element you haven't learned gets a message; a cooldown or same-element pick shakes the HUD's
+                    // element wheel instead (HudElementWheel).
+                    if (e.DenyReason == SwitchDeniedReason.NotLearned) ShowElementMessage(e.Element, settings);
+                    break;
+            }
+        }
+
+        void RaiseGameplayEvent(in PlayerEvent e)
+        {
+            PlayerEventHandler handler = GameplayEvent;
+            if (handler == null) return;
+            try
+            {
+                handler(in e);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception, this); // a broken listener must not break the player's frame
             }
         }
 
         // What our swing touched. Each target already decided the outcome; we react: Momentum for clean hits,
         // hitstop and shake once per swing, a stagger for us if an enemy deflected it.
-        void ResolveHits(MoveData move, int attackId, float hitstop, bool faJin, PlayerFeedbackSettings settings)
+        void ResolveHits(MoveData move, int attackId, float hitstop, ElementId element, bool faJin, PlayerFeedbackSettings settings)
         {
             if (hits.Count == 0) return;
+            // Earth's spark from the air string is dust, never rock (canon: ElementFxRules).
+            bool airborneAttack = ElementFxRules.IsAirborneAttacker(model.IsGrounded, model.CurrentAttackKind);
             bool clean = false;
             bool parried = false;
             for (int i = 0; i < hits.Count; i++)
             {
                 HitReport report = hits[i];
-                model.OnAttackLanded(in report.Result, attackId); // Momentum, at most once per attack
-                feel.OnHitReport(in report, settings);
+                model.OnAttackLanded(in report.Result, attackId, IsAirborne(report.Target)); // counter, Momentum: once per attack
+                feel.OnHitReport(in report, element, airborneAttack, settings);
                 if (report.Result.Outcome == HitOutcome.Hit) clean = true;
                 else if (report.Result.Outcome == HitOutcome.Parried) parried = true;
             }
@@ -555,25 +730,25 @@ namespace VaatusRevenge
         }
 
         // A separate method so the little closure below is only created when a projectile really is launched
-        // (once per cast, never per frame). It remembers the damage and AttackId, because a fireball can land
+        // (once per cast, never per frame). It remembers the damage and AttackId, because a projectile can land
         // after the next attack has already started.
         void LaunchProjectile(in PlayerEvent e)
         {
             MoveData move = e.Move;
             if (move == null) return;
             DamageInfo damage = model.BuildDamage(in e);
-            FireProjectile.Launch(e.Origin.ToUnity(), e.Direction.ToUnity(), move.Projectile, damage, ProjectileVisual.Fire,
+            FireProjectile.Launch(e.Origin.ToUnity(), e.Direction.ToUnity(), move.Projectile, damage, ProjectileVisuals.ForElement(e.Element),
                 report => OnProjectileHit(report, damage));
         }
 
         void OnProjectileHit(HitReport report, DamageInfo damage)
         {
-            // A fireball can land after the player died, respawned or was removed from the scene.
+            // A projectile can land after the player died, respawned or was removed from the scene.
             if (this == null || !isActiveAndEnabled || model == null || !model.IsAlive) return;
-            model.OnAttackLanded(in report.Result, damage.AttackId);
+            model.OnAttackLanded(in report.Result, damage.AttackId, IsAirborne(report.Target));
             PlayerFeedbackSettings settings = Feedback;
-            feel.OnHitReport(in report, settings);
-            // A deflected fireball just fizzles: the caster isn't staggered from across the arena.
+            feel.OnHitReport(in report, damage.Element, settings);
+            // A deflected projectile just fizzles: the caster isn't staggered from across the arena.
             if (report.Result.Outcome != HitOutcome.Hit) return;
             TimeScaleController.Hitstop(damage.Hitstop);
             feel.OnCleanHit(false, false, settings);
@@ -590,7 +765,7 @@ namespace VaatusRevenge
             Vector3 origin = model.GetStrikeOrigin(transform.position.ToNumerics()).ToUnity(); // follows the lunge
             DamageInfo damage = model.BuildCurrentDamage();
             MeleeHitQuery.Arc(origin, model.Forward.ToUnity(), move.Range, move.ArcDegrees, move.VerticalReach, damage, hits);
-            ResolveHits(move, attackId, damage.Hitstop, model.CurrentChargeTier == ChargeTier.FaJin, settings);
+            ResolveHits(move, attackId, damage.Hitstop, damage.Element, model.CurrentChargeTier == ChargeTier.FaJin, settings);
         }
 
         void UpdateDeath()
@@ -615,24 +790,26 @@ namespace VaatusRevenge
             }
         }
 
-        // D-pad / 1-4. Only the move set's own element is learned; picking another shows a message for a moment.
-        void UpdateElementSelect(ElementId picked, PlayerFeedbackSettings settings)
+        // The model switches elements itself (RB + face button / 1-4, from PlayerInputFrame.ElementSelect); picking one
+        // not learned yet raises ElementSwitchDenied, which shows a message for a moment.
+        void ShowElementMessage(ElementId picked, PlayerFeedbackSettings settings)
         {
-            if (elementMessageRemaining > 0f)
-            {
-                // Real time: it's UI, so it shouldn't hang around longer during hitstop or slow motion.
-                elementMessageRemaining -= Time.unscaledDeltaTime;
-                if (elementMessageRemaining <= 0f) ClearElementMessage();
-            }
-            if (picked == ElementId.None || !model.IsAlive) return;
-            ElementMoveSet moveSet = model.MoveSet;
-            if (moveSet != null && picked == moveSet.Element)
-            {
-                ClearElementMessage(); // already this element: nothing to switch
-                return;
-            }
             elementMessageRemaining = Mathf.Max(0f, settings.ElementMessageDuration);
             elementMessage = elementMessageRemaining > 0f ? LockedElementMessage(settings.ElementLockedMessage, picked) : "";
+        }
+
+        void UpdateElementMessage()
+        {
+            if (elementMessageRemaining <= 0f) return;
+            // Real time: it's UI, so it shouldn't hang around longer during hitstop or slow motion.
+            elementMessageRemaining -= Time.unscaledDeltaTime;
+            if (elementMessageRemaining <= 0f) ClearElementMessage();
+        }
+
+        // A target in the air (juggled): its CharacterController isn't touching the ground.
+        static bool IsAirborne(Combatant target)
+        {
+            return target != null && target.TryGetComponent(out CharacterController controller) && controller.enabled && !controller.isGrounded;
         }
 
         void ClearElementMessage()
@@ -649,7 +826,7 @@ namespace VaatusRevenge
             if (!Application.isPlaying) return false; // edit time: nothing to simulate
             CacheComponents();
             // OwnerId must be our Combatant's id: the hit system uses it to stop our own swings hitting us.
-            model = new PlayerCombatModel(ResolveTuning(), ResolveMoveSet(), combatant != null ? combatant.Id : 0, transform.eulerAngles.y);
+            model = new PlayerCombatModel(ResolveTuning(), ResolveLoadout(), combatant != null ? combatant.Id : 0, transform.eulerAngles.y);
             return true;
         }
 
@@ -659,12 +836,13 @@ namespace VaatusRevenge
         void SyncTuning()
         {
             PlayerTuning tuning = ResolveTuning();
-            ElementMoveSet moveSet = ResolveMoveSet();
-            if (!ReferenceEquals(model.Tuning, tuning) || !ReferenceEquals(model.MoveSet, moveSet)) model.ApplyTuning(tuning, moveSet);
+            ElementLoadout loadout = ResolveLoadout();
+            if (!ReferenceEquals(model.Tuning, tuning) || !ReferenceEquals(model.Loadout, loadout)) model.ApplyTuning(tuning, loadout);
         }
 
         PlayerTuning ResolveTuning()
         {
+            if (runtimeTuning != null) return runtimeTuning;
             if (tuningAsset != null && tuningAsset.Tuning != null) return tuningAsset.Tuning;
             if (!warnedNoTuning)
             {
@@ -674,6 +852,21 @@ namespace VaatusRevenge
             }
             if (fallbackTuning == null) fallbackTuning = PlayerTuning.CreateFluid();
             return fallbackTuning;
+        }
+
+        // The runtime loadout if one was applied, else the loadout asset's, else the single move set's. The cached object is
+        // kept for as long as it still holds what the assets hold.
+        ElementLoadout ResolveLoadout()
+        {
+            if (runtimeLoadout != null) return runtimeLoadout;
+            if (loadoutAsset != null)
+            {
+                if (!loadoutAsset.Matches(cachedLoadout)) cachedLoadout = loadoutAsset.ToLoadout();
+                return cachedLoadout;
+            }
+            ElementMoveSet single = ResolveMoveSet();
+            if (cachedLoadout == null || !ReferenceEquals(cachedLoadout.Get(cachedLoadout.Starting), single)) cachedLoadout = ElementLoadout.FromSingle(single);
+            return cachedLoadout;
         }
 
         ElementMoveSet ResolveMoveSet()
@@ -695,6 +888,7 @@ namespace VaatusRevenge
             get
             {
                 if (model != null) return model.Tuning;
+                if (runtimeTuning != null) return runtimeTuning;
                 return tuningAsset != null ? tuningAsset.Tuning : null;
             }
         }
@@ -704,6 +898,8 @@ namespace VaatusRevenge
             get
             {
                 if (model != null) return model.MoveSet;
+                if (runtimeLoadout != null) return runtimeLoadout.Get(runtimeLoadout.FirstUsable());
+                if (loadoutAsset != null && loadoutAsset.Fire != null) return loadoutAsset.Fire.MoveSet;
                 return moveSetAsset != null ? moveSetAsset.MoveSet : null;
             }
         }
@@ -712,7 +908,8 @@ namespace VaatusRevenge
         {
             if (body == null) body = GetComponent<CharacterController>();
             if (combatant == null) combatant = GetComponent<Combatant>();
-            if (rig == null) rig = GetComponent<GreyboxRig>();
+            if (rig == null) rig = GetComponent<HumanoidBody>();
+            if (animatorDriver == null) animatorDriver = GetComponent<BodyAnimatorDriver>();
             if (feel == null) feel = new PlayerFeedback(transform, rig, combatant);
         }
 
@@ -754,9 +951,11 @@ namespace VaatusRevenge
 
         // ---------------------------------------------------------------- text
 
-        static string LockedElementMessage(string template, ElementId element)
+        // The element's display name comes from its move set (data); the enum name is only a fallback for an empty slot.
+        string LockedElementMessage(string template, ElementId element)
         {
-            string elementName = element.ToString();
+            ElementMoveSet set = model != null && model.Loadout != null ? model.Loadout.Get(element) : null;
+            string elementName = set != null && !string.IsNullOrEmpty(set.DisplayName) ? set.DisplayName : element.ToString();
             return string.IsNullOrEmpty(template) ? elementName : template.Replace("{0}", elementName);
         }
 

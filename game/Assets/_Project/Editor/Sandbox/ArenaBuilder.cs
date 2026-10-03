@@ -47,6 +47,9 @@ namespace VaatusRevenge.EditorTools
         const float CorridorHeight = 2.6f;
 
         static readonly Vector3 PlayerSpawn = new Vector3(0f, 0f, -18f);
+        static readonly Vector3 Dummy1Spawn = new Vector3(0f, 0f, -13.5f);
+        const float TutorialPartnerAhead = 6f;
+        const float TutorialStartGap = 4.5f;
 
         // Builds the arena under parent (null = scene root) and returns its layout. An arena already built
         // under the same parent is replaced, so running the builder twice never stacks two arenas.
@@ -197,7 +200,7 @@ namespace VaatusRevenge.EditorTools
             points.Add(ArenaGeometry.Point(ArenaLayout.PlayerSpawn, group, PlayerSpawn, 0f));
 
             // Dummies a few steps in front of the player, facing them.
-            AddFacing(points, group, ArenaLayout.Dummy1, new Vector3(0f, 0f, -13.5f), PlayerSpawn);
+            AddFacing(points, group, ArenaLayout.Dummy1, Dummy1Spawn, PlayerSpawn);
             AddFacing(points, group, ArenaLayout.Dummy2, new Vector3(-3.5f, 0f, -12.5f), PlayerSpawn);
             AddFacing(points, group, ArenaLayout.Dummy3, new Vector3(3.5f, 0f, -12.5f), PlayerSpawn);
 
@@ -208,6 +211,15 @@ namespace VaatusRevenge.EditorTools
             // One crossbowman on open ground about 12 m from the ring centre, one up on the platform.
             AddFacing(points, group, ArenaLayout.CrossbowGround, new Vector3(8f, 0f, 9f), ringCenter);
             AddFacing(points, group, ArenaLayout.CrossbowPlatform, new Vector3(PlatformCenter.x, PlatformHeight, PlatformCenter.z), ringCenter);
+
+            // The tutorial: the sparring partner 6 m in front of the middle dummy (on the side it faces), and the player's
+            // start 4.5 m further on, facing the partner: just past the 4 m the slip-in lesson starts from, with room
+            // behind for an evade-out before the wall.
+            Vector3 dummyFront = (PlayerSpawn - Dummy1Spawn).normalized;
+            Vector3 partner = Dummy1Spawn + dummyFront * TutorialPartnerAhead;
+            Vector3 start = partner + dummyFront * TutorialStartGap;
+            AddFacing(points, group, ArenaLayout.TutorialPartner, partner, start);
+            AddFacing(points, group, ArenaLayout.TutorialStart, start, partner);
             return points;
         }
 

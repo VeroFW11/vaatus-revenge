@@ -139,7 +139,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void GuardAndHealSlowYouDown()
         {
-            var guard = new PlayerDriver();
+            var guard = PlayerDriver.Blocking();   // a held guard only exists for blocking elements
             guard.Run(40, Pad.Guard, Up);
             Assert.That(HorizontalSpeed(guard.Last.Velocity),
                 Is.EqualTo(guard.Model.Tuning.RunSpeed * guard.Model.MoveSet.Guard.MoveSpeedMultiplier).Within(0.05f));
@@ -160,15 +160,21 @@ namespace VaatusRevenge.Tests
                 var d = new PlayerDriver(null, null, fps);
                 d.Step(Pad.Dodge, Up);
                 d.RunUntil(x => x.Model.State == PlayerState.Locomotion, 200);
-                d.Run(10);
-                Assert.That(d.World.Position.Z, Is.EqualTo(d.Model.MoveSet.Dodge.Distance).Within(0.02f), fps + " fps");
+                DodgeProfile dodge = d.Model.MoveSet.Dodge;
+                float tail = (1f - dodge.DashEaseOut) * dodge.Distance / dodge.Duration;   // the dash's own end speed
+                Assert.That(d.World.Position.Z, Is.EqualTo(dodge.Distance).Within(tail / fps + 0.02f), fps + " fps: the dash itself");
+                d.Run((int)fps);
+                // The end speed carries on and locomotion brakes it (no dead stop): at most tail² / (2 x Deceleration) more.
+                float slide = tail * tail / (2f * d.Model.Tuning.Deceleration);
+                Assert.That(d.World.Position.Z, Is.InRange(dodge.Distance, dodge.Distance + slide + tail / fps + 0.02f), fps + " fps: braked");
+                Assert.AreEqual(0f, HorizontalSpeed(d.Last.Velocity), 1e-3f, "then stands still");
                 Assert.That(d.World.Position.X, Is.EqualTo(0f).Within(1e-3f));
             }
             var back = new PlayerDriver();
             back.Step(Pad.Dodge);
             Assert.IsTrue(back.All(PlayerEventType.DodgeStarted)[0].IsBackstep);
             back.RunUntil(x => x.Model.State == PlayerState.Locomotion, 60);
-            Assert.That(back.World.Position.Z, Is.EqualTo(-back.Model.MoveSet.Dodge.BackstepDistance).Within(0.02f));
+            Assert.That(back.World.Position.Z, Is.EqualTo(-back.Model.MoveSet.Dodge.BackstepDistance).Within(0.04f), "(plus the start of the braked exit)");
             Assert.AreEqual(0f, back.Model.FacingYaw, 1e-3f, "a backstep keeps facing forward");
         }
 

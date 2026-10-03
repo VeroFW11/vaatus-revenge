@@ -13,12 +13,18 @@ namespace VaatusRevenge
     // fizzle; anything else stops it, with an explosion if ExplosionRadius > 0 (same AttackId, so the fighter
     // hit directly isn't hit twice). onHit gets one HitReport per fighter touched. Give each projectile its
     // own AttackId (CombatIds.Next()); the record is cleared automatically when the projectile is gone.
+    //
+    // Each element's projectile has its own look (ProjectileVisual) and bursts in its element on impact: a fireball, a
+    // sliver of ice that splashes, a tumbling boulder that breaks into rock and dust, a swirling ball of wind.
+    // An enemy bolt launched with a danger template also re-times the player's danger sense every frame while it flies,
+    // from where it really is and where the player really stands, and calls the warning off once it has passed.
     [DefaultExecutionOrder(20)]
     [AddComponentMenu("")]
     public class FireProjectile : MonoBehaviour
     {
         const int MaxProjectiles = 64;
         const int MaxSweepsPerFrame = 4; // passes through dodging fighters before giving up for this frame
+        const double CallOffMargin = 1.0; // a bolt that passed is reported as landed this long ago: the model drops it
 
         static FireProjectile instance;
         static bool quitting;
@@ -30,8 +36,15 @@ namespace VaatusRevenge
         Material fireMaterial;
         Material boltMaterial;
         Material trailMaterial;
+        Material waterMaterial;
+        Material rockMaterial;
+        Material airMaterial;
+        Material dustTrailMaterial;
         Gradient fireTrail;
         Gradient boltTrail;
+        Gradient waterTrail;
+        Gradient rockTrail;
+        Gradient airTrail;
         bool updating;
         float time;
 
@@ -56,7 +69,16 @@ namespace VaatusRevenge
             ProjectileVisual visual, System.Action<HitReport> onHit)
         {
             FireProjectile system = GetOrCreate();
-            if (system != null) system.LaunchInternal(origin, direction, spec ?? DefaultSpec, damage, visual, onHit);
+            if (system != null) system.LaunchInternal(origin, direction, spec ?? DefaultSpec, damage, visual, onHit, false, default);
+        }
+
+        // An enemy's projectile that the player's danger sense follows: danger describes the strike (attacker, hit index,
+        // parryable...); its ImpactClock is worked out here every frame.
+        public static void Launch(Vector3 origin, Vector3 direction, ProjectileSpec spec, DamageInfo damage,
+            ProjectileVisual visual, System.Action<HitReport> onHit, in IncomingStrike danger)
+        {
+            FireProjectile system = GetOrCreate();
+            if (system != null) system.LaunchInternal(origin, direction, spec ?? DefaultSpec, damage, visual, onHit, true, danger);
         }
 
         // Removes every projectile at once (e.g. on a sandbox reset). Extra to the spec.
@@ -100,7 +122,7 @@ namespace VaatusRevenge
         }
 
         void LaunchInternal(Vector3 origin, Vector3 direction, ProjectileSpec spec, DamageInfo damage, ProjectileVisual visual,
-            System.Action<HitReport> onHit)
+            System.Action<HitReport> onHit, bool tracksDanger, in IncomingStrike danger)
         {
             FireProjectileSlot slot = AcquireSlot();
             if (slot == null) return;
@@ -124,15 +146,38 @@ namespace VaatusRevenge
             slot.Visual = visual;
             slot.OnHit = onHit;
             slot.PassedThrough.Clear();
+            slot.TracksDanger = tracksDanger;
+            slot.DangerOffPath = false;
+            slot.DangerStrike = danger;
 
-            FireVfxStyle style = FireVfx.Style;
-            bool fire = visual == ProjectileVisual.Fire;
-            if (slot.HasVisuals)
-            {
-                slot.ShowAt(origin, dir, fire ? fireTrail : boltTrail, style.TrailTime * (fire ? 1.5f : 1f),
-                    slot.Radius * 2f * slot.VisualScale * (fire ? 0.9f : 0.35f));
-            }
+            if (slot.HasVisuals) ShowVisual(slot, origin, dir);
             slot.CheckStartOverlap = true;
+        }
+
+        // The model, trail and trail colours of each visual. Fire and the bolt look exactly as they always have.
+        void ShowVisual(FireProjectileSlot slot, Vector3 origin, Vector3 dir)
+        {
+            FireVfxStyle style = FireVfx.Style;
+            float diameter = slot.Radius * 2f * slot.VisualScale;
+            switch (slot.Visual)
+            {
+                case ProjectileVisual.Fire:
+                    slot.ShowAt(origin, dir, fireMaterial, trailMaterial, fireTrail, style.TrailTime * 1.5f, diameter * 0.9f);
+                    break;
+                case ProjectileVisual.WaterOrb:
+                    slot.ShowAt(origin, dir, waterMaterial, trailMaterial, waterTrail, style.TrailTime * 1.2f, diameter * 0.5f);
+                    break;
+                case ProjectileVisual.Rock:
+                    slot.ShowAt(origin, dir, null, dustTrailMaterial != null ? dustTrailMaterial : trailMaterial, rockTrail,
+                        style.TrailTime * 2f, diameter * 0.8f);
+                    break;
+                case ProjectileVisual.AirBall:
+                    slot.ShowAt(origin, dir, airMaterial, trailMaterial, airTrail, style.TrailTime * 1.5f, diameter * 0.7f);
+                    break;
+                default:
+                    slot.ShowAt(origin, dir, null, trailMaterial, boltTrail, style.TrailTime, diameter * 0.35f);
+                    break;
+            }
         }
 
         FireProjectileSlot AcquireSlot()
@@ -174,9 +219,9 @@ namespace VaatusRevenge
                 }
                 chosen.Hide();
             }
-            if (!chosen.HasVisuals && fireMaterial != null && boltMaterial != null && trailMaterial != null)
+            if (!chosen.HasVisuals && fireMaterial != null && boltMaterial != null && rockMaterial != null && trailMaterial != null)
             {
-                chosen.CreateVisuals(transform, fireMaterial, boltMaterial, trailMaterial);
+                chosen.CreateVisuals(transform, fireMaterial, boltMaterial, rockMaterial, trailMaterial);
             }
             return chosen;
         }
@@ -204,7 +249,8 @@ namespace VaatusRevenge
                         continue;
                     }
                     if (dt > 0f) Step(slot, dt);
-                    if (slot.Flying && slot.HasVisuals) slot.MoveVisual(time);
+                    if (slot.Flying && slot.TracksDanger) RefreshDanger(slot);
+                    if (slot.Flying && slot.HasVisuals) slot.MoveVisual(time, dt);
                 }
             }
             finally
@@ -323,14 +369,16 @@ namespace VaatusRevenge
             return false;
         }
 
-        // Hit a wall, the floor, or a fighter who didn't dodge: explode (if it has a blast radius) and stop.
+        // Hit a wall, the floor, or a fighter who didn't dodge: explode (if it has a blast radius) and stop. Each element
+        // bursts in its own look (a fireball, a splash, rock and dust, a ring of wind); a bolt just sparks.
         void Impact(FireProjectileSlot slot, Vector3 point, bool keepReports = false)
         {
             if (!keepReports) reports.Clear();
             if (slot.ExplosionRadius > 0f) MeleeHitQuery.Sphere(point, slot.ExplosionRadius, slot.Damage, reports);
-            if (slot.Visual == ProjectileVisual.Fire)
+            ElementId element = ProjectileVisuals.ElementOf(slot.Visual);
+            if (element != ElementId.None)
             {
-                FireVfx.Explosion(point, slot.ExplosionRadius > 0f ? slot.ExplosionRadius : slot.Radius * 2f * slot.VisualScale);
+                ElementVfx.Explosion(element, point, slot.ExplosionRadius > 0f ? slot.ExplosionRadius : slot.Radius * 2f * slot.VisualScale);
             }
             else
             {
@@ -342,7 +390,11 @@ namespace VaatusRevenge
         // Deflected: the projectile is snuffed out without exploding.
         void Fizzle(FireProjectileSlot slot, Vector3 point)
         {
-            FireVfx.HitSpark(point, slot.Visual == ProjectileVisual.Fire ? new Color(1f, 0.6f, 0.3f) : new Color(0.8f, 0.8f, 0.8f));
+            ElementId element = ProjectileVisuals.ElementOf(slot.Visual);
+            if (element == ElementId.Fire || element == ElementId.None)
+                FireVfx.HitSpark(point, slot.Visual == ProjectileVisual.Fire ? new Color(1f, 0.6f, 0.3f) : new Color(0.8f, 0.8f, 0.8f));
+            else
+                ElementVfx.HitSpark(element, point, ElementVfx.StyleOf(element).HitSparkColor);
             Finish(slot);
         }
 
@@ -350,7 +402,11 @@ namespace VaatusRevenge
         void Expire(FireProjectileSlot slot)
         {
             reports.Clear();
-            if (slot.Visual == ProjectileVisual.Fire) FireVfx.Burst(slot.Position, slot.Velocity, 0.4f * slot.VisualScale);
+            ElementId element = ProjectileVisuals.ElementOf(slot.Visual);
+            // A thrown boulder at the end of its flight breaks apart into falling chunks, like its impact does (V5-06: a
+            // dust puff alone made the rock vanish in mid-air). Water and air just spray.
+            if (slot.Visual == ProjectileVisual.Rock) ElementVfx.Explosion(element, slot.Position, slot.Radius * slot.VisualScale);
+            else if (element != ElementId.None) ElementVfx.Burst(element, slot.Position, slot.Velocity, 0.4f * slot.VisualScale);
             Finish(slot);
         }
 
@@ -358,6 +414,7 @@ namespace VaatusRevenge
         {
             System.Action<HitReport> onHit = slot.OnHit;
             int attackId = slot.Damage.AttackId;
+            if (slot.TracksDanger) CallOffDanger(slot);
             slot.BeginFade(); // state first, so a callback that launches or clears projectiles sees a consistent pool
             if (!slot.HasVisuals) slot.Hide();
             MeleeHitQuery.EndAttack(attackId);
@@ -381,6 +438,62 @@ namespace VaatusRevenge
             reports.Clear();
         }
 
+        // ---- Danger sense ------------------------------------------------------------------------------------------
+
+        // When the bolt reaches the player's body if both keep going as they are: the distance still to cover along its
+        // flight, less both radii, at its speed. DangerSenseRelay made the first estimate when it was loosed (from where
+        // the player stood then); refreshing it every frame keeps the warning and the white "now" cue on the real impact
+        // when the player moves. Once the bolt has flown past, the warning is called off.
+        void RefreshDanger(FireProjectileSlot slot)
+        {
+            PlayerController player = PlayerController.Instance;
+            PlayerCombatModel model = player != null ? player.Model : null;
+            if (model == null) return;
+            Vector3 flight = new Vector3(slot.Velocity.x, 0f, slot.Velocity.z);
+            float speed = flight.magnitude;
+            if (speed < 1e-3f) return;
+            Vector3 toPlayer = player.transform.position - slot.Position;
+            toPlayer.y = 0f;
+            float along = Vector3.Dot(toPlayer, flight / speed);
+            if (along < 0f)
+            {
+                CallOffDanger(slot);
+                slot.TracksDanger = false;
+                return;
+            }
+            // Sideways out of its path (a side-step): it will miss, so no "now" flash for it.
+            float lateral = (toPlayer - flight / speed * along).magnitude;
+            DangerSenseSettings rules = model.Tuning != null ? model.Tuning.DangerSense : null;
+            float margin = rules != null ? Mathf.Max(0f, rules.BoltMissMargin) : 0.3f;
+            if (lateral > model.BodyRadius + slot.Radius + margin)
+            {
+                if (!slot.DangerOffPath) CallOffDanger(slot);
+                slot.DangerOffPath = true;
+                return;
+            }
+            slot.DangerOffPath = false;
+            float gap = Mathf.Max(0f, along - model.BodyRadius - slot.Radius);
+            IncomingStrike strike = slot.DangerStrike;
+            strike.ImpactClock = model.Clock + gap / speed;
+            model.NotifyIncomingStrike(in strike);
+        }
+
+        // The bolt landed, missed or is gone: the model drops its warning now (with DangerCleared if one was shown),
+        // instead of keeping it until the old estimate runs out.
+        static void CallOffDanger(FireProjectileSlot slot)
+        {
+            PlayerController player = PlayerController.Instance;
+            PlayerCombatModel model = player != null ? player.Model : null;
+            if (model == null) return;
+            DangerSenseSettings rules = model.Tuning != null ? model.Tuning.DangerSense : null;
+            double clearAfter = rules != null ? System.Math.Max(0f, rules.ClearAfterImpact) : 0.0;
+            IncomingStrike strike = slot.DangerStrike;
+            strike.ImpactClock = model.Clock - clearAfter - CallOffMargin;
+            model.NotifyIncomingStrike(in strike);
+        }
+
+        // ---- Looks ---------------------------------------------------------------------------------------------------
+
         void CreateMaterials()
         {
             FireVfxStyle style = FireVfx.Style;
@@ -389,6 +502,14 @@ namespace VaatusRevenge
             trailMaterial = GreyboxShapes.CreateAdditive("FireProjectile_Trail", new Color(2f, 2f, 2f, 1f)); // HDR so the trail blooms
             fireTrail = MakeGradient(new Color(1f, 0.85f, 0.4f), new Color(1f, 0.35f, 0.05f));
             boltTrail = MakeGradient(new Color(1f, 1f, 0.9f), new Color(0.6f, 0.6f, 0.6f));
+            // Ice that glows a little (it must read at range), a lit stone, a pale ball of wind.
+            waterMaterial = GreyboxShapes.CreateUnlit("ElementProjectile_Ice", new Color(0.75f, 1.1f, 1.5f));
+            rockMaterial = GreyboxShapes.CreateLit("ElementProjectile_Rock", new Color(0.46f, 0.36f, 0.25f), false);
+            airMaterial = GreyboxShapes.CreateUnlitTransparent("ElementProjectile_Wind", new Color(1.2f, 1.25f, 1.3f, 0.55f), true);
+            dustTrailMaterial = GreyboxShapes.CreateAlphaBlend("ElementProjectile_Dust", Color.white);
+            waterTrail = MakeGradient(new Color(0.75f, 0.95f, 1f), new Color(0.2f, 0.5f, 1f));
+            rockTrail = MakeGradient(new Color(0.7f, 0.6f, 0.45f), new Color(0.5f, 0.42f, 0.32f));
+            airTrail = MakeGradient(new Color(1f, 1f, 1f), new Color(0.8f, 0.88f, 1f));
         }
 
         static Gradient MakeGradient(Color head, Color tail)
@@ -403,9 +524,18 @@ namespace VaatusRevenge
         void OnDestroy()
         {
             if (instance == this) instance = null;
-            if (fireMaterial != null) Destroy(fireMaterial);
-            if (boltMaterial != null) Destroy(boltMaterial);
-            if (trailMaterial != null) Destroy(trailMaterial);
+            DestroyMaterial(fireMaterial);
+            DestroyMaterial(boltMaterial);
+            DestroyMaterial(trailMaterial);
+            DestroyMaterial(waterMaterial);
+            DestroyMaterial(rockMaterial);
+            DestroyMaterial(airMaterial);
+            DestroyMaterial(dustTrailMaterial);
+        }
+
+        static void DestroyMaterial(Material material)
+        {
+            if (material != null) Destroy(material);
         }
     }
 }

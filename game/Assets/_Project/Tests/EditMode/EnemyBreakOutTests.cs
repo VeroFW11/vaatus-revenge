@@ -15,11 +15,42 @@ namespace VaatusRevenge.Tests
             return hit;
         }
 
+        // These tests pin how the counter works, so they run it with the round-3 trigger (3 clean hits in 1.2 s),
+        // whatever the shipped soldier uses. The shipped numbers are pinned in ShippedSoldierLetsTheFiveHitStringLand.
+        static EnemyTuning ThreeHitSoldier()
+        {
+            EnemyTuning t = EnemyTuning.CreateDaoSoldier();
+            t.BreakOut.HitsToTrigger = 3;
+            t.BreakOut.HitWindow = 1.2f;
+            return t;
+        }
+
+        [Test]
+        public void ShippedSoldierLetsTheFiveHitStringLand()
+        {
+            // The string's hits land at each move's active start, each move starting at the previous one's cancel point.
+            MoveData[] chain = ElementMoveSet.CreateFireFluid().LightChain;
+            EnemyDriver d = CirclingSoldier(EnemyTuning.CreateDaoSoldier());
+            float start = 0f, previousHit = 0f;
+            for (int i = 0; i <= chain.Length; i++)
+            {
+                MoveData move = chain[i % chain.Length];
+                float hitAt = start + move.Startup;
+                if (i > 0) Close(d, (int)System.Math.Round((hitAt - previousHit) / d.Dt));
+                d.Brain.ReceiveHit(PlayerHit(), Vector3.Zero);
+                previousHit = hitAt;
+                start += move.ChainCancelAt;
+                if (i < chain.Length - 1)
+                    Assert.IsFalse(d.Brain.IsBreakOutArmed || d.Brain.IsBreakingOut, "hit " + (i + 1) + " of the string: no shove yet");
+            }
+            Assert.IsTrue(d.Brain.IsBreakOutArmed || d.Brain.IsBreakingOut, "looping back into a 6th hit arms it");
+        }
+
         // A soldier that has noticed a target 1.8 m away and won't start a normal attack on its own for a long time,
         // so any attack it makes is the break-out.
         static EnemyDriver CirclingSoldier(EnemyTuning t = null, AttackTokenPool pool = null, int id = 500)
         {
-            t = t ?? EnemyTuning.CreateDaoSoldier();
+            t = t ?? ThreeHitSoldier();
             t.AttackIntervalMin = 100f;
             t.AttackIntervalMax = 100f;
             var d = new EnemyDriver(t, pool, id);
@@ -65,7 +96,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void OnlyTheSoldierBreaksOutAndItsCounterIsFair()
         {
-            EnemyBreakOutRule rule = EnemyTuning.CreateDaoSoldier().BreakOut;
+            EnemyBreakOutRule rule = ThreeHitSoldier().BreakOut;
             Assert.IsTrue(rule.Enabled);
             Assert.IsFalse(EnemyTuning.CreateCrossbowman().BreakOut.Enabled, "crossbowman");
             Assert.IsFalse(EnemyTuning.CreateSparringDummy().BreakOut.Enabled, "the dummy is for practising combos");
@@ -78,7 +109,7 @@ namespace VaatusRevenge.Tests
             Assert.IsTrue(move.Parryable, "deflectable");
             Assert.IsFalse(move.Unblockable, "blockable");
             Assert.Greater(move.Knockback, 0f, "shoves");
-            foreach (EnemyAttackData a in EnemyTuning.CreateDaoSoldier().Attacks)
+            foreach (EnemyAttackData a in ThreeHitSoldier().Attacks)
                 Assert.AreNotSame(rule.Attack, a, "not part of the normal attack rhythm");
         }
 
@@ -118,7 +149,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void TheSwitchTurnsItOff()
         {
-            EnemyTuning t = EnemyTuning.CreateDaoSoldier();
+            EnemyTuning t = ThreeHitSoldier();
             t.BreakOut.Enabled = false;
             EnemyDriver d = CirclingSoldier(t);
             Hits(d, 6, 0.1f);
@@ -171,7 +202,7 @@ namespace VaatusRevenge.Tests
             // Quick Slash only, then hits on its recovery.
             foreach (bool traded in new[] { false, true })
             {
-                EnemyTuning t = EnemyDriver.OnlyAttack(EnemyTuning.CreateDaoSoldier(), 0);
+                EnemyTuning t = EnemyDriver.OnlyAttack(ThreeHitSoldier(), 0);
                 var d = new EnemyDriver(t);
                 d.SetTarget(new Vector3(0f, 0f, 1.8f));
                 d.RunUntil(x => x.FrameHas(EnemyEventType.AttackActiveStart), 600);
@@ -185,7 +216,7 @@ namespace VaatusRevenge.Tests
         [Test]
         public void ItCutsAnUnarmouredWindUpShort()
         {
-            EnemyTuning t = EnemyDriver.OnlyAttack(EnemyTuning.CreateDaoSoldier(), 0);   // Quick Slash: no armour
+            EnemyTuning t = EnemyDriver.OnlyAttack(ThreeHitSoldier(), 0);   // Quick Slash: no armour
             var d = new EnemyDriver(t);
             d.SetTarget(new Vector3(0f, 0f, 1.8f));
             d.RunUntil(x => x.Brain.IsTelegraphing, 600);
@@ -242,7 +273,7 @@ namespace VaatusRevenge.Tests
         public void TheCooldownAlwaysHoldsAgainstNonStopMashing()
         {
             // A masher that eats every shove (so the soldier follows up at once) and never stops pressing light.
-            EnemyTuning t = EnemyTuning.CreateDaoSoldier();
+            EnemyTuning t = ThreeHitSoldier();
             t.MaxHealth = 1e6f;
             t.HealthRefillDelay = 0f;
             EnemyDriver d = CirclingSoldier(t);
@@ -279,7 +310,7 @@ namespace VaatusRevenge.Tests
 
             // Stop pressing well before the cooldown ends and the banked hits age out instead. (With the default
             // 2 s cooldown a combo right after the shove is always still inside the window, so use a longer one.)
-            EnemyTuning longer = EnemyTuning.CreateDaoSoldier();
+            EnemyTuning longer = ThreeHitSoldier();
             longer.BreakOut.Cooldown = 4f;
             cooldown = longer.BreakOut.Cooldown;
             EnemyDriver e = CirclingSoldier(longer);

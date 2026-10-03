@@ -366,3 +366,30 @@ See [Unity6-Compile-Risk-Audit.md](Unity6-Compile-Risk-Audit.md). Nothing found 
 
 - The 8-run quick fuzz (`fuzz --quick`) shows no violations.
 - Three runs show enemy hitboxes opened/closed off by one (e.g. 669/668). Each is a swing still open when the run stopped: a debug count of `IsAttackActive` at the end of each run matched exactly.
+
+## 9. Spider-Man 2 controls (29 Sep 2026)
+
+David switched the prototype to Marvel's Spider-Man 2 controls ([spec](Fire-Combat-Prototype-Spec.md#controls)). Three rule changes can move the numbers: **Fire is parry only** (`GuardSettings.Style`), **light attacks close gaps** (soft lock 4 → 7 m, up to 4.5 m extra lunge, `PlayerTuning.GapCloseDistance`), and the new **Flame Step Strike** zip (the bots don't use it yet).
+
+**Checks:** 244/244 core tests (10 new). Fuzz (8 runs, now pressing the zip button too) and full duels: no invariant violations. The abilities scenario confirms the zip hits a dummy out to 14 m and within 50°, and nothing beyond; the first light attack now lands from 6 m.
+
+Win rates, 40 seeds. "Parry only" isolates the parry change (old lunge and 4 m soft lock via `--set player.GapCloseDistance=0 --set player.SoftLockRange=4`); "+ gap closer" is the shipped default.
+
+| Bot | Preset, enemies | Section 8 (block + parry) | Parry only | + gap closer (shipped) |
+|---|---|---|---|---|
+| guard | Fluid, 1 soldier | 100% | 90% | 80% |
+| guard | Fluid, 2 soldiers | 95% | 70% | 60% |
+| masher | Fluid, 1 soldier | 65% | 65% | 78% |
+| aggressive | Fluid, 2 soldiers | 38% | 40% | 48% |
+| masher | Punishing, 1 soldier | 73% | 80% | 60% |
+| masher | Punishing, 2 soldiers | 33% | 33% | **3%** |
+| aggressive | Punishing, 2 soldiers | 13% | 13% | **3%** |
+| anticipate | Punishing, 2 soldiers | 40% | 43% | 30% |
+| react, anticipate, fajin | Fluid, 1 or 2 soldiers | 93–100% | 90–100% | 90–100% |
+
+**For Jeremy:**
+- **Parry only costs the blocker most** (Fluid vs 2 soldiers 95% → 70%): with no block to fall back on, a mistimed press is a clean hit. That's the intended Spider-Man trade: dodge or parry, nothing in between.
+- **The gap closer helps in Fluid but punishes attack-happy play in Punishing against a pair**: it pulls you into the middle of two soldiers, where Punishing's committal strings get shoved and sandwiched. `GapCloseDistance` (per preset in the player tuning asset) is the lever; 0 turns it off.
+- The bots don't zip-strike, perfect-parry on purpose, or use the new ability chords, so these tables say nothing yet about how good the zip strike feels. That needs a human.
+
+The full duel tables are reproducible with `dotnet run --project tools/CombatSim -c Release -- duels`.

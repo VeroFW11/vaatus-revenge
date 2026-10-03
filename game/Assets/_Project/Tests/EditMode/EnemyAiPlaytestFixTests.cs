@@ -22,13 +22,26 @@ namespace VaatusRevenge.Tests
         {
             EnemyTuning t = EnemyTuning.CreateDaoSoldier();
             Assert.AreEqual(180f, t.MaxHealth, 1e-5f);
-            Assert.AreEqual(45f, t.MaxPoise, 1e-5f);
+            Assert.AreEqual(52f, t.MaxPoise, 1e-5f);
             ElementMoveSet fire = ElementMoveSet.CreateFireFluid();
             var d = new EnemyDriver(t);
             d.World.HasTarget = false;
             foreach (MoveData move in fire.LightChain)
                 Assert.IsFalse(d.Brain.ReceiveHit(PlayerHit(move.PoiseDamage), Vector3.Zero).PoiseBroken, move.DisplayName);
-            Assert.IsTrue(d.Brain.ReceiveHit(PlayerHit(fire.LightChain[0].PoiseDamage), Vector3.Zero).PoiseBroken, "a chain and a bit does");
+            Assert.IsFalse(d.Brain.ReceiveHit(PlayerHit(fire.LightChain[0].PoiseDamage), Vector3.Zero).PoiseBroken,
+                "nor a string and a jab: the break-out gets its turn on that 6th hit (report 04, W-01)");
+            Assert.IsTrue(d.Brain.IsBreakOutArmed, "that 6th hit arms the break-out...");
+            Assert.IsFalse(d.Brain.ReceiveHit(PlayerHit(fire.LightChain[1].PoiseDamage), Vector3.Zero).PoiseBroken,
+                "...which braces it: a 7th hit can't stagger it and wipe the counter");
+
+            EnemyTuning noBreakOut = EnemyTuning.CreateDaoSoldier();
+            noBreakOut.BreakOut.Enabled = false;
+            var plain = new EnemyDriver(noBreakOut);
+            plain.World.HasTarget = false;
+            foreach (MoveData move in fire.LightChain) plain.Brain.ReceiveHit(PlayerHit(move.PoiseDamage), Vector3.Zero);
+            plain.Brain.ReceiveHit(PlayerHit(fire.LightChain[0].PoiseDamage), Vector3.Zero);
+            Assert.IsTrue(plain.Brain.ReceiveHit(PlayerHit(fire.LightChain[1].PoiseDamage), Vector3.Zero).PoiseBroken,
+                "without a break-out, a string and two more hits staggers");
         }
 
         [Test]

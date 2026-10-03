@@ -5,21 +5,28 @@ using VaatusRevenge.Core;
 namespace VaatusRevenge
 {
     // The grey-box combat HUD, drawn with Unity's immediate-mode GUI (OnGUI). It only reads state
-    // (PlayerController.Instance, LockOnController.Instance, SandboxDirector.Instance) and never changes gameplay.
+    // (PlayerController.Instance, LockOnController.Instance, SandboxDirector.Instance) and the player's events
+    // (PlayerController.GameplayEvent), and never changes gameplay.
     //   top-left     health (with a trail showing the damage just taken), stamina, Momentum and its damage
     //                multiplier, heal charges, current element and "not learned yet" messages
     //   top-centre   the lock-on target's name and health; sparring dummies also show combo, damage and DPS
     //   top-right    the tuning preset (F5 / F6) and the F2 slow-motion indicator
+    //   right        the hit counter (HudComboCounter: hits, time left, on-beat streak, MIX) with the beat ring
+    //                under it (HudBeatPulse)
+    //   bottom-right the element wheel (HudElementWheel: the four elements on their face buttons)
+    //   above head   the danger sense mark and arrows (HudDangerSense)
     //   centre       the heavy attack's charge meter (get-ready mark, gold sweet-spot band), messages,
     //                "You died", "Paused"
     //   F1           controls overlay        F3   debug panel (state, frame data, FPS, time scale)
     //
-    // It allocates no memory while playing: styles and the one texture are made once and numbers are turned
-    // into text only when they change (see HudPainter and HudNumberText). Grey-box only: the real game will
-    // get proper UI later.
+    // It allocates no memory while playing: styles and textures are made once and numbers are turned into text
+    // only when they change (see HudPainter and HudNumberText). Grey-box only: the real game will get proper UI later.
     [DisallowMultipleComponent]
     public class CombatHud : MonoBehaviour
     {
+        // The HUD in the scene (null when there is none). The tutorial turns the beat ring at the feet on through it.
+        public static CombatHud Instance { get; private set; }
+
         // OnGUI scripts with a lower depth draw on top: the HUD covers enemy health bars and the lock-on marker.
         const int GuiDepth = -10;
         // Presentation timings in real seconds (not gameplay numbers).
@@ -42,6 +49,8 @@ namespace VaatusRevenge
         [SerializeField] private bool showControlsAtStart = false;
         [Tooltip("Open the debug panel (F3) when Play starts.")]
         [SerializeField] private bool showDebugAtStart = false;
+        [Tooltip("Also draw the beat ring on the floor at the player's feet, where your eyes are in a fight (the tutorial always turns it on while it runs).")]
+        [SerializeField] private bool feetBeatRing = true;
 
         [Header("Colours")]
         [SerializeField] private Color healthColor = new Color(0.8f, 0.12f, 0.1f, 1f);
@@ -58,6 +67,13 @@ namespace VaatusRevenge
 
         readonly HudPainter painter = new HudPainter();
         readonly HudControlsOverlay controlsOverlay = new HudControlsOverlay();
+        readonly HudComboCounter comboCounter = new HudComboCounter();
+        readonly HudBeatPulse beatPulse = new HudBeatPulse();
+        readonly HudBeatPulse feetBeatPulse = new HudBeatPulse();
+        readonly HudElementWheel elementWheel = new HudElementWheel();
+        readonly HudDangerSense dangerSense = new HudDangerSense();
+        PlayerController.PlayerEventHandler eventHandler;   // made once, so subscribing allocates nothing
+        PlayerController listeningTo;
         readonly HudNumberText healthText = new HudNumberText("", "0", 1f);
         readonly HudNumberText multiplierText = new HudNumberText("x", "0.00", 0.01f);
         readonly HudNumberText respawnText = new HudNumberText("Respawning in ", "0", 1f);
@@ -66,6 +82,8 @@ namespace VaatusRevenge
         readonly HudNumberText timeScaleText = new HudNumberText("time scale ", "0.00", 0.01f);
 
         bool showControls;
+        bool overlayOpenedFromPad;          // the overlay was opened (or paged) with Y while paused
+        bool wasPausedForOverlay;
         bool showDebug;
 
         float healthTrail01 = 1f;
@@ -90,11 +108,23 @@ namespace VaatusRevenge
 
         string lastPresetName;
         string presetLabel = "";
-        ElementId lastElement = ElementId.None;
-        string elementName = "";
         string healLabelFor;
         float healLabelScale;
         float healLabelWidth;
+
+        // Draw the beat ring at the player's feet too (on while the tutorial runs).
+        public bool ShowFeetBeatRing
+        {
+            get { return feetBeatRing; }
+            set { feetBeatRing = value; }
+        }
+
+        // Domain reload is off in this project (fast Play), so statics survive from one Play session to the next.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics()
+        {
+            Instance = null;
+        }
 
         void Awake()
         {
@@ -102,26 +132,93 @@ namespace VaatusRevenge
             useGUILayout = false;
             showControls = showControlsAtStart;
             showDebug = showDebugAtStart;
+            eventHandler = OnPlayerEvent;
+        }
+
+        void OnEnable()
+        {
+            if (Instance == null) Instance = this;
+        }
+
+        void OnDisable()
+        {
+            if (Instance == this) Instance = null;
+            Listen(null);
         }
 
         void OnDestroy()
         {
+            Listen(null);
             painter.Dispose();
         }
 
+        // Follows the scene's player (it can be replaced or respawned as a new object): the widgets hear every event.
+        void Listen(PlayerController player)
+        {
+            if (ReferenceEquals(player, listeningTo)) return;
+            if (listeningTo != null) listeningTo.GameplayEvent -= eventHandler;
+            listeningTo = player;
+            if (listeningTo != null && eventHandler != null) listeningTo.GameplayEvent += eventHandler;
+        }
+
+        void OnPlayerEvent(in PlayerEvent e)
+        {
+            float now = Time.unscaledTime;
+            comboCounter.OnEvent(in e, now);
+            beatPulse.OnEvent(in e, now);
+            feetBeatPulse.OnEvent(in e, now);
+            elementWheel.OnEvent(in e, now);
+            if (e.Type == PlayerEventType.HealedOnHit) healTickStart = now;
+            if (e.Type == PlayerEventType.DodgeChainLimited)
+            {
+                dodgeLimitedStart = now;
+                dodgeLimitedTime = Mathf.Max(0.2f, e.Duration);
+            }
+        }
+
+        float dodgeLimitedStart = -10f, dodgeLimitedTime = 0.3f;
+
+        float healTickStart = -10f;
+        const float HealTickTime = 0.35f;
+
         void Update()
         {
+            Listen(PlayerController.Instance);
+
             // Keys are read here, not in OnGUI: OnGUI runs several times per frame and would toggle twice.
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null)
             {
-                if (keyboard.f1Key.wasPressedThisFrame) showControls = !showControls;
+                if (keyboard.f1Key.wasPressedThisFrame)
+                {
+                    showControls = controlsOverlay.NextPage(); // closed, combos, controls, closed
+                    overlayOpenedFromPad = false;
+                }
                 if (keyboard.f3Key.wasPressedThisFrame)
                 {
                     showDebug = !showDebug;
                     slowTextTimer = 0f; // fill the panel's header straight away
                 }
             }
+
+            // On the gamepad: while paused (Menu), Y pages the same overlay.
+            PlayerInputReader reader = PlayerInputReader.Instance;
+            SandboxDirector pauseOwner = SandboxDirector.Instance;
+            bool pausedNow = pauseOwner != null ? pauseOwner.IsPaused : TimeScaleController.IsPaused;
+            if (pausedNow && reader != null && reader.OverlayPageButton.Pressed)
+            {
+                showControls = controlsOverlay.NextPage();
+                overlayOpenedFromPad = showControls;
+            }
+            // Opened with Y while paused: it closes on resume, so it never sits over the fight (verify R2-S15). (F1 is a
+            // toggle on the keyboard and stays as the player left it.)
+            if (!pausedNow && wasPausedForOverlay && overlayOpenedFromPad && showControls)
+            {
+                controlsOverlay.Close();
+                showControls = false;
+            }
+            if (!showControls) overlayOpenedFromPad = false;
+            wasPausedForOverlay = pausedNow;
 
             // Real time throughout: the HUD must keep animating during hitstop, slow motion and pause.
             float realDt = Time.unscaledDeltaTime;
@@ -146,16 +243,19 @@ namespace VaatusRevenge
             {
                 DrawPlayerPanel(player);
                 if (player.IsCharging) DrawChargeMeter(player);
+                DrawCombatWidgets(player, director);
             }
             else
             {
                 painter.Text(new Rect(Margin, Margin, painter.U(900f), painter.U(24f)),
-                    "No player in the scene. Use Vaatu's Revenge > Build Fire Combat Sandbox.", painter.Body, accentColor);
+                    "No player in the scene. Use Vaatu's Revenge > Build Combat Sandbox.", painter.Body, accentColor);
             }
             DrawTargetPanel();
             DrawTopRight(player);
+            PlayerInputReader hintReader = PlayerInputReader.Instance;
+            bool padHint = hintReader != null && hintReader.UsingGamepad;
             painter.Text(new Rect(Margin, Screen.height - Margin - painter.U(22f), painter.U(400f), painter.U(22f)),
-                "F1 controls  ·  F3 debug", painter.Small, DimText);
+                padHint ? "Menu, then Y: combos & controls" : "F1 controls  ·  F3 debug", painter.Small, DimText);
             DrawToast(director);
             if (player != null && player.IsDead) DrawDeathScreen(director);
             if (director != null ? director.IsPaused : TimeScaleController.IsPaused) DrawPauseScreen();
@@ -169,6 +269,10 @@ namespace VaatusRevenge
 
         // ---- Top-left: the player ----
 
+        // Where the health / stamina / Momentum bars (and the multiplier beside them) were drawn last frame, in GUI pixels:
+        // the tutorial panel at the top centre keeps clear of it on narrow screens (4:3, 16:10; round 7, S7-17).
+        public Rect PlayerBarsRect { get; private set; }
+
         void DrawPlayerPanel(PlayerController player)
         {
             float x = Margin;
@@ -181,6 +285,14 @@ namespace VaatusRevenge
             painter.Fill(health, BarBackground);
             painter.Fill(new Rect(health.x, health.y, health.width * Mathf.Max(health01, healthTrail01), health.height), damageTrailColor);
             painter.Fill(new Rect(health.x, health.y, health.width * health01, health.height), healthColor);
+            // A hit that healed you (Water): the bar's end glows blue-white for a moment.
+            float sinceHeal = Time.unscaledTime - healTickStart;
+            if (sinceHeal >= 0f && sinceHeal < HealTickTime)
+            {
+                float tick = painter.U(26f);
+                painter.Fill(new Rect(health.x + health.width * health01 - tick, health.y, tick, health.height),
+                    new Color(0.75f, 0.92f, 1f, 0.85f * (1f - sinceHeal / HealTickTime)));
+            }
             painter.Outline(health, 1f, BarOutline);
             PlayerCombatModel model = player.Model;
             if (model != null)
@@ -194,23 +306,80 @@ namespace VaatusRevenge
             var stamina = new Rect(x, y, painter.U(320f), painter.U(12f));
             painter.Bar(stamina, player.Stamina01, staminaColor, BarBackground);
             painter.Outline(stamina, 1f, BarOutline);
+            // A refused fourth dodge in a row (J4-S01): the stamina bar's outline flashes for the short breath.
+            float sinceLimited = Time.unscaledTime - dodgeLimitedStart;
+            if (sinceLimited >= 0f && sinceLimited < dodgeLimitedTime)
+                painter.Outline(stamina, painter.U(3f), new Color(1f, 0.45f, 0.35f, 1f - sinceLimited / dodgeLimitedTime));
             y = stamina.yMax + painter.U(7f);
 
-            // Momentum (Fire's identity mechanic): landing hits fills it, and it boosts damage by the multiplier.
-            var momentum = new Rect(x, y, painter.U(320f), painter.U(10f));
-            painter.Bar(momentum, player.Momentum01, momentumColor, BarBackground);
-            painter.Outline(momentum, 1f, BarOutline);
-            painter.Text(new Rect(momentum.xMax + painter.U(10f), momentum.center.y - painter.Small.fontSize * 0.65f, painter.U(90f), painter.U(22f)),
-                multiplierText.Get(player.MomentumMultiplier), painter.Small, momentumColor);
-            y = momentum.yMax + painter.U(12f);
+            // Momentum (Fire's identity mechanic): landing hits fills it, and it boosts damage by the multiplier. Shown only
+            // for an element that has Momentum (verify R2-S10: an empty bar for Water, Earth and Air meant nothing).
+            bool hasMomentum = model == null || model.MoveSet == null || model.MoveSet.Momentum == null || model.MoveSet.Momentum.Enabled;
+            if (hasMomentum)
+            {
+                var momentum = new Rect(x, y, painter.U(320f), painter.U(10f));
+                painter.Bar(momentum, player.Momentum01, momentumColor, BarBackground);
+                painter.Outline(momentum, 1f, BarOutline);
+                painter.Text(new Rect(momentum.xMax + painter.U(10f), momentum.center.y - painter.Small.fontSize * 0.65f, painter.U(90f), painter.U(22f)),
+                    multiplierText.Get(player.MomentumMultiplier), painter.Small, momentumColor);
+                y = momentum.yMax + painter.U(12f);
+            }
+            else if (model != null && TryHeldMeter(model, out ElementId meterElement, out float meter01))
+            {
+                // Another element's meter still holds something (a MIX 4 finisher tops up Fire's Momentum, J4-S05): shown,
+                // thinner and labelled, until it decays, so the reward is visible while you're in another element.
+                var momentum = new Rect(x, y, painter.U(320f), painter.U(6f));
+                painter.Bar(momentum, meter01, momentumColor, BarBackground);
+                painter.Outline(momentum, 1f, BarOutline);
+                painter.Text(new Rect(momentum.xMax + painter.U(10f), momentum.center.y - painter.Small.fontSize * 0.65f, painter.U(120f), painter.U(22f)),
+                    MeterLabel(model, meterElement), painter.Small, momentumColor);
+                y = momentum.yMax + painter.U(12f);
+            }
+            else
+            {
+                y += painter.U(5f);
+            }
 
+            PlayerBarsRect = new Rect(x, Margin, painter.U(450f), y - Margin);   // 320 bar + 10 gap + 120 label (health is 380)
             DrawHealCharges(x, y, player.HealCharges, player.MaxHealCharges);
             y += painter.U(26f);
 
-            painter.Text(new Rect(x, y, painter.U(400f), painter.U(26f)), ElementName(player), painter.Body, accentColor);
-            y += painter.U(28f);
+            // The element's name is shown once, under the element wheel (verify R2-S10), not here as well.
             string message = player.ElementMessage;
             if (!string.IsNullOrEmpty(message)) painter.Text(new Rect(x, y, painter.U(600f), painter.U(22f)), message, painter.Small, Color.white);
+        }
+
+        // The first element (not in hand) whose identity meter holds anything.
+        static bool TryHeldMeter(PlayerCombatModel model, out ElementId element, out float fraction)
+        {
+            for (ElementId e = ElementId.Fire; e <= ElementId.Air; e++)
+            {
+                if (e == model.ActiveElement) continue;
+                float f = model.MeterFraction(e);
+                if (f > 0.001f)
+                {
+                    element = e;
+                    fraction = f;
+                    return true;
+                }
+            }
+            element = ElementId.None;
+            fraction = 0f;
+            return false;
+        }
+
+        // Cached (per HUD) so OnGUI doesn't build a string every frame.
+        readonly string[] meterLabels = new string[(int)ElementId.Air + 1];
+
+        // "<element's display name> Momentum", from the move data (V5-07: not the enum's name). Built once per element.
+        string MeterLabel(PlayerCombatModel model, ElementId element)
+        {
+            int i = (int)element;
+            if (i < 0 || i >= meterLabels.Length) return "";
+            if (meterLabels[i] != null) return meterLabels[i];
+            ElementMoveSet set = model.Loadout != null ? model.Loadout.Get(element) : null;
+            string name = set != null && !string.IsNullOrEmpty(set.DisplayName) ? set.DisplayName : element.ToString();
+            return meterLabels[i] = name + " Momentum";
         }
 
         void DrawHealCharges(float x, float y, int charges, int maxCharges)
@@ -231,23 +400,6 @@ namespace VaatusRevenge
             }
         }
 
-        // The element's display name comes from its move set (data); the enum name is only a fallback.
-        string ElementName(PlayerController player)
-        {
-            ElementId element = player.CurrentElement;
-            MoveSetAsset moves = player.MoveSetAsset;
-            if (moves != null && moves.MoveSet != null && moves.MoveSet.Element == element && !string.IsNullOrEmpty(moves.MoveSet.DisplayName))
-            {
-                return moves.MoveSet.DisplayName;
-            }
-            if (element != lastElement || elementName.Length == 0)
-            {
-                lastElement = element;
-                elementName = element == ElementId.None ? "" : element.ToString();
-            }
-            return elementName;
-        }
-
         void UpdateHealthTrail(PlayerController player, float realDt)
         {
             float health = player != null ? HudPainter.Clamp01(player.Health01) : 1f;
@@ -264,6 +416,54 @@ namespace VaatusRevenge
                 return;
             }
             healthTrail01 = Mathf.Max(health, healthTrail01 - DamageTrailSpeed * realDt);
+        }
+
+        // ---- Build 05: the hit counter, the beat, the element wheel, danger sense ----
+
+        void DrawCombatWidgets(PlayerController player, SandboxDirector director)
+        {
+            PlayerCombatModel model = player.Model;
+            if (model == null) return;
+            float now = Time.unscaledTime;
+            bool paused = director != null ? director.IsPaused : TimeScaleController.IsPaused;
+
+            // Right side: the counter, and the beat ring under it.
+            var counterAnchor = new Vector2(Screen.width - Margin - painter.U(40f), Screen.height * 0.28f);
+            comboCounter.Draw(painter, model, counterAnchor, now);
+            float ringRadius = painter.U(20f);
+            var ringCenter = new Vector2(counterAnchor.x - painter.U(120f), counterAnchor.y + painter.U(250f));
+            beatPulse.Draw(painter, model, ringCenter, ringRadius, now, 1f, true);
+
+            // Bottom right: the elements.
+            float wheel = painter.U(120f);
+            elementWheel.Draw(painter, model, PlayerInputReader.Instance, new Vector2(Screen.width - Margin - wheel, Screen.height - Margin - wheel), now);
+
+            if (player.IsDead || paused) return;
+            Camera cam = HudCamera();
+            if (feetBeatRing && cam != null) DrawFeetBeatRing(player, model, cam, now);
+            dangerSense.Draw(painter, player, model, cam, Time.unscaledDeltaTime);
+        }
+
+        // The beat ring lying on the floor round the player's feet: its size on screen is a real 0.7 m radius at that depth.
+        void DrawFeetBeatRing(PlayerController player, PlayerCombatModel model, Camera cam, float now)
+        {
+            const float RadiusMetres = 0.7f;
+            Vector3 feet = player.transform.position + Vector3.up * 0.05f;
+            Vector3 centre = cam.WorldToScreenPoint(feet);
+            if (centre.z <= 0f) return;
+            Vector3 side = cam.WorldToScreenPoint(feet + cam.transform.right * RadiusMetres);
+            float radius = Mathf.Abs(side.x - centre.x);
+            if (radius < 2f) return;
+            // A ring on the floor looks squashed by how steeply the camera looks down at it.
+            float squash = Mathf.Clamp(Mathf.Abs(Vector3.Dot(cam.transform.forward, Vector3.up)), 0.2f, 1f);
+            feetBeatPulse.Draw(painter, model, new Vector2(centre.x, Screen.height - centre.y), radius, now, squash, false);
+        }
+
+        static Camera HudCamera()
+        {
+            ThirdPersonCameraRig rig = ThirdPersonCameraRig.Instance;
+            Camera cam = rig != null ? rig.Camera : null;
+            return cam != null ? cam : Camera.main;
         }
 
         // ---- Centre: the heavy attack's charge ----
@@ -374,6 +574,9 @@ namespace VaatusRevenge
             float width = painter.U(460f);
             float x = (Screen.width - width) * 0.5f;
             float y = Margin;
+            // The tutorial panel sits top-centre too: go below it while it shows.
+            TutorialDirector tutorial = TutorialDirector.Instance;
+            if (tutorial != null && tutorial.PanelBottom > 0f) y = Mathf.Max(y, tutorial.PanelBottom + painter.U(10f));
             painter.Text(new Rect(x - width, y, width * 3f, painter.U(26f)), targetName, painter.BodyCenter, Color.white);
             y += painter.U(30f);
 
@@ -446,7 +649,10 @@ namespace VaatusRevenge
             painter.Fill(new Rect(0f, 0f, Screen.width, Screen.height), new Color(0f, 0f, 0f, 0.45f));
             float middle = Screen.height * 0.5f;
             painter.Text(new Rect(0f, middle - painter.U(70f), Screen.width, painter.U(80f)), "Paused", painter.Huge, Color.white);
-            painter.Text(new Rect(0f, middle + painter.U(18f), Screen.width, painter.U(26f)), "Esc to resume  ·  F1 controls", painter.BodyCenter, DimText);
+            PlayerInputReader reader = PlayerInputReader.Instance;
+            bool gamepad = reader != null && reader.UsingGamepad;
+            painter.Text(new Rect(0f, middle + painter.U(18f), Screen.width, painter.U(26f)),
+                gamepad ? "Menu to resume  ·  Y combos & controls" : "Esc to resume  ·  F1 controls", painter.BodyCenter, DimText);
         }
 
         // ---- F3 debug panel ----
@@ -526,15 +732,11 @@ namespace VaatusRevenge
 
         void DrawControls(PlayerController player)
         {
-            string skill = "";
-            string element = "";
+            // The element in hand names the moves (with a loadout there is no single move set asset).
+            PlayerCombatModel model = player != null ? player.Model : null;
             MoveSetAsset moves = player != null ? player.MoveSetAsset : null;
-            if (moves != null && moves.MoveSet != null)
-            {
-                if (moves.MoveSet.Skill != null) skill = moves.MoveSet.Skill.DisplayName;
-                element = moves.MoveSet.DisplayName;
-            }
-            controlsOverlay.Draw(painter, skill, healItemName, element, TimeScaleController.DebugSlowMotionScale, accentColor);
+            ElementMoveSet set = model != null ? model.MoveSet : moves != null ? moves.MoveSet : null;
+            controlsOverlay.Draw(painter, set, healItemName, TimeScaleController.DebugSlowMotionScale, accentColor);
         }
 
         static string Safe(string text)

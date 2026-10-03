@@ -26,9 +26,17 @@ namespace VaatusRevenge.Core
         public Vector3 SoftTargetAimPoint;
         public float SoftTargetRadius;
 
+        // The zip strike's target: the best candidate within the move set's ZipStrikeSettings (much further than
+        // the soft lock). None = a zip strike press does nothing.
+        public bool HasZipTarget;
+        public Vector3 ZipTargetPosition;   // feet
+        public Vector3 ZipTargetAimPoint;   // chest
+        public float ZipTargetRadius;
+
         // The nearest living enemy (any distance; the model applies MomentumSettings.BackOffRadius). Backing away
         // from it drains Momentum even when not locked on.
         public bool HasNearestEnemy;
         public Vector3 NearestEnemyPosition;
+        public float NearestEnemyRadius;    // its body radius (0 = unknown): a slip-in dodge toward it stops short of its body
     }
 }

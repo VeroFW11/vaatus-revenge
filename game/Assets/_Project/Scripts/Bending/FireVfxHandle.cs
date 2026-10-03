@@ -8,6 +8,8 @@ namespace VaatusRevenge
         internal const int NoKind = 0;
         internal const int PieceKind = 1;
         internal const int TrailKind = 2;
+        internal const int EmitterKind = 3;
+        internal const int WhipKind = 4;
 
         internal readonly int Kind;
         internal readonly int Index;

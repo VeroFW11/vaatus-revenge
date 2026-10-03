@@ -59,6 +59,7 @@ Lore-safe ways to keep the idea:
 - [x] **Why has the clash happened now?** Vaatu's presence leaks from the Tree and infects a powerful human.
 - [ ] **Who is the Vaatu-infected human?** Pick from options A–C in the lore check above.
 - [x] **Who is the player character?** Fixed backstory, custom look.
+- [ ] **Does the Avatar's look place him in the cycle?** (Flagged by the Build 05 round 7 review.) The chosen character sheet (`docs/Art/Character-Sheets/Player-Avatar-Style-B-chosen.webp`) has a flame-swirl pendant and an all-crimson outfit, which read as a Fire Nation-born Avatar and so pin him to a place in the cycle, against "deliberately never placed exactly in the cycle". The grey-box body in the game is neutral today; the risk arrives with the textured model. Should the pendant be a neutral four-element or spirit motif (and the outfit less single-nation) before the model is textured? David to answer here.
 
 ## Claude's suggestions
 

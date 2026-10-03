@@ -55,6 +55,15 @@ namespace VaatusRevenge.Core
         public float QueuedPressMaxAge = 0.35f;      // a light press queued as the next chain move is dropped if it gets older than
                                                      // this before it can fire (e.g. waiting for stamina), so it never fires late
         public DodgeTrigger DodgeTrigger = DodgeTrigger.OnPress;
+        // Fluid dodges the moment B goes down and a hold then sprints, so every sprint starts with a dodge. A dodge pressed
+        // while RUNNING (at least RunDodgeMinSpeed), with nobody locked on and no strike about to land, is a plain dash
+        // along the stick (facing the dash) instead of a slip-in / circle round the nearest enemy, so 'hold B to sprint'
+        // never swings you round a foe you were running past. Only a stick pointed within RunDodgeSlipInAngle of that foe
+        // still slips in. Locked on, or with a strike coming, the dodge works as always (round 7, J7-05). An asset saved
+        // before these fields existed reads false / 0: the old behaviour.
+        public bool RunDodgeKeepsHeading = true;
+        public float RunDodgeMinSpeed = 3.5f;        // m/s of locomotion when B goes down (walk 2.0, run 4.8, sprint 7.2)
+        public float RunDodgeSlipInAngle = 20f;      // degrees between the stick and the foe that still mean "slip in"
         public bool DefensivePressesWin = true;      // a buffered dodge or guard survives later attack presses (attacks still replace
                                                      // attacks), so a nervous extra light press can't cancel your escape.
                                                      // false = the last press always wins (Elden Ring). Pending David (CTRL-01)
@@ -75,14 +84,45 @@ namespace VaatusRevenge.Core
         public float HealMoveMultiplier = 0.35f;     // share of normal speed while drinking
 
         // --- Aiming ---
-        public float SoftLockRange = 4f;             // not locked on: attacks aim at the nearest enemy this close...
+        public float SoftLockRange = 7f;             // not locked on: attacks aim at the nearest enemy this close...
         public float SoftLockAngle = 60f;            // ...and at most this many degrees off the direction you're aiming...
-        public float SoftLockMaxHeightDifference = 1.5f; // ...and no more than this far above or below you (not up on a ledge)
+        public float SoftLockMaxHeightDifference = 2.5f; // ...and no more than this far above or below you (juggled foes count; a ledge too high doesn't)
         public float LungeStopGap = 0.3f;            // lunges stop this far from the target's body so you never run through it
+        public float GapCloseDistance = 4.5f;        // free-flow: a light attack at a soft-lock target out of reach lunges up to
+                                                     // this much further than its own LungeDistance to close the gap (0 = off)
+        public float ArriveLungeMaxSpeed = 20f;      // a stretched lunge (and an own lunge longer than ArriveLungeMinDistance, e.g. a
+                                                     // sprint attack) arrives as its strike goes active, never faster than this (m/s)...
+        public float ArriveLungeMaxExtraStartup = 0.22f; // ...stretching the startup by up to this many seconds to make room (0 = never;
+                                                     // 0.22: room for the eased ramps of J4-02 at 20 m/s)
+        public float ArriveLungeMinDistance = 1.5f;  // own lunges longer than this arrive as they strike (0 = only stretched lunges)
+        public float ArriveLungeRampIn = 0.05f;      // an arriving lunge eases in from the way you were moving (a dodge's exit) over
+                                                     // this long (s), instead of flipping to full speed in one frame (0 = no ease)...
+        public float ArriveLungeRampOut = 0.08f;     // ...and slows over its last this-long before the strike (0 = no ease)...
+        public float ArriveLungeEndSpeed = 3f;       // ...to arrive at no more than this (m/s), not a dead stop from full speed
+        public float ArriveLungeMaxAccel = 300f;     // m/s per second: the ramps are only as long as the speed change needs at this
+                                                     // (a short gap-closer from standing barely eases; 0 = always the full ramps)
+        public float ArriveLungeEntryCarry = 0.5f;   // 0..1: share of your speed along the dash (backwards out of an evade
+                                                     // included) the ease-in starts from
+
+        // --- Combos (Build 05) ---
+        public RhythmTuning Rhythm = new RhythmTuning();             // the beat: on-beat presses speed the string up
+        public ComboTuning Combo = new ComboTuning();                // the hit counter
+        public MixTuning Mix = new MixTuning();                      // the multi-element bonus
+        public ElementSwitchTuning ElementSwitch = new ElementSwitchTuning();
+        public DangerSenseSettings DangerSense = new DangerSenseSettings();
+        public float StringMemoryAfterAction = 0.45f;  // a string survives a dodge, zip, ability or skill: X pressed this soon
+                                                       // after it continues at the next hit instead of starting over
+        public float DodgeStrikeGrace = 0.20f;         // attack this soon after a dodge ends, at a target: the dodge strike
+
+        // Bumped when the defaults change in a way old assets must not keep (the sandbox builder offers to reset an
+        // asset whose DataVersion is behind). New fields read 0 in an asset saved before they existed.
+        public int DataVersion = 0;
+        public const int CurrentDataVersion = 8;   // 6: Build 05 verify (switch cooldown, arriving lunges); 7: eased arrivals (J4-02)
+                                                   // 8: round 7 (a dodge from a run keeps its heading: RunDodgeKeepsHeading)
 
         public static PlayerTuning CreateFluid()
         {
-            return new PlayerTuning();
+            return new PlayerTuning { DataVersion = CurrentDataVersion };
         }
 
         // Elden Ring-like: dodge on release, slower stamina, sprint costs stamina, tighter buffer.
@@ -99,6 +139,15 @@ namespace VaatusRevenge.Core
             t.SprintStaminaDrain = 6f;
             t.InputBufferWindow = 0.2f;
             t.DodgeTrigger = DodgeTrigger.OnRelease;
+            t.RunDodgeKeepsHeading = false;          // a dodge here is a deliberate tap (a hold sprints without one)
+            t.Rhythm = RhythmTuning.CreatePunishing();
+            t.Combo = ComboTuning.CreatePunishing();
+            t.Mix = MixTuning.CreatePunishing();
+            t.ElementSwitch = ElementSwitchTuning.CreatePunishing();
+            t.DangerSense = DangerSenseSettings.CreatePunishing();
+            t.StringMemoryAfterAction = 0.35f;
+            t.DodgeStrikeGrace = 0.10f;
+            t.DataVersion = CurrentDataVersion;
             return t;
         }
     }

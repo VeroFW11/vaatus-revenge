@@ -1,5 +1,6 @@
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace VaatusRevenge.EditorTools
 {
@@ -27,6 +28,33 @@ namespace VaatusRevenge.EditorTools
             EnsureFolder(Folder);
             AssetDatabase.CreateAsset(material, path);
             return material;
+        }
+
+        // Loads Assets/_Project/Materials/<name>.mat, or creates it (URP Particles/Unlit, see-through, white so the effect
+        // tints it): additive (adds light: black disappears, bright parts glow) or alpha-blended. The element effects use
+        // these two so player builds keep the shaders they need. An existing material is returned untouched.
+        public static Material GetOrCreateEffect(string name, bool additive)
+        {
+            string path = Folder + "/" + Sanitize(name) + ".mat";
+            Material existing = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (existing != null) return existing;
+
+            Material material = GreyboxShapes.CreateAdditive(Sanitize(name), Color.white);
+            if (material == null) return null;
+            if (!additive)
+            {
+                SetFloatIfPresent(material, "_Blend", 0f);   // alpha
+                SetFloatIfPresent(material, "_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+                SetFloatIfPresent(material, "_DstBlendAlpha", (float)BlendMode.OneMinusSrcAlpha);
+            }
+            EnsureFolder(Folder);
+            AssetDatabase.CreateAsset(material, path);
+            return material;
+        }
+
+        static void SetFloatIfPresent(Material material, string property, float value)
+        {
+            if (material.HasProperty(property)) material.SetFloat(property, value);
         }
 
         // Creates every missing folder along an "Assets/..." path.

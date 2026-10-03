@@ -9,7 +9,7 @@ namespace VaatusRevenge.CombatSim
     // into PlayerInputFrames with Pressed/Released edges, exactly like PlayerInputReader.ReadButton does.
     public struct Pad
     {
-        public bool Light, Heavy, Dodge, Jump, Guard, Skill, Heal, LockOn, SwapShoulder;
+        public bool Light, Heavy, Dodge, Jump, Guard, Skill, Heal, LockOn, SwapShoulder, ZipStrike, AbilityNorth, AbilityEast;
         public Vector2 Move;
         public Vector2 Look;
         public bool LookIsMouse;
@@ -21,8 +21,47 @@ namespace VaatusRevenge.CombatSim
     {
         Pad last;
 
+        // Real-pad mode (Build 05 verify round 4, BH-04; modifier first since round 5): Light / ZipStrike / Dodge / Jump are
+        // the raw X / Y / B / A face buttons and Guard is LB; an element pick (Pad.Element) is played as a human chord:
+        // RB goes down, then its face button up to MaxChordSkew later (or on the same frame), held ChordHold, and all of
+        // it goes through the game's PadChordReader exactly like PlayerInputReader (so the swallowed faces and the RB tap
+        // guard are tested, and every other press reaches the rules on its own frame, as on the pad).
+        // Off (the default): the keyboard path, presses reach the rules as they are and Element is the number keys.
+        public bool RealPad;
+        public float MaxChordSkew = 0.08f;
+        public float ChordHold = 0.10f;
+        public readonly PadChordReader Chords = new PadChordReader();
+        readonly ElementButtonLayout layout = new ElementButtonLayout();
+        DeterministicRandom rng = new DeterministicRandom(1);
+        double clock;
+        int chordFace = -1;
+        bool chordFaceWasDown;      // the chord's face has gone down (so its pick was made)
+        double chordFaceDown, chordRbDown, chordEnd;
+        bool rawN, rawE, rawS, rawW, rawRb, rawLb;
+
+        // Real time of the bot's own last press of each face (for "stray action" checks): X, Y, B, A.
+        public double LastOwnLight = double.NegativeInfinity, LastOwnZip = double.NegativeInfinity;
+        public double LastOwnDodge = double.NegativeInfinity, LastOwnJump = double.NegativeInfinity, LastOwnSkill = double.NegativeInfinity;
+        public int ChordsPlayed, ChordsSameFrame, ChordsCancelled;
+        public double Clock => clock;
+        public bool ChordInFlight => chordFace >= 0;
+        // RB is down for a chord whose face hasn't gone down yet (a run that ends here never made that pick).
+        public bool ChordPickPending => chordFace >= 0 && !chordFaceWasDown;
+
+        public void UseRealPad(int seed)
+        {
+            RealPad = true;
+            rng = new DeterministicRandom(seed);
+        }
+
         public PlayerInputFrame Build(in Pad now)
         {
+            return Build(now, 1f / 60f);
+        }
+
+        public PlayerInputFrame Build(in Pad now, float realDt)
+        {
+            if (RealPad) return BuildRealPad(now, realDt);
             var f = new PlayerInputFrame
             {
                 Move = ClampMagnitude(now.Move),
@@ -37,11 +76,129 @@ namespace VaatusRevenge.CombatSim
                 Heal = ButtonState.From(now.Heal, last.Heal),
                 LockOn = ButtonState.From(now.LockOn, last.LockOn),
                 SwapShoulder = ButtonState.From(now.SwapShoulder, last.SwapShoulder),
+                ZipStrike = ButtonState.From(now.ZipStrike, last.ZipStrike),
+                AbilityNorth = ButtonState.From(now.AbilityNorth, last.AbilityNorth),
+                AbilityEast = ButtonState.From(now.AbilityEast, last.AbilityEast),
                 SwitchTargetDelta = now.SwitchTarget,
                 ElementSelect = now.Element
             };
             last = now;
             return f;
+        }
+
+        PlayerInputFrame BuildRealPad(in Pad now, float realDt)
+        {
+            float dt = realDt > 0f ? realDt : 0f;
+            clock += dt;
+            if (now.Light && !last.Light) LastOwnLight = clock;
+            if (now.ZipStrike && !last.ZipStrike) LastOwnZip = clock;
+            if (now.Dodge && !last.Dodge) LastOwnDodge = clock;
+            if (now.Jump && !last.Jump) LastOwnJump = clock;
+            if (now.Skill && !last.Skill) LastOwnSkill = clock;
+
+            // A new element pick becomes a chord in flight (one at a time: a pick during a chord is a change of mind
+            // that waits for the next chord).
+            if (now.Element != ElementId.None && chordFace < 0)
+            {
+                int face = layout.PadSlotOf(now.Element);
+                if (face >= 0)
+                {
+                    float skew = rng.Range(0f, MaxChordSkew);   // RB first, the face 'skew' later
+                    // The chord owns its face button from now on. If the bot is still holding that face from a press of its
+                    // own, a human's thumb comes up first: the chord starts a frame later.
+                    double start = RawFace(face) ? clock + Math.Max(dt, 1e-3) : clock;
+                    chordFace = face;
+                    chordFaceWasDown = false;
+                    chordRbDown = start;
+                    chordFaceDown = start + skew;
+                    chordEnd = chordFaceDown + ChordHold;
+                    ChordsPlayed++;
+                    if (skew < dt) ChordsSameFrame++;
+                }
+            }
+            bool chordFaceHeld = false, chordRbHeld = false;
+            if (chordFace >= 0 && OwnPressOtherThan(now, chordFace))
+            {
+                // The bot wants another button (a dodge, a jump, a parry...) while RB is down for a chord: a human lets go
+                // of RB as that thumb moves, so the new press does its own job instead of picking another element. If the
+                // chord's face hadn't gone down yet, the pick is dropped (a change of mind, counted in ChordsCancelled).
+                if (!chordFaceWasDown) ChordsCancelled++;
+                chordEnd = clock;
+            }
+            if (chordFace >= 0)
+            {
+                if (clock >= chordEnd - 1e-6) chordFace = -1;
+                else
+                {
+                    chordFaceHeld = clock >= chordFaceDown - 1e-6;
+                    if (chordFaceHeld) chordFaceWasDown = true;
+                    chordRbHeld = clock >= chordRbDown - 1e-6;
+                }
+            }
+            int cf = chordFace;
+            bool n = cf == PadChordReader.FaceNorth ? chordFaceHeld : now.ZipStrike;
+            bool e = cf == PadChordReader.FaceEast ? chordFaceHeld : now.Dodge;
+            bool so = cf == PadChordReader.FaceSouth ? chordFaceHeld : now.Jump;
+            bool w = cf == PadChordReader.FaceWest ? chordFaceHeld : now.Light;
+            bool rb = chordRbHeld;
+            bool lb = now.Guard;
+            ButtonState north = ButtonState.From(n, rawN);
+            ButtonState east = ButtonState.From(e, rawE);
+            ButtonState south = ButtonState.From(so, rawS);
+            ButtonState west = ButtonState.From(w, rawW);
+            ButtonState rbState = ButtonState.From(rb, rawRb);
+            ButtonState lbState = ButtonState.From(lb, rawLb);
+            rawN = n; rawE = e; rawS = so; rawW = w; rawRb = rb; rawLb = lb;
+            PadChordReader.Result chord = Chords.Read(ref north, ref east, ref south, ref west, rbState, lbState, dt, layout);
+
+            ButtonState heavy = Or(chord.Heavy, ButtonState.From(now.Heavy, last.Heavy));
+            ButtonState abilityNorth = Or(chord.AbilityNorth, ButtonState.From(now.AbilityNorth, last.AbilityNorth));
+            ButtonState abilityEast = Or(chord.AbilityEast, ButtonState.From(now.AbilityEast, last.AbilityEast));
+            ButtonState skill = ButtonState.From(now.Skill, last.Skill);   // the mouse's right button (RB's tap is chord.Skill)
+            if (chord.Skill.Pressed) skill.Pressed = true;
+            var f = new PlayerInputFrame
+            {
+                Move = ClampMagnitude(now.Move),
+                Look = now.Look,
+                LookIsMouse = now.LookIsMouse,
+                Light = west,
+                Heavy = heavy,
+                Dodge = east,
+                Jump = south,
+                Guard = lbState,
+                Skill = skill,
+                Heal = ButtonState.From(now.Heal, last.Heal),
+                LockOn = ButtonState.From(now.LockOn, last.LockOn),
+                SwapShoulder = ButtonState.From(now.SwapShoulder, last.SwapShoulder),
+                ZipStrike = north,
+                AbilityNorth = abilityNorth,
+                AbilityEast = abilityEast,
+                SwitchTargetDelta = now.SwitchTarget,
+                ElementSelect = chord.ElementSelect,
+                ElementSelectOffAttack = chord.ElementSelectOffAttack,
+            };
+            last = now;
+            return f;
+        }
+
+        // A fresh press of the bot's own, on a face other than the chord's (or LB).
+        bool OwnPressOtherThan(in Pad now, int chordFaceIndex)
+        {
+            return (now.ZipStrike && !last.ZipStrike && chordFaceIndex != PadChordReader.FaceNorth)
+                || (now.Dodge && !last.Dodge && chordFaceIndex != PadChordReader.FaceEast)
+                || (now.Jump && !last.Jump && chordFaceIndex != PadChordReader.FaceSouth)
+                || (now.Light && !last.Light && chordFaceIndex != PadChordReader.FaceWest)
+                || (now.Guard && !last.Guard);
+        }
+
+        bool RawFace(int face)
+        {
+            return face == PadChordReader.FaceNorth ? rawN : face == PadChordReader.FaceEast ? rawE : face == PadChordReader.FaceSouth ? rawS : rawW;
+        }
+
+        static ButtonState Or(ButtonState a, ButtonState b)
+        {
+            return new ButtonState { Held = a.Held || b.Held, Pressed = a.Pressed || b.Pressed, Released = (a.Released || b.Released) && !(a.Held || b.Held) };
         }
 
         static Vector2 ClampMagnitude(Vector2 v)

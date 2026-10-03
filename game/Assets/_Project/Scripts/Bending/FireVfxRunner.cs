@@ -1,30 +1,49 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+using VaatusRevenge.Core;
 
 namespace VaatusRevenge
 {
     // Owns and animates FireVfx's pooled objects. FireVfx creates it (hidden, DontDestroyOnLoad) on first use
     // in play mode; don't add it by hand. Runs in LateUpdate so trails and glows follow limbs after the
     // fighters and their rigs have moved, and before the camera (LateUpdate order 100) renders the frame.
+    //
+    // Since Build 05 the same pool draws every element (ElementVfx): this file holds the shared machinery and Fire's
+    // effects, exactly as before; FireVfxRunner.Elements.cs holds the Water, Earth and Air looks. A piece can now be a
+    // sphere, ring band, flat picture or cube, shaded four ways (VfxMaterialKind), and can fall, spin, orbit and wait.
     [DefaultExecutionOrder(60)]
     [AddComponentMenu("")]
-    public class FireVfxRunner : MonoBehaviour
+    public partial class FireVfxRunner : MonoBehaviour
     {
         const float TwoPi = Mathf.PI * 2f;
         const float BurstSpread = 0.35f;   // how far burst blobs stray from the strike direction
         const float GroundOffset = 0.02f;  // lifts ground effects just above the floor so they don't flicker into it
+        const int ElementLooks = 5;        // ElementId None..Air: per-element trail materials and gradients
 
         readonly List<FireVfxPiece> pieces = new List<FireVfxPiece>();
         readonly List<FireVfxTrail> trails = new List<FireVfxTrail>();
         readonly List<FireVfxLight> lights = new List<FireVfxLight>();
+        readonly List<FireVfxEmitter> emitters = new List<FireVfxEmitter>();
+        readonly List<FireVfxWhip> whips = new List<FireVfxWhip>();
+        readonly Vector3[] whipPoints = new Vector3[FireVfxWhip.Points];
         readonly List<Material> ownedMaterials = new List<Material>();
         Shader pieceShader;
+        Shader litShader;
         Material trailMaterial;
+        Material fireWhipMaterial;         // only when a Fire 'whip' picture exists; otherwise the whip uses trailMaterial
         Gradient trailGradient;
         AnimationCurve trailWidth;
         int nextGeneration = 1;
         float time;
+        Quaternion cameraRotation = Quaternion.identity;   // billboards turn to this (updated every LateUpdate)
+        Vector3 cameraPosition;                            // ...and where the camera is (shells and walls keep out of its way, J3-08)
+        bool hasCameraPosition;
+
+        // Water, Earth and Air trails and lashes: a material and a colour fade each (Fire keeps trailMaterial).
+        readonly Material[] elementTrailMaterials = new Material[ElementLooks];
+        readonly Material[] elementWhipMaterials = new Material[ElementLooks];
+        readonly Gradient[] elementTrailGradients = new Gradient[ElementLooks];
 
         public bool CanRender { get; private set; }
 
@@ -35,7 +54,9 @@ namespace VaatusRevenge
             DontDestroyOnLoad(go);
             FireVfxRunner runner = go.AddComponent<FireVfxRunner>();
             runner.pieceShader = GreyboxShapes.FindShader(GreyboxShapes.UnlitShaderName, GreyboxShapes.LitShaderName);
+            runner.litShader = GreyboxShapes.FindShader(GreyboxShapes.LitShaderName, GreyboxShapes.UnlitShaderName);
             runner.CanRender = runner.pieceShader != null;
+            runner.UpdateCameraRotation();
             return runner;
         }
 
@@ -49,14 +70,14 @@ namespace VaatusRevenge
             float size = s.BurstSize * scale;
             float life = s.BurstLifetime;
             // White-hot core where the flame leaves the limb...
-            SpawnBlob(position, dir * (s.BurstSpeed * scale * 0.3f), 8f, size * 0.3f, size, 0f, 0.25f, life * 0.7f, s.CoreColor, s.FlameColor);
+            SpawnBlob(position, dir * (s.BurstSpeed * scale * 0.3f), 8f, size * 0.3f, size, 0f, 0.25f, life * 0.7f, s.CoreColor, s.FlameColor, VfxSlot.Burst);
             // ...and tongues of flame thrown forward that slow down and cool.
             int count = Mathf.Clamp(s.BurstBlobs, 0, 12);
             for (int i = 0; i < count; i++)
             {
                 Vector3 velocity = (dir + Random.insideUnitSphere * BurstSpread).normalized * (s.BurstSpeed * scale * Random.Range(0.6f, 1.1f));
                 float blob = size * Random.Range(0.5f, 0.8f);
-                SpawnBlob(position + dir * (size * 0.2f), velocity, 5f, blob * 0.4f, blob, 0f, 0.3f, life * Random.Range(0.8f, 1.2f), s.FlameColor, s.EmberColor);
+                SpawnBlob(position + dir * (size * 0.2f), velocity, 5f, blob * 0.4f, blob, 0f, 0.3f, life * Random.Range(0.8f, 1.2f), s.FlameColor, s.EmberColor, VfxSlot.Flame);
             }
             if (scale >= s.BurstLightMinScale) SpawnLight(position, s.BurstLightRange * scale, s.LightIntensity * 0.6f, s.LightLifetime);
         }
@@ -66,7 +87,7 @@ namespace VaatusRevenge
             FireVfxStyle s = FireVfx.Style;
             radius = Mathf.Max(0.1f, radius);
             float life = s.ExplosionLifetime;
-            SpawnBlob(position, Vector3.zero, 0f, radius * 0.5f, radius * 2f, 0f, 0.3f, life, s.CoreColor, s.EmberColor);
+            SpawnBlob(position, Vector3.zero, 0f, radius * 0.5f, radius * 2f, 0f, 0.3f, life, s.CoreColor, s.EmberColor, VfxSlot.Burst);
             int embers = Mathf.Clamp(s.ExplosionEmbers, 0, 24);
             float speed = s.EmberSpeed * Mathf.Sqrt(radius);
             for (int i = 0; i < embers; i++)
@@ -74,7 +95,7 @@ namespace VaatusRevenge
                 Vector3 dir = Random.onUnitSphere;
                 if (dir.y < 0f) dir.y *= -0.5f; // mostly up and out, not into the floor
                 FireVfxPiece ember = SpawnBlob(position, dir * (speed * Random.Range(0.6f, 1.2f)), 3f, s.EmberSize, s.EmberSize * 1.3f, 0f,
-                    0.2f, life * Random.Range(0.9f, 1.4f), s.FlameColor, s.EmberColor);
+                    0.2f, life * Random.Range(0.9f, 1.4f), s.FlameColor, s.EmberColor, VfxSlot.Ember);
                 Stretch(ember, dir, 2.5f);
             }
             SpawnLight(position, radius * s.LightRangePerRadius, s.LightIntensity, s.LightLifetime * 1.5f);
@@ -126,7 +147,7 @@ namespace VaatusRevenge
             Color faded = bright * 0.35f;
             faded.a = 1f;
             float life = s.SparkLifetime;
-            SpawnBlob(position, Vector3.zero, 0f, s.SparkSize * 0.15f, s.SparkSize, 0f, 0.3f, life, bright, faded);
+            SpawnBlob(position, Vector3.zero, 0f, s.SparkSize * 0.15f, s.SparkSize, 0f, 0.3f, life, bright, faded, VfxSlot.Spark);
             int count = Mathf.Clamp(s.SparkCount, 0, 12);
             for (int i = 0; i < count; i++)
             {
@@ -142,17 +163,24 @@ namespace VaatusRevenge
             FireVfxStyle s = FireVfx.Style;
             Vector3 dir = SafeDirection(direction, Vector3.forward);
             FireVfxPiece flash = SpawnBlob(position + dir * (s.MuzzleSize * 0.3f), dir * 2f, 6f, s.MuzzleSize * 0.3f, s.MuzzleSize, 0f, 0.25f,
-                s.MuzzleLifetime, s.CoreColor, s.FlameColor);
+                s.MuzzleLifetime, s.CoreColor, s.FlameColor, VfxSlot.Flame);
             Stretch(flash, dir, 2.2f);
             SpawnLight(position, s.BurstLightRange * 0.75f, s.LightIntensity * 0.5f, s.LightLifetime * 0.6f);
         }
 
         internal FireVfxHandle Trail(Transform follow, float duration)
         {
+            return Trail(follow, duration, ElementId.Fire);
+        }
+
+        // A ribbon in the element's colours following a limb (Fire: the original flame ribbon).
+        internal FireVfxHandle Trail(Transform follow, float duration, ElementId element)
+        {
             if (follow == null) return FireVfxHandle.None;
             FireVfxTrail trail = AcquireTrail(out int index);
             if (trail == null) return FireVfxHandle.None;
-            FireVfxStyle s = FireVfx.Style;
+            element = LookOf(element);
+            if (!SetTrailLook(trail, element)) return FireVfxHandle.None;
             trail.Active = true;
             trail.Generation = nextGeneration++;
             trail.Follow = follow;
@@ -162,8 +190,8 @@ namespace VaatusRevenge
             trail.FadeRemaining = 0f;
             trail.Transform.position = follow.position;
             trail.GameObject.SetActive(true);
-            trail.Renderer.time = Mathf.Max(0.01f, s.TrailTime);
-            trail.Renderer.widthMultiplier = s.TrailWidth;
+            trail.Renderer.time = Mathf.Max(0.01f, TrailTimeOf(element));
+            trail.Renderer.widthMultiplier = TrailWidthOf(element);
             trail.Renderer.Clear(); // no streak from wherever this pooled trail was last used
             trail.Renderer.emitting = true;
             return new FireVfxHandle(FireVfxHandle.TrailKind, index, trail.Generation);
@@ -171,17 +199,165 @@ namespace VaatusRevenge
 
         internal FireVfxHandle ChargeGlow(Transform anchor)
         {
+            return ChargeGlow(anchor, ElementId.Fire);
+        }
+
+        // The heavy's wind-up gathering at a fist or foot: a fire glow, a ball of water, a churning ball of dust, a swirl of air.
+        internal FireVfxHandle ChargeGlow(Transform anchor, ElementId element)
+        {
             if (anchor == null) return FireVfxHandle.None;
-            FireVfxPiece glow = AcquirePiece(GreyboxShapes.GetMesh(PrimitiveType.Sphere), out int index);
+            element = LookOf(element);
+            // Earth gathers a ball of dust at the fist, never a stone on the body (J3-07, spec 7): a sphere like the others.
+            Mesh mesh = GreyboxShapes.GetMesh(PrimitiveType.Sphere);
+            FireVfxPiece glow = AcquirePiece(mesh, out int index);
             if (glow == null) return FireVfxHandle.None;
             glow.Persistent = true;
             glow.Follow = anchor;
+            glow.Element = element;
+            if (element != ElementId.Fire)
+            {
+                ElementVfxStyle style = ElementVfx.StyleOf(element);
+                VfxMaterialKind kind = style.BlobKind;
+                if (!UseKind(glow, kind, null))
+                {
+                    ReleasePiece(glow);
+                    return FireVfxHandle.None;
+                }
+                glow.SpinAxis = Vector3.up;
+                glow.SpinSpeed = style.SpinSpeed;
+            }
             UpdateGlow(glow, 0f);
             return new FireVfxHandle(FireVfxHandle.PieceKind, index, glow.Generation);
         }
 
+        // A wide fan of flame thrown forward (Phoenix Palm): tongues of fire spread across the arc and reach exactly
+        // the move's range, so what you see is what can hit.
+        internal void Cone(Vector3 origin, Vector3 direction, float range, float arcDegrees)
+        {
+            FireVfxStyle s = FireVfx.Style;
+            Vector3 dir = SafeDirection(direction, Vector3.forward);
+            float life = Mathf.Max(0.05f, s.ConeLifetime);
+            float speed = Mathf.Max(0.1f, range) / life;
+            int count = Mathf.Clamp(Mathf.RoundToInt(arcDegrees / 8f), 6, 16);
+            float half = Mathf.Clamp(arcDegrees, 10f, 180f) * 0.5f;
+            for (int i = 0; i < count; i++)
+            {
+                float yaw = Mathf.Lerp(-half, half, count > 1 ? i / (count - 1f) : 0.5f) + Random.Range(-3f, 3f);
+                Vector3 d = Quaternion.AngleAxis(yaw, Vector3.up) * dir;
+                float peak = s.BurstSize * Random.Range(0.8f, 1.2f) * (0.6f + range * 0.12f);
+                FireVfxPiece blob = SpawnBlob(origin, d * (speed * Random.Range(0.85f, 1f)), 0f, peak * 0.3f, peak, peak * 0.2f, 0.45f,
+                    life * Random.Range(0.9f, 1.05f), s.FlameColor, s.EmberColor, VfxSlot.Flame);
+                Stretch(blob, d, 1.8f);
+            }
+            SpawnBlob(origin, dir * 2f, 4f, s.BurstSize * 0.4f, s.BurstSize * 1.4f, 0f, 0.25f, life * 0.6f, s.CoreColor, s.FlameColor, VfxSlot.Burst);
+            SpawnLight(origin + dir * (range * 0.4f), range * 1.5f, s.LightIntensity, s.LightLifetime * 1.5f);
+        }
+
+        // A column of fire bursting up from the ground (under a launched enemy).
+        internal void Pillar(Vector3 feet, float height)
+        {
+            FireVfxStyle s = FireVfx.Style;
+            height = Mathf.Max(0.5f, height);
+            float life = Mathf.Max(0.05f, s.PillarLifetime);
+            Vector3 ground = feet + Vector3.up * GroundOffset;
+            int count = Mathf.Clamp(s.PillarBlobs, 3, 20);
+            for (int i = 0; i < count; i++)
+            {
+                float up = height / life * Random.Range(0.45f, 1f);
+                Vector3 v = new Vector3(Random.Range(-0.4f, 0.4f), up, Random.Range(-0.4f, 0.4f));
+                float size = s.BurstSize * Random.Range(0.9f, 1.4f);
+                FireVfxPiece blob = SpawnBlob(ground, v, 0.5f, size * 0.4f, size, size * 0.3f, 0.3f, life * Random.Range(0.8f, 1.1f), s.FlameColor, s.EmberColor, VfxSlot.Flame);
+                Stretch(blob, Vector3.up, 1.6f);
+            }
+            Ring(feet, s.PillarRingRadius);
+        }
+
+        // A spinning sweep's ring of fire: a shockwave plus flames racing outward along the ground to the radius.
+        internal void Wheel(Vector3 center, float radius)
+        {
+            FireVfxStyle s = FireVfx.Style;
+            radius = Mathf.Max(0.3f, radius);
+            Ring(center, radius);
+            float life = Mathf.Max(0.05f, s.RingLifetime);
+            int count = Mathf.Clamp(s.WheelBlobs, 4, 24);
+            for (int i = 0; i < count; i++)
+            {
+                float a = (i + Random.value * 0.4f) * Mathf.PI * 2f / count;
+                var d = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
+                Vector3 start = center + d * 0.4f + Vector3.up * 0.3f;
+                FireVfxPiece blob = SpawnBlob(start, d * ((radius - 0.4f) / life), 0f, s.BurstSize * 0.3f, s.BurstSize * 0.9f, s.BurstSize * 0.2f, 0.4f,
+                    life, s.FlameColor, s.EmberColor);
+                Stretch(blob, d, 2f);
+            }
+        }
+
+        // Driving something into the floor: a burst straight down from the strike, and a ring where it hits the ground.
+        internal void Slam(Vector3 position, float radius)
+        {
+            Burst(position, Vector3.down, Mathf.Max(0.6f, radius * 0.4f));
+            Vector3 ground = GroundBelow(position);
+            Ring(ground, Mathf.Max(0.5f, radius));
+            Explosion(ground + Vector3.up * 0.3f, Mathf.Max(0.3f, radius * 0.3f));
+        }
+
+        // A long lash of flame from the hand that sweeps across the move's arc (right to left) at its full range.
+        internal FireVfxHandle Whip(Transform hand, Vector3 origin, Vector3 direction, float range, float arcDegrees, float duration)
+        {
+            return Whip(hand, origin, direction, range, arcDegrees, duration, ElementId.Fire);
+        }
+
+        // The same lash in the element's colours (a water whip; Earth and Air reuse the shape for their sweeps).
+        internal FireVfxHandle Whip(Transform hand, Vector3 origin, Vector3 direction, float range, float arcDegrees, float duration,
+            ElementId element)
+        {
+            if (hand == null) return FireVfxHandle.None;
+            FireVfxWhip whip = AcquireWhip(out int index);
+            if (whip == null) return FireVfxHandle.None;
+            if (!SetWhipLook(whip, LookOf(element))) return FireVfxHandle.None;
+            Vector3 dir = SafeDirection(new Vector3(direction.x, 0f, direction.z), Vector3.forward);
+            whip.Active = true;
+            whip.Generation = nextGeneration++;
+            whip.Hand = hand;
+            whip.Origin = origin;
+            whip.Yaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg;
+            whip.Range = Mathf.Max(0.5f, range);
+            whip.Arc = Mathf.Clamp(arcDegrees, 0f, 300f);
+            whip.Duration = Mathf.Max(0.05f, duration);
+            whip.Age = 0f;
+            whip.GameObject.SetActive(true);
+            UpdateWhip(whip, 0f);
+            return new FireVfxHandle(FireVfxHandle.WhipKind, index, whip.Generation);
+        }
+
+        // Keeps spawning small flames at a moving point: fire on a striking fist or foot, jets from the feet during
+        // a dash, embers trailing a launched enemy. duration <= 0 runs until the handle is stopped.
+        internal FireVfxHandle Emit(Transform follow, FireVfxEmitterKind kind, Vector3 worldDirection, float duration)
+        {
+            return Emit(follow, kind, worldDirection, duration, ElementId.Fire);
+        }
+
+        // The same in an element's look (FireVfxRunner.Elements.cs spawns what each element emits).
+        internal FireVfxHandle Emit(Transform follow, FireVfxEmitterKind kind, Vector3 worldDirection, float duration, ElementId element)
+        {
+            if (follow == null) return FireVfxHandle.None;
+            FireVfxEmitter emitter = AcquireEmitter(out int index);
+            if (emitter == null) return FireVfxHandle.None;
+            emitter.Active = true;
+            emitter.Generation = nextGeneration++;
+            emitter.Follow = follow;
+            emitter.Kind = kind;
+            emitter.Element = LookOf(element);
+            emitter.Direction = worldDirection;
+            emitter.Timed = duration > 0f;
+            emitter.Remaining = duration;
+            emitter.Accumulator = 1f;   // the first flame appears at once
+            return new FireVfxHandle(FireVfxHandle.EmitterKind, index, emitter.Generation);
+        }
+
         internal void StopAll()
         {
+            for (int i = 0; i < emitters.Count; i++) emitters[i].Active = false;
+            for (int i = 0; i < whips.Count; i++) ReleaseWhip(whips[i]);
             for (int i = 0; i < pieces.Count; i++)
             {
                 if (pieces[i].Active) ReleasePiece(pieces[i]);
@@ -197,6 +373,18 @@ namespace VaatusRevenge
 
         internal void Stop(FireVfxHandle handle)
         {
+            if (handle.Kind == FireVfxHandle.EmitterKind)
+            {
+                if (handle.Index >= 0 && handle.Index < emitters.Count && emitters[handle.Index].Generation == handle.Generation)
+                    emitters[handle.Index].Active = false;
+                return;
+            }
+            if (handle.Kind == FireVfxHandle.WhipKind)
+            {
+                if (handle.Index >= 0 && handle.Index < whips.Count && whips[handle.Index].Generation == handle.Generation)
+                    ReleaseWhip(whips[handle.Index]);
+                return;
+            }
             if (TryGetPiece(handle, out FireVfxPiece piece)) piece.Stopping = true;
             else if (TryGetTrail(handle, out FireVfxTrail trail) && trail.Emitting) StopTrail(trail);
         }
@@ -204,11 +392,15 @@ namespace VaatusRevenge
         internal void SetLevel(FireVfxHandle handle, float level)
         {
             if (TryGetPiece(handle, out FireVfxPiece piece)) piece.Level = Mathf.Clamp01(level);
-            else if (TryGetTrail(handle, out FireVfxTrail trail)) trail.Renderer.widthMultiplier = FireVfx.Style.TrailWidth * Mathf.Max(0f, level);
+            else if (TryGetTrail(handle, out FireVfxTrail trail)) trail.Renderer.widthMultiplier = TrailWidthOf(trail.Element) * Mathf.Max(0f, level);
         }
 
         internal bool IsAlive(FireVfxHandle handle)
         {
+            if (handle.Kind == FireVfxHandle.EmitterKind)
+                return handle.Index >= 0 && handle.Index < emitters.Count && emitters[handle.Index].Active && emitters[handle.Index].Generation == handle.Generation;
+            if (handle.Kind == FireVfxHandle.WhipKind)
+                return handle.Index >= 0 && handle.Index < whips.Count && whips[handle.Index].Active && whips[handle.Index].Generation == handle.Generation;
             return TryGetPiece(handle, out _) || TryGetTrail(handle, out _);
         }
 
@@ -235,6 +427,7 @@ namespace VaatusRevenge
             float dt = EffectDeltaTime();
             float gameDt = Time.deltaTime; // trails fade in game time, like the TrailRenderer itself
             time += dt;
+            UpdateCameraRotation();
             for (int i = 0; i < pieces.Count; i++)
             {
                 FireVfxPiece piece = pieces[i];
@@ -251,6 +444,14 @@ namespace VaatusRevenge
             {
                 if (lights[i].Active) UpdateLight(lights[i], dt);
             }
+            for (int i = 0; i < emitters.Count; i++)
+            {
+                if (emitters[i].Active) UpdateEmitter(emitters[i], dt);
+            }
+            for (int i = 0; i < whips.Count; i++)
+            {
+                if (whips[i].Active) UpdateWhip(whips[i], dt);
+            }
         }
 
         // Effects keep playing in real time during hitstop, so the impact burst blooms while the fighters are
@@ -265,26 +466,76 @@ namespace VaatusRevenge
         void UpdatePiece(FireVfxPiece piece, float dt)
         {
             piece.Age += dt;
+            if (piece.Age < 0f)
+            {
+                // Still waiting to appear (a spike further down a line): drawn at zero size until then.
+                piece.Transform.localScale = Vector3.zero;
+                return;
+            }
             float u = piece.Age / piece.Lifetime;
             if (u >= 1f)
             {
                 ReleasePiece(piece);
                 return;
             }
-            if (piece.Drag > 0f) piece.Velocity *= Mathf.Exp(-piece.Drag * dt);
-            piece.Position += piece.Velocity * dt;
+            if (piece.Orbits)
+            {
+                piece.OrbitAngle += piece.OrbitSpeed * dt;
+                piece.OrbitRadius = Mathf.Max(0f, piece.OrbitRadius + piece.OrbitGrowth * dt);
+                piece.OrbitCenter.y += piece.OrbitRise * dt;
+                piece.Position = piece.OrbitCenter
+                                 + new Vector3(Mathf.Sin(piece.OrbitAngle), 0f, Mathf.Cos(piece.OrbitAngle)) * piece.OrbitRadius;
+            }
+            else
+            {
+                if (piece.Gravity > 0f) piece.Velocity.y -= piece.Gravity * dt;
+                if (piece.Drag > 0f) piece.Velocity *= Mathf.Exp(-piece.Drag * dt);
+                piece.Position += piece.Velocity * dt;
+                if (piece.HasFloor && piece.Position.y < piece.FloorY)
+                {
+                    // Landed: rocks bounce a little and slide to a stop, droplets just stop.
+                    piece.Position.y = piece.FloorY;
+                    if (piece.Velocity.y < 0f) piece.Velocity.y = -piece.Velocity.y * piece.Bounce;
+                    piece.Velocity.x *= 0.5f;
+                    piece.Velocity.z *= 0.5f;
+                    piece.SpinSpeed *= 0.5f;
+                }
+            }
+            if (piece.SpinSpeed != 0f) piece.SpinAngle += piece.SpinSpeed * dt;
             ApplyPiece(piece, u);
         }
 
-        // Grows to its peak size fast, then shrinks away: "fading" by size keeps effects opaque and cheap.
-        static void ApplyPiece(FireVfxPiece piece, float u)
+        // Grows to its peak size fast, then shrinks away: "fading" by size keeps effects opaque and cheap. See-through
+        // pieces also fade through their colour's alpha.
+        void ApplyPiece(FireVfxPiece piece, float u)
         {
             Vector3 scale = u < piece.PeakAt
-                ? Vector3.LerpUnclamped(piece.StartScale, piece.PeakScale, GreyboxLimbMotion.EaseOutCubic(u / piece.PeakAt))
+                ? Vector3.LerpUnclamped(piece.StartScale, piece.PeakScale, EaseOutCubic(u / piece.PeakAt))
                 : Vector3.LerpUnclamped(piece.PeakScale, piece.EndScale, EaseIn((u - piece.PeakAt) / (1f - piece.PeakAt)));
-            piece.Transform.SetPositionAndRotation(piece.Position, piece.Rotation);
+            piece.Transform.SetPositionAndRotation(piece.Position, PieceRotation(piece));
             piece.Transform.localScale = scale;
             piece.SetColor(Color.Lerp(piece.StartColor, piece.EndColor, u));
+        }
+
+        // Its own turn, facing the camera if it's a billboard, then its spin.
+        Quaternion PieceRotation(FireVfxPiece piece)
+        {
+            Quaternion rotation = piece.Billboard ? cameraRotation * piece.Rotation : piece.Rotation;
+            if (piece.SpinAngle != 0f) rotation *= Quaternion.AngleAxis(piece.SpinAngle, piece.SpinAxis);
+            return rotation;
+        }
+
+        void UpdateCameraRotation()
+        {
+            ThirdPersonCameraRig rig = ThirdPersonCameraRig.Instance;
+            Camera cam = rig != null ? rig.Camera : null;
+            if (cam == null) cam = Camera.main;
+            if (cam != null)
+            {
+                cameraRotation = cam.transform.rotation;
+                cameraPosition = cam.transform.position;
+                hasCameraPosition = true;
+            }
         }
 
         void UpdateGlow(FireVfxPiece glow, float dt)
@@ -292,6 +543,11 @@ namespace VaatusRevenge
             if (glow.Follow == null)
             {
                 ReleasePiece(glow);
+                return;
+            }
+            if (glow.Element != ElementId.Fire)
+            {
+                UpdateElementGlow(glow, dt);
                 return;
             }
             FireVfxStyle s = FireVfx.Style;
@@ -360,11 +616,28 @@ namespace VaatusRevenge
 
         // ---- Pools -----------------------------------------------------------------------------------
 
+        // A fire blob. slot: the picture (Art/VFX/Fire/<slot>.png, or Common for sparks) that replaces the sphere when
+        // David has added one; without it the blob is exactly the original sphere.
         FireVfxPiece SpawnBlob(Vector3 position, Vector3 velocity, float drag, float startSize, float peakSize, float endSize,
-            float peakAt, float lifetime, Color startColor, Color endColor)
+            float peakAt, float lifetime, Color startColor, Color endColor, VfxSlot slot = VfxSlot.None)
         {
-            FireVfxPiece piece = AcquirePiece(GreyboxShapes.GetMesh(PrimitiveType.Sphere), out _);
-            if (piece == null) return null;
+            FireVfxPiece piece;
+            if (slot != VfxSlot.None && ElementVfx.TryGetTexture(ElementVfx.FolderOf(slot, ElementId.Fire), slot, out Texture2D picture, out bool hasAlpha))
+            {
+                piece = AcquirePiece(GreyboxShapes.GetMesh(PrimitiveType.Quad), out _);
+                if (piece == null) return null;
+                if (!UseKind(piece, hasAlpha ? VfxMaterialKind.AlphaBlend : VfxMaterialKind.Additive, picture))
+                {
+                    ReleasePiece(piece);
+                    return null;
+                }
+                piece.Billboard = true;
+            }
+            else
+            {
+                piece = AcquirePiece(GreyboxShapes.GetMesh(PrimitiveType.Sphere), out _);
+                if (piece == null) return null;
+            }
             piece.Position = position;
             piece.Velocity = velocity;
             piece.Drag = drag;
@@ -379,15 +652,86 @@ namespace VaatusRevenge
             return piece;
         }
 
-        // Elongates a blob along a direction (streaks for sparks and embers).
-        static void Stretch(FireVfxPiece piece, Vector3 direction, float stretch)
+        // Elongates a blob along a direction (streaks for sparks and embers). A picture facing the camera keeps its shape.
+        void Stretch(FireVfxPiece piece, Vector3 direction, float stretch)
         {
-            if (piece == null || direction.sqrMagnitude < 1e-6f) return;
+            if (piece == null || piece.Billboard || direction.sqrMagnitude < 1e-6f) return;
             piece.Rotation = Quaternion.LookRotation(direction.normalized);
             piece.StartScale.z *= stretch;
             piece.PeakScale.z *= stretch;
             piece.EndScale.z *= stretch;
             ApplyPiece(piece, 0f);
+        }
+
+        // Any piece (FireVfxRunner.Elements.cs): shape, shading and picture, then where it goes and how it grows, fades
+        // and moves. The caller adds gravity, spin, a floor, an orbit or a delay to the returned piece, then calls Place.
+        // Returns null when the pool or the shaders can't provide it (the effect is simply skipped).
+        internal FireVfxPiece SpawnPiece(VfxShape shape, VfxMaterialKind kind, Texture picture, Vector3 position, Vector3 velocity,
+            float drag, Vector3 startScale, Vector3 peakScale, Vector3 endScale, float peakAt, float lifetime, Color startColor, Color endColor)
+        {
+            FireVfxPiece piece = AcquirePiece(MeshOf(shape), out _);
+            if (piece == null) return null;
+            if (!UseKind(piece, kind, picture))
+            {
+                ReleasePiece(piece);
+                return null;
+            }
+            piece.Position = position;
+            piece.Velocity = velocity;
+            piece.Drag = drag;
+            piece.StartScale = startScale;
+            piece.PeakScale = peakScale;
+            piece.EndScale = endScale;
+            piece.PeakAt = Mathf.Clamp(peakAt, 0.01f, 0.99f);
+            piece.Lifetime = Mathf.Max(0.01f, lifetime);
+            piece.StartColor = startColor;
+            piece.EndColor = endColor;
+            ApplyPiece(piece, 0f);
+            return piece;
+        }
+
+        // Applies a piece's settings changed after SpawnPiece (rotation, delay, orbit) so its first frame is right.
+        internal void Place(FireVfxPiece piece)
+        {
+            if (piece == null) return;
+            if (piece.Orbits)
+            {
+                piece.Position = piece.OrbitCenter
+                                 + new Vector3(Mathf.Sin(piece.OrbitAngle), 0f, Mathf.Cos(piece.OrbitAngle)) * piece.OrbitRadius;
+            }
+            if (piece.Age < 0f)
+            {
+                piece.Transform.SetPositionAndRotation(piece.Position, PieceRotation(piece));
+                piece.Transform.localScale = Vector3.zero;
+                return;
+            }
+            ApplyPiece(piece, 0f);
+        }
+
+        static Mesh MeshOf(VfxShape shape)
+        {
+            switch (shape)
+            {
+                case VfxShape.RingBand: return GreyboxShapes.GetRingBandMesh();
+                case VfxShape.Quad: return GreyboxShapes.GetMesh(PrimitiveType.Quad);
+                case VfxShape.Cube: return GreyboxShapes.GetMesh(PrimitiveType.Cube);
+                case VfxShape.FlatRing: return GreyboxShapes.GetFlatRingMesh();
+                default: return GreyboxShapes.GetMesh(PrimitiveType.Sphere);
+            }
+        }
+
+        // Gives the piece a material of this kind (made the first time this pooled piece needs one) holding the picture.
+        bool UseKind(FireVfxPiece piece, VfxMaterialKind kind, Texture picture)
+        {
+            int index = (int)kind;
+            if (piece.Materials[index] == null)
+            {
+                Material material = NewMaterial(kind);
+                if (material == null) return false;
+                piece.Materials[index] = material;
+            }
+            piece.UseMaterial(kind, picture);
+            return true;
         }
 
         FireVfxPiece AcquirePiece(Mesh mesh, out int index)
@@ -427,6 +771,19 @@ namespace VaatusRevenge
             piece.Drag = 0f;
             piece.Velocity = Vector3.zero;
             piece.Rotation = Quaternion.identity;
+            // Build 05 extras off: a plain fire blob unless the caller asks for more.
+            piece.Billboard = false;
+            piece.Gravity = 0f;
+            piece.HasFloor = false;
+            piece.Bounce = 0f;
+            piece.SpinAxis = Vector3.up;
+            piece.SpinSpeed = 0f;
+            piece.SpinAngle = 0f;
+            piece.Orbits = false;
+            piece.OrbitGrowth = 0f;
+            piece.OrbitRise = 0f;
+            piece.Element = ElementId.Fire;
+            piece.UseMaterial(VfxMaterialKind.Glow, null);
             piece.GameObject.SetActive(true);
             return piece;
         }
@@ -459,7 +816,9 @@ namespace VaatusRevenge
             piece.GameObject = go;
             piece.Transform = go.transform;
             piece.Filter = go.GetComponent<MeshFilter>();
+            piece.Renderer = go.GetComponent<MeshRenderer>();
             piece.Material = material;
+            piece.Materials[(int)VfxMaterialKind.Glow] = material;
             piece.Active = false;
             piece.ResetColorCache();
         }
@@ -530,6 +889,7 @@ namespace VaatusRevenge
             trail.Transform = go.transform;
             trail.Renderer = renderer;
             trail.Active = false;
+            trail.Element = ElementId.Fire;
         }
 
         static void StopTrail(FireVfxTrail trail)
@@ -626,12 +986,172 @@ namespace VaatusRevenge
             return material;
         }
 
+        // One pooled piece's material of a kind. The see-through kinds copy the library's materials when the sandbox
+        // builder made them (so a player build keeps their shader), else they are made from code.
+        Material NewMaterial(VfxMaterialKind kind)
+        {
+            Material material;
+            ElementVfxLibraryAsset library = ElementVfx.Library;
+            switch (kind)
+            {
+                case VfxMaterialKind.Lit:
+                    if (litShader == null) return null;
+                    material = new Material(litShader) { name = "VfxPiece_Lit" };
+                    if (material.HasProperty(SmoothnessId)) material.SetFloat(SmoothnessId, 0.15f);
+                    break;
+                case VfxMaterialKind.Additive:
+                    material = library != null && library.AdditiveMaterial != null
+                        ? new Material(library.AdditiveMaterial) { name = "VfxPiece_Additive" }
+                        : GreyboxShapes.CreateUnlitTransparent("VfxPiece_Additive", Color.white, true);
+                    GreyboxShapes.SetDoubleSided(material);
+                    break;
+                case VfxMaterialKind.AlphaBlend:
+                    material = library != null && library.AlphaBlendMaterial != null
+                        ? new Material(library.AlphaBlendMaterial) { name = "VfxPiece_AlphaBlend" }
+                        : GreyboxShapes.CreateUnlitTransparent("VfxPiece_AlphaBlend", Color.white, false);
+                    GreyboxShapes.SetDoubleSided(material);
+                    break;
+                default:
+                    return NewMaterial("FireVfxPiece");
+            }
+            if (material == null) return null;
+            ownedMaterials.Add(material);
+            return material;
+        }
+
+        static readonly int SmoothnessId = Shader.PropertyToID("_Smoothness");
+        static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
+
+        // Fire's original ribbon, plus its 'ribbon' picture if David has added one.
+        Material TrailMaterialFor(ElementId element)
+        {
+            if (element == ElementId.Fire) return TrailMaterial();
+            int index = (int)element;
+            if (elementTrailMaterials[index] != null) return elementTrailMaterials[index];
+            ElementVfxStyle style = ElementVfx.StyleOf(element);
+            Material material = style.TrailKind == VfxMaterialKind.Additive
+                ? GreyboxShapes.CreateAdditive("VfxTrail_" + element, Color.white)
+                : GreyboxShapes.CreateAlphaBlend("VfxTrail_" + element, Color.white);
+            if (material == null) return null;
+            ownedMaterials.Add(material);
+            SetPicture(material, element, VfxSlot.Ribbon);
+            elementTrailMaterials[index] = material;
+            elementTrailGradients[index] = MakeGradient(style.TrailHeadColor, style.TrailTailColor);
+            return material;
+        }
+
+        // A lash uses the trail's material unless the element has its own 'whip' picture.
+        Material WhipMaterialFor(ElementId element)
+        {
+            Material trail = TrailMaterialFor(element);
+            if (trail == null || !ElementVfx.TryGetTexture(element, VfxSlot.Whip, out Texture2D picture, out _)) return trail;
+            if (element == ElementId.Fire)
+            {
+                if (fireWhipMaterial == null)
+                {
+                    fireWhipMaterial = new Material(trail) { name = "FireVfxWhip" };
+                    ownedMaterials.Add(fireWhipMaterial);
+                    if (fireWhipMaterial.HasProperty(BaseMapId)) fireWhipMaterial.SetTexture(BaseMapId, picture);
+                }
+                return fireWhipMaterial;
+            }
+            int index = (int)element;
+            if (elementWhipMaterials[index] == null)
+            {
+                elementWhipMaterials[index] = new Material(trail) { name = "VfxWhip_" + element };
+                ownedMaterials.Add(elementWhipMaterials[index]);
+                if (elementWhipMaterials[index].HasProperty(BaseMapId)) elementWhipMaterials[index].SetTexture(BaseMapId, picture);
+            }
+            return elementWhipMaterials[index];
+        }
+
+        Gradient TrailGradientFor(ElementId element)
+        {
+            if (element == ElementId.Fire) return trailGradient;
+            return elementTrailGradients[(int)element];
+        }
+
+        static void SetPicture(Material material, ElementId element, VfxSlot slot)
+        {
+            if (material == null || !material.HasProperty(BaseMapId)) return;
+            ElementVfx.TryGetTexture(element, slot, out Texture2D picture, out _);
+            // Untouched when there is no picture and never was one: the material stays exactly as made.
+            if (picture != null || material.GetTexture(BaseMapId) != null) material.SetTexture(BaseMapId, picture);
+        }
+
+        // The library changed (bootstrap): pictures already put on trail and lash materials are looked up again.
+        internal void RefreshPictures()
+        {
+            if (trailMaterial != null) SetPicture(trailMaterial, ElementId.Fire, VfxSlot.Ribbon);
+            for (int i = 0; i < ElementLooks; i++)
+            {
+                if (elementTrailMaterials[i] != null) SetPicture(elementTrailMaterials[i], (ElementId)i, VfxSlot.Ribbon);
+                if (elementWhipMaterials[i] != null) SetPicture(elementWhipMaterials[i], (ElementId)i, VfxSlot.Whip);
+            }
+            if (fireWhipMaterial != null) SetPicture(fireWhipMaterial, ElementId.Fire, VfxSlot.Whip);
+        }
+
+        // Points a pooled trail at an element's material and colours (only when it changes: nothing is reassigned for the
+        // usual run of same-element trails). False when the material can't be made.
+        bool SetTrailLook(FireVfxTrail trail, ElementId element)
+        {
+            if (trail.Element == element) return true;
+            Material material = TrailMaterialFor(element);
+            if (material == null) return false;
+            trail.Renderer.sharedMaterial = material;
+            trail.Renderer.colorGradient = TrailGradientFor(element);
+            trail.Element = element;
+            return true;
+        }
+
+        bool SetWhipLook(FireVfxWhip whip, ElementId element)
+        {
+            Material material = WhipMaterialFor(element);
+            if (material == null) return false;
+            if (whip.Element == element && whip.Line.sharedMaterial == material) return true;
+            whip.Line.sharedMaterial = material;
+            whip.Line.colorGradient = TrailGradientFor(element);
+            whip.Element = element;
+            return true;
+        }
+
+        float TrailTimeOf(ElementId element)
+        {
+            return element == ElementId.Fire ? FireVfx.Style.TrailTime : ElementVfx.StyleOf(element).TrailTime;
+        }
+
+        float TrailWidthOf(ElementId element)
+        {
+            return element == ElementId.Fire || element == ElementId.None ? FireVfx.Style.TrailWidth : ElementVfx.StyleOf(element).TrailWidth;
+        }
+
+        float WhipWidthOf(ElementId element)
+        {
+            return element == ElementId.Fire || element == ElementId.None ? FireVfx.Style.WhipWidth : ElementVfx.StyleOf(element).WhipWidth;
+        }
+
+        // None means "no element known": it gets Fire's look, like everything before Build 05.
+        static ElementId LookOf(ElementId element)
+        {
+            return element == ElementId.None ? ElementId.Fire : element;
+        }
+
+        static Gradient MakeGradient(Color head, Color tail)
+        {
+            var gradient = new Gradient();
+            gradient.SetKeys(
+                new[] { new GradientColorKey(head, 0f), new GradientColorKey(Color.Lerp(head, tail, 0.5f), 0.45f), new GradientColorKey(tail, 1f) },
+                new[] { new GradientAlphaKey(head.a, 0f), new GradientAlphaKey(Mathf.Lerp(head.a, tail.a, 0.35f), 0.5f), new GradientAlphaKey(tail.a, 1f) });
+            return gradient;
+        }
+
         Material TrailMaterial()
         {
             if (trailMaterial != null) return trailMaterial;
             trailMaterial = GreyboxShapes.CreateAdditive("FireVfxTrail", FireVfx.Style.TrailColor);
             if (trailMaterial == null) return null;
             ownedMaterials.Add(trailMaterial);
+            SetPicture(trailMaterial, ElementId.Fire, VfxSlot.Ribbon);
             // Hot white-yellow at the limb, cooling to red and fading out along the tail.
             trailGradient = new Gradient();
             trailGradient.SetKeys(
@@ -646,9 +1166,203 @@ namespace VaatusRevenge
             return trailMaterial;
         }
 
+        // ---- Emitters and whips ------------------------------------------------------------------------
+
+        void UpdateEmitter(FireVfxEmitter e, float dt)
+        {
+            if (e.Follow == null || !e.Follow.gameObject.activeInHierarchy)
+            {
+                e.Active = false;
+                return;
+            }
+            if (e.Timed)
+            {
+                e.Remaining -= dt;
+                if (e.Remaining <= 0f)
+                {
+                    e.Active = false;
+                    return;
+                }
+            }
+            if (e.Element != ElementId.Fire || e.Kind == FireVfxEmitterKind.Afterimage)
+            {
+                UpdateElementEmitter(e, dt);
+                return;
+            }
+            FireVfxStyle s = FireVfx.Style;
+            float rate;
+            switch (e.Kind)
+            {
+                case FireVfxEmitterKind.FootJet: rate = s.JetRate; break;
+                case FireVfxEmitterKind.Embers: rate = s.EmberRate; break;
+                default: rate = s.LimbFlameRate; break;
+            }
+            e.Accumulator += rate * dt;
+            Vector3 at = e.Follow.position;
+            while (e.Accumulator >= 1f)
+            {
+                e.Accumulator -= 1f;
+                switch (e.Kind)
+                {
+                    case FireVfxEmitterKind.FootJet:
+                    {
+                        Vector3 d = SafeDirection(e.Direction, Vector3.down);
+                        Vector3 v = (d + Random.insideUnitSphere * 0.25f).normalized * (s.JetSpeed * Random.Range(0.7f, 1.1f));
+                        FireVfxPiece blob = SpawnBlob(at, v, 6f, s.JetSize * 0.4f, s.JetSize, 0f, 0.25f, s.JetLifetime, s.CoreColor, s.EmberColor, VfxSlot.Flame);
+                        Stretch(blob, d, 1.8f);
+                        break;
+                    }
+                    case FireVfxEmitterKind.Embers:
+                    {
+                        Vector3 v = Random.insideUnitSphere * 0.8f + Vector3.up * 0.5f;
+                        SpawnBlob(at + Random.insideUnitSphere * 0.15f, v, 1f, s.EmberSize * 0.5f, s.EmberSize, 0f, 0.2f, s.EmberTrailLifetime, s.FlameColor, s.EmberColor, VfxSlot.Ember);
+                        break;
+                    }
+                    default:
+                    {
+                        Vector3 v = Vector3.up * 0.8f + Random.insideUnitSphere * 0.3f;
+                        SpawnBlob(at, v, 3f, s.LimbFlameSize * 0.5f, s.LimbFlameSize, 0f, 0.3f, s.LimbFlameLifetime, s.CoreColor, s.FlameColor, VfxSlot.Flame);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // The whip is a curve from the hand to a far end that sweeps across the arc; its middle trails behind the
+        // sweep, so it reads as a lash rather than a stick. It lashes out fast, sweeps, then thins away.
+        void UpdateWhip(FireVfxWhip whip, float dt)
+        {
+            if (whip.Hand == null || whip.Line == null)
+            {
+                ReleaseWhip(whip);
+                return;
+            }
+            whip.Age += dt;
+            float u = whip.Age / whip.Duration;
+            if (u >= 1.35f)
+            {
+                ReleaseWhip(whip);
+                return;
+            }
+            float sweep = Mathf.Clamp01(u);
+            float extend = Mathf.Clamp01(u / 0.2f);
+            float thin = u > 1f ? 1f - (u - 1f) / 0.35f : 1f;
+            float angle = whip.Yaw + whip.Arc * 0.5f - whip.Arc * sweep;
+            float lag = whip.Arc * 0.18f;
+            Vector3 hand = whip.Hand.position;
+            float height = whip.Origin.y;
+            Vector3 far = new Vector3(whip.Origin.x, height, whip.Origin.z)
+                          + Quaternion.AngleAxis(angle, Vector3.up) * Vector3.forward * (whip.Range * extend);
+            Vector3 mid = new Vector3(whip.Origin.x, height, whip.Origin.z)
+                          + Quaternion.AngleAxis(angle + lag, Vector3.up) * Vector3.forward * (whip.Range * 0.55f * extend);
+            for (int i = 0; i < FireVfxWhip.Points; i++)
+            {
+                float t = i / (FireVfxWhip.Points - 1f);
+                float a = 1f - t;
+                // Quadratic Bezier hand -> mid -> far, with a little ripple so it looks alive.
+                Vector3 p = a * a * hand + 2f * a * t * mid + t * t * far;
+                p.y += Mathf.Sin((t * 3f - whip.Age * 12f) * Mathf.PI) * 0.06f * t;
+                whipPoints[i] = p;
+            }
+            whip.Line.positionCount = FireVfxWhip.Points;
+            whip.Line.SetPositions(whipPoints);
+            whip.Line.widthMultiplier = WhipWidthOf(whip.Element) * Mathf.Max(0f, thin);
+        }
+
+        FireVfxWhip AcquireWhip(out int index)
+        {
+            index = -1;
+            for (int i = 0; i < whips.Count; i++)
+            {
+                if (!whips[i].Active)
+                {
+                    index = i;
+                    break;
+                }
+            }
+            if (index < 0)
+            {
+                if (whips.Count < Mathf.Max(1, FireVfx.Style.MaxWhips))
+                {
+                    whips.Add(new FireVfxWhip());
+                    index = whips.Count - 1;
+                }
+                else
+                {
+                    index = 0;
+                    ReleaseWhip(whips[0]);
+                }
+            }
+            FireVfxWhip whip = whips[index];
+            if (whip.GameObject == null)
+            {
+                Material material = TrailMaterial();
+                if (material == null) return null;
+                var go = new GameObject("FireWhip");
+                go.transform.SetParent(transform, false);
+                go.SetActive(false);
+                LineRenderer line = go.AddComponent<LineRenderer>();
+                line.sharedMaterial = material;
+                line.shadowCastingMode = ShadowCastingMode.Off;
+                line.receiveShadows = false;
+                line.useWorldSpace = true;
+                line.numCapVertices = 3;
+                line.numCornerVertices = 2;
+                line.widthCurve = new AnimationCurve(new Keyframe(0f, 0.6f), new Keyframe(0.35f, 1f), new Keyframe(1f, 0.15f));
+                line.colorGradient = trailGradient;
+                whip.GameObject = go;
+                whip.Line = line;
+                whip.Element = ElementId.Fire;
+            }
+            return whip;
+        }
+
+        static void ReleaseWhip(FireVfxWhip whip)
+        {
+            whip.Active = false;
+            whip.Hand = null;
+            if (whip.GameObject != null) whip.GameObject.SetActive(false);
+        }
+
+        FireVfxEmitter AcquireEmitter(out int index)
+        {
+            index = -1;
+            for (int i = 0; i < emitters.Count; i++)
+            {
+                if (!emitters[i].Active)
+                {
+                    index = i;
+                    break;
+                }
+            }
+            if (index < 0)
+            {
+                if (emitters.Count < Mathf.Max(1, FireVfx.Style.MaxEmitters))
+                {
+                    emitters.Add(new FireVfxEmitter());
+                    index = emitters.Count - 1;
+                }
+                else index = 0;   // pool full: the oldest slot is reused
+            }
+            return emitters[index];
+        }
+
+        // Where the floor is under a point (for slams in the air), or the point's own height if nothing is found.
+        static Vector3 GroundBelow(Vector3 position)
+        {
+            if (CombatPhysics.SphereCast(position + Vector3.up * 0.1f, 0.05f, Vector3.down, 15f, out RaycastHit hit)) return hit.point;
+            return position;
+        }
+
         static Vector3 SafeDirection(Vector3 direction, Vector3 fallback)
         {
             return direction.sqrMagnitude > 1e-8f ? direction.normalized : fallback;
+        }
+
+        static float EaseOutCubic(float x)
+        {
+            float inverse = 1f - Mathf.Clamp01(x);
+            return 1f - inverse * inverse * inverse;
         }
 
         static float EaseIn(float x)

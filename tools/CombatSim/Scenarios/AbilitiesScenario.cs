@@ -16,6 +16,9 @@ namespace VaatusRevenge.CombatSim
             DamageLoops(o);
             StaminaAtZero(o);
             FireBlast(o);
+            ZipStrikeAndGapClose(o);
+            AerialJuggle(o);
+            RangeMix(o);
             Momentum(o);
             PerfectDodge(o);
             StaggerImmunity(o);
@@ -168,7 +171,7 @@ namespace VaatusRevenge.CombatSim
             var t = new Table("Pattern", "Targets", "Damage in 10 s", "Damage / stamina", "Hits", "Stamina empty", "Avg Momentum");
             var patterns = new (string name, Func<Session, int, Pad> script)[]
             {
-                ("Light mash (3-hit chain)", (s, f) => new Pad { Light = f % 6 < 2, Move = Aim(s) }),
+                ("Light mash (5-hit string)", (s, f) => new Pad { Light = f % 6 < 2, Move = Aim(s) }),
                 ("Jump + plunge spam", (s, f) => PlungeSpam(s, f)),
                 ("Heavy tap spam", (s, f) => new Pad { Heavy = f % 8 < 1, Move = Aim(s) }),
                 ("Fa jin (hold 0.8 s) loop", (s, f) => FaJinLoop(s, f)),
@@ -260,6 +263,123 @@ namespace VaatusRevenge.CombatSim
                     }
                     t.Row(d + " m", strafing ? "strafing 1.6 m/s" : "standing", Out.Pct(hits / (double)casts), Out.N(d / 30f, 2) + " s");
                 }
+            }
+            t.Print();
+        }
+
+        // ---------------------------------------------------------------- zip strike and the free-flow lunge
+        static void ZipStrikeAndGapClose(Options o)
+        {
+            ElementMoveSet moves = ElementMoveSet.CreateFireFluid();
+            PlayerTuning tuning = PlayerTuning.CreateFluid();
+            Out.Sub("Zip strike and free-flow lunge vs a still sparring dummy (Fluid, not locked on, stick neutral)");
+            Out.Line("Zip strike reach: " + Out.N(moves.Zip.Range, 1) + " m within " + Out.N(moves.Zip.AngleDegrees, 0)
+                     + "° of the facing. Light attacks aim at a soft-lock target within " + Out.N(tuning.SoftLockRange, 1)
+                     + " m and lunge up to " + Out.N(tuning.GapCloseDistance, 1) + " m further than their own step.");
+            var t = new Table("Dummy at", "Zip strike", "First light attack");
+            foreach (float d in new[] { 2f, 4f, 6f, 8f, 10f, 13f, 16f })
+            {
+                t.Row(d + " m ahead", Outcome(o, d, 0f, zip: true), Outcome(o, d, 0f, zip: false));
+            }
+            foreach (float angle in new[] { 30f, 45f, 60f })
+            {
+                t.Row("10 m, " + angle + "° off", Outcome(o, 10f, angle, zip: true), Outcome(o, 10f, angle, zip: false));
+            }
+            t.Print();
+        }
+
+        // "hit", "whiffed" (the attack ran but missed) or "no attack" (nothing started).
+        static string Outcome(Options o, float distance, float angleDegrees, bool zip)
+        {
+            var s = new Session(Preset.Fluid, o.Fps, SimLevel.Empty());
+            float rad = angleDegrees * Directions.Deg2Rad;
+            var at = new Vector3((float)Math.Sin(rad) * distance, 0f, (float)Math.Cos(rad) * distance);
+            SimEnemy dummy = s.World.AddEnemy(EnemyTuning.CreateSparringDummy(), at, 180f, 7);
+            bool started = false;
+            s.World.PlayerEvent += e => { if (e.Type == PlayerEventType.AttackStarted) started = true; };
+            float before = dummy.Brain.Health;
+            const int pressFrame = 20;
+            for (int f = 0; f < pressFrame + 60; f++) s.Step(zip ? new Pad { ZipStrike = f == pressFrame } : new Pad { Light = f == pressFrame });
+            if (!started) return "no attack";
+            return dummy.Brain.Health < before ? "hit" : "whiffed";
+        }
+
+        // ---------------------------------------------------------------- aerial juggle
+        static void AerialJuggle(Options o)
+        {
+            Out.Sub("Aerial juggle vs a Dao Soldier 1.8 m ahead (Fluid): hold attack to launch, then the air string");
+            Out.Line("Script: hold attack until the launcher starts, then press attack as each air strike's combo window opens. "
+                     + "Counts which strikes actually connected through the real hit geometry (heights included).");
+            var t = new Table("Seed", "Launched", "Peak height (m)", "Air strikes landed", "Slammed", "Knocked down", "Damage");
+            int allLanded = 0, runs = Math.Max(5, Math.Min(o.Seeds, 20));
+            for (int seed = 1; seed <= runs; seed++)
+            {
+                var s = new Session(Preset.Fluid, o.Fps, SimLevel.Empty());
+                EnemyTuning soldier = EnemyTuning.CreateDaoSoldier();
+                soldier.AttackIntervalMin = soldier.AttackIntervalMax = 1000f;   // doesn't swing back: we're measuring the juggle
+                SimEnemy e = s.World.AddEnemy(soldier, new Vector3(0f, 0f, 1.8f), 180f, seed);
+                bool launched = false, slammed = false, knocked = false;
+                int airHits = 0;
+                float peak = 0f, before = e.Brain.Health;
+                s.World.PlayerEvent += ev => { };
+                PlayerCombatModel m = s.World.Player.Model;
+                int lastAirStart = -1;
+                for (int f = 0; f < 360; f++)
+                {
+                    bool holding = !launched && f < 40;
+                    bool press = false;
+                    if (launched && m.CurrentAttackKind == PlayerAttackKind.Launcher && m.ActionTime >= m.CurrentMove.ChainCancelAt) press = f % 2 == 0;
+                    if (m.CurrentAttackKind == PlayerAttackKind.Air && m.ActionTime >= m.CurrentMove.ComboWindowStart && m.ChainIndex != lastAirStart)
+                    {
+                        press = true;
+                        lastAirStart = m.ChainIndex;
+                    }
+                    s.Step(new Pad { Light = holding || press });
+                    if (e.Brain.State == EnemyState.Launched) launched = true;
+                    peak = Math.Max(peak, e.Feet.Y);
+                    if (e.Brain.State == EnemyState.Launched && e.Brain.VerticalVelocity < -10f) slammed = true;
+                    if (launched && e.Brain.State == EnemyState.Staggered) knocked = true;
+                }
+                airHits = s.World.Player.AirHitsLanded;
+                if (launched && airHits >= 3) allLanded++;
+                t.Row(seed, launched ? "yes" : "NO", Out.N(peak, 2), airHits, slammed ? "yes" : "no", knocked ? "yes" : "no", Out.N(before - e.Brain.Health, 0));
+            }
+            t.Print();
+            Out.Line("Full juggles (launched + all 3 air strikes landed): " + allLanded + " / " + runs + ".");
+        }
+
+        // ---------------------------------------------------------------- range mix
+        static void RangeMix(Options o)
+        {
+            Out.Sub("Range mix: which Fire moves reach a still Dao Soldier at each distance (Fluid, soft lock, no lock-on)");
+            ElementMoveSet fire = ElementMoveSet.CreateFireFluid();
+            var rows = new (string name, Func<int, Pad> input)[]
+            {
+                ("Attack (5-hit string, first hit)", f => new Pad { Light = f == 20 }),
+                ("Fire Whip (LB + Y)", f => new Pad { AbilityNorth = f == 20 }),
+                ("Flame Wheel (LB + B)", f => new Pad { AbilityEast = f == 20 }),
+                ("Fire Blast (RB)", f => new Pad { Skill = f == 20 }),
+                ("Zip strike (Y)", f => new Pad { ZipStrike = f == 20 }),
+            };
+            float[] distances = { 2f, 4f, 6f, 9f, 13f, 18f };
+            var headers = new List<string> { "Move" };
+            foreach (float d in distances) headers.Add(d + " m");
+            var t = new Table(headers.ToArray());
+            foreach (var row in rows)
+            {
+                var cells = new List<object> { row.name };
+                foreach (float d in distances)
+                {
+                    var s = new Session(Preset.Fluid, o.Fps, SimLevel.Empty());
+                    EnemyTuning soldier = EnemyTuning.CreateDaoSoldier();
+                    soldier.AttackIntervalMin = soldier.AttackIntervalMax = 1000f;
+                    soldier.WalkSpeed = soldier.ChaseSpeed = soldier.StrafeSpeed = soldier.RetreatSpeed = 0f;
+                    SimEnemy e = s.World.AddEnemy(soldier, new Vector3(0f, 0f, d), 180f, 3);
+                    float before = e.Brain.Health;
+                    for (int f = 0; f < 90; f++) s.Step(row.input(f));
+                    cells.Add(e.Brain.Health < before ? "hit" : "-");
+                }
+                t.Row(cells.ToArray());
             }
             t.Print();
         }

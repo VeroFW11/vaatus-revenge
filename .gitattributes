@@ -25,7 +25,7 @@
 *.blend  filter=lfs diff=lfs merge=lfs -text lockable
 *.fbx    filter=lfs diff=lfs merge=lfs -text lockable
 *.obj    filter=lfs diff=lfs merge=lfs -text
-*.glb    filter=lfs diff=lfs merge=lfs -text
+*.glb    filter=lfs diff=lfs merge=lfs -text lockable
 *.gltf   filter=lfs diff=lfs merge=lfs -text
 *.dae    filter=lfs diff=lfs merge=lfs -text
 

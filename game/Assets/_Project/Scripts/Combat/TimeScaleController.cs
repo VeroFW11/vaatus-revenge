@@ -112,6 +112,7 @@ namespace VaatusRevenge
         {
             instance = null;
             quitting = false;
+            debugSlowScale = 0.25f;
             Time.timeScale = 1f;
             Application.quitting -= OnQuitting;
             Application.quitting += OnQuitting;

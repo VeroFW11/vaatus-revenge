@@ -11,8 +11,8 @@ namespace VaatusRevenge
     {
         [Tooltip("Name shown on screen. Lore names live in data, never in code.")]
         public string DisplayName = "Avatar";
-        [Tooltip("Grey-box body colour (warm orange-red for the player).")]
-        public Color BodyColor = new Color(0.9f, 0.36f, 0.16f);
+        [Tooltip("Tunic colour (deep crimson, as on the chosen character sheet; the rest of the outfit is BodyLook.Player).")]
+        public Color BodyColor = new Color(0.5f, 0.1f, 0.15f);
         [Tooltip("Body height in metres. The pivot is at the feet, so the capsule's centre is at half this height.")]
         public float Height = 1.8f;
         [Tooltip("Body radius in metres: used for walls, hit detection and how close lunges stop.")]
