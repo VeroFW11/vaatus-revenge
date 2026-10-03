@@ -84,8 +84,8 @@ namespace VaatusRevenge
         }
 
         // Moves every skinned bone to where it was when the mesh was bound to it. A bone's bind matrix is the inverse
-        // of where it sat (relative to the mesh object), so inverting it gives the bone's undeformed position.
-        // Parents go first, so a parent moving afterwards can't drag a child out of place.
+        // of where it sat (relative to the space the mesh was bound in, see BindSpace), so inverting it gives the
+        // bone's undeformed position. Parents go first, so a parent moving afterwards can't drag a child out of place.
         public static void RestoreBindPose(IList<SkinnedMeshRenderer> renderers)
         {
             var done = new HashSet<Transform>();
@@ -96,13 +96,13 @@ namespace VaatusRevenge
                 Transform[] smrBones = smr.bones;
                 Matrix4x4[] bindposes = smr.sharedMesh.bindposes;
                 if (smrBones == null || bindposes == null) continue;
-                Matrix4x4 meshToWorld = smr.transform.localToWorldMatrix;
+                Matrix4x4 bindToWorld = BindSpace(smr);
                 int count = Math.Min(smrBones.Length, bindposes.Length);
                 for (int i = 0; i < count; i++)
                 {
                     Transform bone = smrBones[i];
                     if (bone == null || !done.Add(bone)) continue;
-                    order.Add(new KeyValuePair<Transform, Matrix4x4>(bone, meshToWorld * bindposes[i].inverse));
+                    order.Add(new KeyValuePair<Transform, Matrix4x4>(bone, bindToWorld * bindposes[i].inverse));
                 }
             }
             order.Sort((a, b) => Depth(a.Key).CompareTo(Depth(b.Key)));
@@ -111,6 +111,41 @@ namespace VaatusRevenge
                 Matrix4x4 m = entry.Value;
                 entry.Key.SetPositionAndRotation(m.GetColumn(3), m.rotation);
             }
+        }
+
+        // Where the mesh was bound: the matrix taking its vertices (and its bind matrices) to world space.
+        // Unity's own importers bind relative to the skinned mesh's object, but a glTF skin is bound relative to the
+        // glTF scene (the spec ignores the mesh node's transform) and glTFast passes it through unchanged. The two
+        // differ whenever the mesh sits under a scaled armature, as in a Blender export in centimetres (the player
+        // model: a 0.01 "Armature" with the mesh inside it). Taking the mesh object's space there shrank the
+        // skeleton a hundredfold, and the fit then blew the whole model up a hundredfold.
+        // So this tries the mesh object and each of its parents and keeps the one that puts the bones nearest to
+        // where they are now (the wrong spaces miss by about the model's own size). Ties keep the mesh object.
+        public static Matrix4x4 BindSpace(SkinnedMeshRenderer smr)
+        {
+            Matrix4x4 meshToWorld = smr.transform.localToWorldMatrix;
+            Transform[] smrBones = smr.bones;
+            Matrix4x4[] bindposes = smr.sharedMesh != null ? smr.sharedMesh.bindposes : null;
+            if (smrBones == null || bindposes == null) return meshToWorld;
+            int count = Math.Min(smrBones.Length, bindposes.Length);
+            var bound = new Vector3[count];
+            for (int i = 0; i < count; i++) bound[i] = bindposes[i].inverse.GetColumn(3);
+
+            Matrix4x4 best = meshToWorld;
+            float bestError = float.PositiveInfinity;
+            for (Transform space = smr.transform; space != null; space = space.parent)
+            {
+                Matrix4x4 toWorld = space.localToWorldMatrix;
+                float error = 0f;
+                for (int i = 0; i < count; i++)
+                    if (smrBones[i] != null) error += (toWorld.MultiplyPoint3x4(bound[i]) - smrBones[i].position).magnitude;
+                if (error < bestError * 0.999f)
+                {
+                    best = toWorld;
+                    bestError = error;
+                }
+            }
+            return best;
         }
 
         // Stands the model (every child of root) up in root's space: see SkinnedModelFit. Returns what it did.
@@ -125,8 +160,8 @@ namespace VaatusRevenge
             foreach (SkinnedMeshRenderer smr in renderers)
             {
                 if (smr == null || smr.sharedMesh == null) continue;
-                Bounds b = smr.sharedMesh.bounds;   // the undeformed mesh, in the mesh object's space
-                Matrix4x4 toRoot = root.worldToLocalMatrix * smr.transform.localToWorldMatrix;
+                Bounds b = smr.sharedMesh.bounds;   // the undeformed mesh, in the space it was bound in
+                Matrix4x4 toRoot = root.worldToLocalMatrix * BindSpace(smr);
                 for (int c = 0; c < 8; c++)
                 {
                     var corner = new Vector3((c & 1) == 0 ? b.min.x : b.max.x, (c & 2) == 0 ? b.min.y : b.max.y, (c & 4) == 0 ? b.min.z : b.max.z);
